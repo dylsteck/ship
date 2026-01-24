@@ -7,23 +7,14 @@ import { cn } from "@/lib/utils";
 
 type SessionStatus = "starting" | "running" | "idle" | "stopped" | "error";
 
-interface Session {
-  _id: string;
-  repoName: string;
-  branch: string;
-  status: SessionStatus;
-  createdAt: number;
-  updatedAt: number;
-}
-
 interface SessionListProps {
   filter?: SessionStatus;
 }
 
 export function SessionList({ filter }: SessionListProps) {
-  const sessions = useQuery(api.sessions.list, { status: filter }) as Session[] | undefined;
+  const sessions = useQuery(api.sessions.list, { status: filter });
 
-  if (!sessions) {
+  if (sessions === undefined) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent" />
@@ -50,6 +41,8 @@ export function SessionList({ filter }: SessionListProps) {
     </div>
   );
 }
+
+type Session = NonNullable<typeof api.sessions.list._returnType>[number];
 
 function SessionCard({ session }: { session: Session }) {
   return (

@@ -8,7 +8,14 @@ export const current = query({
     if (!userId) {
       return null;
     }
-    return await ctx.db.get(userId);
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      return null;
+    }
+
+    // Return user - githubAccessToken should be stored during OAuth callback
+    // If not available, it will be synced via the auth callback
+    return user;
   },
 });
 

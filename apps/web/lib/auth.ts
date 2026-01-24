@@ -11,6 +11,7 @@ export function useAuth() {
       ? window.location.origin 
       : "https://ship.dylansteck.com";
     
+    // signIn redirects automatically to GitHub OAuth
     await signIn("github", { redirectTo });
   };
 
