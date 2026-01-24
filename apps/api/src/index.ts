@@ -19,7 +19,11 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:3001", "https://*.vercel.app"],
+    origin: [
+      "http://localhost:3001",
+      "https://*.vercel.app",
+      "https://ship.dylansteck.com",
+    ],
     credentials: true,
   })
 );

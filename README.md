@@ -48,8 +48,39 @@ MODAL_TOKEN_ID=your-modal-token
 MODAL_TOKEN_SECRET=your-modal-secret
 ANTHROPIC_API_KEY=your-anthropic-key
 
-# 6. Run dev servers
+# 6. Set up web app env (apps/web/.env.local)
+# NEXT_PUBLIC_CONVEX_URL=your-convex-url
+# NEXT_PUBLIC_API_URL=http://localhost:3000  # For local dev
+
+# 7. Run dev servers
 pnpm dev
 ```
 
 Open http://localhost:3001
+
+## Deployment
+
+Both projects are deployed to Vercel:
+
+### Web App (`apps/web`)
+1. Go to Vercel dashboard
+2. Create new project, select this repo
+3. Set **Root Directory** to `apps/web`
+4. Add environment variables:
+   - `NEXT_PUBLIC_CONVEX_URL` - Your Convex deployment URL
+   - `NEXT_PUBLIC_API_URL` - `https://api.ship.dylansteck.com`
+
+### API (`apps/api`)
+1. Go to Vercel dashboard
+2. Create new project, select this repo
+3. Set **Root Directory** to `apps/api`
+4. Add environment variables:
+   - `CONVEX_URL` - Your Convex deployment URL
+   - `ANTHROPIC_API_KEY` - Your Anthropic API key
+   - `MODAL_TOKEN_ID` - Your Modal token ID
+   - `MODAL_TOKEN_SECRET` - Your Modal token secret
+
+## Production URLs
+
+- **Web app**: https://ship.dylansteck.com
+- **API**: https://api.ship.dylansteck.com
