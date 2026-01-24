@@ -12,6 +12,7 @@ export default defineSchema({
     githubId: v.optional(v.string()),
     githubUsername: v.optional(v.string()),
     githubAccessToken: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
   })
     .index("by_github_id", ["githubId"])
     .index("email", ["email"]),

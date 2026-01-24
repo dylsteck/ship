@@ -6,7 +6,12 @@ export function useAuth() {
   const { signIn, signOut } = useAuthActions();
 
   const signInWithGitHub = async () => {
-    await signIn("github");
+    // Use current window location for redirect, or default to production
+    const redirectTo = typeof window !== "undefined" 
+      ? window.location.origin 
+      : "https://ship.dylansteck.com";
+    
+    await signIn("github", { redirectTo });
   };
 
   return {
