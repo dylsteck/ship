@@ -11,18 +11,25 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@repo/ui": "workspace:*",
+    "@ship/convex": "workspace:*",
+    "@ship/ui": "workspace:*",
+    "convex": "^1.21.0",
+    "@convex-dev/auth": "^0.0.80",
     "next": "^16.0.10",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
-    "@repo/eslint-config": "workspace:*",
-    "@repo/typescript-config": "workspace:*",
+    "@ship/eslint-config": "workspace:*",
+    "@ship/typescript-config": "workspace:*",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9.31.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "tailwindcss": "^4.0.17",
+    "@tailwindcss/postcss": "^4.0.17"
   }
 }

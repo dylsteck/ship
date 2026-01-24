@@ -7,7 +7,12 @@
   },
   "dependencies": {
     "hono": "^4.8.10",
-    "@repo/constants": "workspace:*"
+    "@hono/zod-validator": "^0.7.0",
+    "@ship/constants": "workspace:*",
+    "@ship/convex": "workspace:*",
+    "convex": "^1.21.0",
+    "modal": "^0.6.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",

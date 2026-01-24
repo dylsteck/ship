@@ -1,5 +1,5 @@
 {
-  "name": "@repo/constants",
+  "name": "@ship/constants",
   "type": "module",
   "exports": {
     ".": {
@@ -12,7 +12,7 @@
     "dev": "tsc --watch"
   },
   "devDependencies": {
-    "@repo/typescript-config": "workspace:*",
+    "@ship/typescript-config": "workspace:*",
     "typescript": "^5.8.3"
   }
 }

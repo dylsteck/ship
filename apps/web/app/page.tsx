@@ -1,116 +1,96 @@
-import Image, { type ImageProps } from 'next/image'
-import styles from './page.module.css'
+"use client";
 
-type Props = Omit<ImageProps, 'src'> & {
-  srcLight: string
-  srcDark: string
-}
+import { useQuery } from "convex/react";
+import { api } from "@ship/convex/convex/_generated/api";
+import { useAuth } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import Link from "next/link";
+import { SessionList } from "@/components/session-list";
 
-const ThemeImage = (props: Props) => {
-  const { srcLight, srcDark, ...rest } = props
+export default function DashboardPage() {
+  const { isAuthenticated, isLoading, signOut } = useAuth();
+  const user = useQuery(api.users.viewer);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
+      </div>
+    );
+  }
 
   return (
-    <>
-      <Image {...rest} src={srcLight} className="imgLight" alt="" />
-      <Image {...rest} src={srcDark} className="imgDark" alt="" />
-    </>
-  )
-}
+    <div className="min-h-screen">
+      {/* Header */}
+      <header className="border-b border-border bg-bg-secondary">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-semibold">Ship</h1>
+          </div>
 
-const API_URL = process.env.VERCEL
-  ? 'https://hono-turborepo-api-demo.vercel.app'
-  : 'http://localhost:3000'
-
-export default async function Home() {
-  const result = await fetch(API_URL)
-    .then((res) => res.text())
-    .catch(() => 'Hello from Hono!')
-
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <ThemeImage
-          className={styles.logo}
-          srcLight="turborepo-dark.svg"
-          srcDark="turborepo-light.svg"
-          alt="Turborepo logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>apps/web/app/page.tsx</code>
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new/clone?demo-description=Learn+to+implement+a+monorepo+with+a+two+Next.js+sites+that+has+installed+three+local+packages.&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F4K8ZISWAzJ8X1504ca0zmC%2F0b21a1c6246add355e55816278ef54bc%2FBasic.png&demo-title=Monorepo+with+Turborepo&demo-url=https%3A%2F%2Fexamples-basic-web.vercel.sh%2F&from=templates&project-name=Monorepo+with+Turborepo&repository-name=monorepo-turborepo&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fturborepo%2Ftree%2Fmain%2Fexamples%2Fbasic&root-directory=apps%2Fdocs&skippable-integrations=1&teamSlug=vercel&utm_source=create-turbo"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://turborepo.com/docs?utm_source"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+          <div className="flex items-center gap-4">
+            {user && (
+              <div className="flex items-center gap-2">
+                {user.image && (
+                  <img
+                    src={user.image}
+                    alt={user.name || "User"}
+                    className="h-7 w-7 rounded-full"
+                  />
+                )}
+                <span className="text-sm text-text-secondary">
+                  {user.githubUsername}
+                </span>
+              </div>
+            )}
+            <button
+              onClick={() => signOut()}
+              className="text-sm text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
-        <div className={styles.result}>
-          <h3>
-            API Response from{' '}
-            <a href={API_URL} target="_blank" rel="noreferrer">
-              <code>{API_URL}</code>
-            </a>
-            :
-          </h3>
-          <pre>{result}</pre>
+      </header>
+
+      {/* Main content */}
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold">Sessions</h2>
+          <Link
+            href="/new"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
+          >
+            <PlusIcon className="h-4 w-4" />
+            New Session
+          </Link>
         </div>
+
+        <SessionList />
       </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com/templates?search=turborepo&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://turborepo.com?utm_source=create-turbo"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to turborepo.com →
-        </a>
-      </footer>
     </div>
-  )
+  );
+}
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
 }

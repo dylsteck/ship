@@ -1,0 +1,10 @@
+{
+  "extends": "@ship/typescript-config/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "composite": true
+  },
+  "include": ["convex/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
