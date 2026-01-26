@@ -60,21 +60,35 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
           anthropicApiKey,
         });
 
-        // Update session with sandbox ID
+        // Check if we got a tunnel URL - this is required for the session to work
+        if (!result.tunnelUrl) {
+          await convex.mutation(sessionsInternalUpdateStatus, {
+            id: sessionId,
+            status: "error",
+            modalSandboxId: result.sandboxId,
+            errorMessage: "Failed to establish connection to sandbox - no tunnel URL available",
+          });
+
+          return c.json({
+            error: "Failed to establish connection to sandbox",
+            sandboxId: result.sandboxId,
+          }, 500);
+        }
+
+        // Store OpenCode client
+        openCodeClients.set(sessionId, new OpenCodeClient(result.tunnelUrl));
+
+        // Update session with sandbox ID - only set to running if we have a working connection
         await convex.mutation(sessionsInternalUpdateStatus, {
           id: sessionId,
           status: "running",
           modalSandboxId: result.sandboxId,
         });
 
-        // Store OpenCode client
-        if (result.tunnelUrl) {
-          openCodeClients.set(sessionId, new OpenCodeClient(result.tunnelUrl));
-        }
-
         return c.json({
           success: true,
           sandboxId: result.sandboxId,
+          tunnelUrl: result.tunnelUrl,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";

@@ -107,7 +107,7 @@ export default function HomePage() {
       });
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-      await fetch(`${apiUrl}/sessions`, {
+      const response = await fetch(`${apiUrl}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -117,6 +117,12 @@ export default function HomePage() {
           githubToken: currentUser?.githubAccessToken,
         }),
       });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Failed to create sandbox" }));
+        console.error("Sandbox creation failed:", error);
+        // Navigate anyway - the session page will show the error status
+      }
 
       router.push(`/session/${sessionId}?prompt=${encodeURIComponent(prompt.trim())}`);
     } catch (error) {

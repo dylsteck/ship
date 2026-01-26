@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { SunIcon, MoonIcon, MonitorIcon } from "@/components/ui/icons";
@@ -10,6 +11,21 @@ interface ThemeToggleProps {
 
 export function ThemeToggle({ className }: ThemeToggleProps) {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className={cn("flex items-center gap-1 p-1 rounded-lg bg-muted", className)}>
+        <div className="p-2"><SunIcon className="h-4 w-4 text-muted-foreground" /></div>
+        <div className="p-2"><MoonIcon className="h-4 w-4 text-muted-foreground" /></div>
+        <div className="p-2"><MonitorIcon className="h-4 w-4 text-muted-foreground" /></div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex items-center gap-1 p-1 rounded-lg bg-muted", className)}>

@@ -110,11 +110,11 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0c0c0c]">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar */}
-      <aside className="w-[240px] bg-[#0c0c0c] border-r border-[#1a1a1a] flex flex-col shrink-0">
+      <aside className="w-[240px] bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
         {/* Logo */}
-        <div className="h-14 flex items-center px-4 border-b border-[#1a1a1a]">
+        <div className="h-14 flex items-center px-4 border-b border-sidebar-border">
           <span className="text-base font-semibold">Ship</span>
         </div>
 
@@ -139,8 +139,8 @@ export default function DashboardPage() {
                 className={cn(
                   "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                   activeTab === item.id
-                    ? "bg-[#1a1a1a] text-foreground"
-                    : "text-muted-foreground hover:bg-[#151515] hover:text-foreground"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -149,14 +149,14 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          <Separator className="my-4 bg-[#1a1a1a]" />
+          <Separator className="my-4 bg-sidebar-border" />
 
           <div className="space-y-0.5">
             {secondaryNavItems.map((item) => (
               <button
                 key={item.label}
                 onClick={item.onClick}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-[#151515] hover:text-foreground transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors"
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
@@ -164,14 +164,14 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          <Separator className="my-4 bg-[#1a1a1a]" />
+          <Separator className="my-4 bg-sidebar-border" />
 
           <div className="space-y-0.5">
             {footerNavItems.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-[#151515] hover:text-foreground transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors"
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
@@ -181,10 +181,10 @@ export default function DashboardPage() {
         </nav>
 
         {/* Sign out */}
-        <div className="p-2 border-t border-[#1a1a1a]">
+        <div className="p-2 border-t border-sidebar-border">
           <button
             onClick={() => signOut()}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-[#151515] hover:text-foreground transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors"
           >
             Sign out
           </button>
@@ -192,9 +192,9 @@ export default function DashboardPage() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-background">
         {/* Top bar */}
-        <header className="h-14 flex items-center justify-end px-6 border-b border-[#1a1a1a]">
+        <header className="h-14 flex items-center justify-end px-6 border-b border-border">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push("/")}
@@ -202,9 +202,9 @@ export default function DashboardPage() {
             >
               Sessions
             </button>
-            <Avatar className="h-8 w-8 border border-[#2a2a2a]">
+            <Avatar className="h-8 w-8 border border-border">
               <AvatarImage src={user?.image || undefined} alt={user?.name || "User"} />
-              <AvatarFallback className="text-xs bg-[#1a1a1a]">
+              <AvatarFallback className="text-xs bg-muted">
                 {user?.name?.split(" ").map(n => n[0]).join("").toUpperCase() || "U"}
               </AvatarFallback>
             </Avatar>
@@ -217,7 +217,7 @@ export default function DashboardPage() {
             <div className="max-w-4xl space-y-6">
               {/* Stats Cards */}
               <div className="grid grid-cols-2 gap-4">
-                <Card className="bg-[#111111] border-[#1a1a1a]">
+                <Card className="bg-card border-border">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
@@ -228,7 +228,7 @@ export default function DashboardPage() {
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="bg-[#111111] border-[#1a1a1a]">
+                <Card className="bg-card border-border">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
@@ -247,7 +247,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Activity Section */}
-              <Card className="bg-[#111111] border-[#1a1a1a]">
+              <Card className="bg-card border-border">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-medium">Your Activity</h3>
@@ -280,7 +280,7 @@ export default function DashboardPage() {
                       return (
                         <div
                           key={i}
-                          className="flex-1 bg-[#2a2a2a] rounded-sm transition-all hover:bg-[#3a3a3a]"
+                          className="flex-1 bg-muted rounded-sm transition-all hover:bg-muted/80"
                           style={{ height: `${height}%` }}
                         />
                       );
@@ -291,7 +291,7 @@ export default function DashboardPage() {
 
               {/* Recent Sessions */}
               {sessions && sessions.length > 0 && (
-                <Card className="bg-[#111111] border-[#1a1a1a]">
+                <Card className="bg-card border-border">
                   <CardContent className="p-5">
                     <h3 className="text-sm font-medium mb-4">Recent Sessions</h3>
                     <div className="space-y-2">
@@ -299,7 +299,7 @@ export default function DashboardPage() {
                         <button
                           key={session._id}
                           onClick={() => router.push(`/session/${session._id}`)}
-                          className="w-full flex items-center justify-between p-3 rounded-lg bg-[#0c0c0c] hover:bg-[#151515] transition-colors text-left"
+                          className="w-full flex items-center justify-between p-3 rounded-lg bg-background hover:bg-accent transition-colors text-left"
                         >
                           <div className="flex items-center gap-3">
                             <div className={cn(
@@ -337,13 +337,13 @@ export default function DashboardPage() {
               </div>
 
               {/* Profile */}
-              <Card className="bg-[#111111] border-[#1a1a1a]">
+              <Card className="bg-card border-border">
                 <CardContent className="p-5">
                   <h3 className="text-sm font-medium mb-4">Profile</h3>
                   <div className="flex items-center gap-4">
-                    <Avatar className="h-16 w-16 border border-[#2a2a2a]">
+                    <Avatar className="h-16 w-16 border border-border">
                       <AvatarImage src={user?.image || undefined} alt={user?.name || "User"} />
-                      <AvatarFallback className="text-lg bg-[#1a1a1a]">
+                      <AvatarFallback className="text-lg bg-muted">
                         {user?.name?.[0]?.toUpperCase() || "U"}
                       </AvatarFallback>
                     </Avatar>
@@ -358,7 +358,7 @@ export default function DashboardPage() {
               </Card>
 
               {/* Appearance */}
-              <Card className="bg-[#111111] border-[#1a1a1a]">
+              <Card className="bg-card border-border">
                 <CardContent className="p-5">
                   <h3 className="text-sm font-medium mb-4">Appearance</h3>
                   <div className="flex items-center justify-between">
@@ -374,7 +374,7 @@ export default function DashboardPage() {
               </Card>
 
               {/* About */}
-              <Card className="bg-[#111111] border-[#1a1a1a]">
+              <Card className="bg-card border-border">
                 <CardContent className="p-5">
                   <h3 className="text-sm font-medium mb-4">About</h3>
                   <div className="space-y-3 text-sm">
@@ -382,7 +382,7 @@ export default function DashboardPage() {
                       <span className="text-muted-foreground">Version</span>
                       <span>1.0.0</span>
                     </div>
-                    <Separator className="bg-[#1a1a1a]" />
+                    <Separator className="bg-border" />
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Stack</span>
                       <span>Next.js · Convex · OpenCode</span>
@@ -403,11 +403,11 @@ export default function DashboardPage() {
               </div>
 
               {/* GitHub */}
-              <Card className="bg-[#111111] border-[#1a1a1a]">
+              <Card className="bg-card border-border">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-lg bg-[#1a1a1a] flex items-center justify-center">
+                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
                         <GithubIcon className="h-5 w-5" />
                       </div>
                       <div>
@@ -432,7 +432,7 @@ export default function DashboardPage() {
               </Card>
 
               {/* More integrations placeholder */}
-              <Card className="bg-[#111111] border-[#1a1a1a] border-dashed">
+              <Card className="bg-card border-border border-dashed">
                 <CardContent className="p-5">
                   <div className="text-center py-4">
                     <p className="text-sm text-muted-foreground">
