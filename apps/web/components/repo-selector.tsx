@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { ChevronDownIcon, RepoIcon, GitBranchIcon, SearchIcon } from "@/components/ui/icons";
 
 interface Repo {
   id: number;
@@ -209,17 +210,181 @@ export function RepoSelector({ githubToken, onSelect }: RepoSelectorProps) {
   );
 }
 
-function RepoIcon({ className }: { className?: string }) {
+// Inline dropdown variants for the main page
+
+interface RepoDropdownProps {
+  repos: Repo[];
+  selectedRepo: Repo | null;
+  onSelect: (repo: Repo) => void;
+  isLoading?: boolean;
+}
+
+export function RepoDropdown({ repos, selectedRepo, onSelect, isLoading }: RepoDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredRepos = repos.filter(
+    (repo) =>
+      repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      repo.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path d="M15 22v-4a4.8 4.8 0 00-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 004 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
-      <path d="M9 18c-4.51 2-5-2-7-2" />
-    </svg>
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={isLoading}
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-bg-elevated text-sm hover:bg-hover-bg transition-colors min-w-[160px]",
+          isLoading && "opacity-50 cursor-not-allowed"
+        )}
+      >
+        <RepoIcon className="h-4 w-4 text-text-secondary" />
+        <span className="truncate flex-1 text-left">
+          {isLoading ? "Loading..." : selectedRepo?.name || "Select repo"}
+        </span>
+        <ChevronDownIcon className={cn("h-4 w-4 text-text-secondary transition-transform", isOpen && "rotate-180")} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-80 rounded-lg border border-border bg-bg-elevated shadow-lg overflow-hidden z-50">
+          {/* Search */}
+          <div className="p-2 border-b border-border">
+            <div className="relative">
+              <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search repos..."
+                className="w-full h-8 pl-8 pr-3 rounded-md bg-bg-primary border border-border text-sm placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          {/* Repo list */}
+          <div className="max-h-60 overflow-y-auto">
+            {filteredRepos.length === 0 ? (
+              <div className="py-4 text-center text-sm text-text-secondary">
+                No repos found
+              </div>
+            ) : (
+              filteredRepos.map((repo) => (
+                <button
+                  key={repo.id}
+                  onClick={() => {
+                    onSelect(repo);
+                    setIsOpen(false);
+                    setSearchQuery("");
+                  }}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-hover-bg transition-colors flex items-center gap-2",
+                    selectedRepo?.id === repo.id && "bg-accent/10"
+                  )}
+                >
+                  <RepoIcon className="h-4 w-4 text-text-secondary shrink-0" />
+                  <span className="truncate">{repo.fullName}</span>
+                  {repo.isPrivate && (
+                    <span className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded shrink-0">
+                      Private
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface BranchDropdownProps {
+  branches: Branch[];
+  selectedBranch: string;
+  onSelect: (branch: string) => void;
+  isLoading?: boolean;
+  disabled?: boolean;
+}
+
+export function BranchDropdown({ branches, selectedBranch, onSelect, isLoading, disabled }: BranchDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={isLoading || disabled}
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-bg-elevated text-sm hover:bg-hover-bg transition-colors min-w-[140px]",
+          (isLoading || disabled) && "opacity-50 cursor-not-allowed"
+        )}
+      >
+        <GitBranchIcon className="h-4 w-4 text-text-secondary" />
+        <span className="truncate flex-1 text-left">
+          {isLoading ? "Loading..." : selectedBranch || "Select branch"}
+        </span>
+        <ChevronDownIcon className={cn("h-4 w-4 text-text-secondary transition-transform", isOpen && "rotate-180")} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-56 max-h-60 rounded-lg border border-border bg-bg-elevated shadow-lg overflow-hidden z-50">
+          <div className="max-h-60 overflow-y-auto">
+            {branches.length === 0 ? (
+              <div className="py-4 text-center text-sm text-text-secondary">
+                No branches found
+              </div>
+            ) : (
+              branches.map((branch) => (
+                <button
+                  key={branch.name}
+                  onClick={() => {
+                    onSelect(branch.name);
+                    setIsOpen(false);
+                  }}
+                  className={cn(
+                    "w-full px-3 py-2 text-left text-sm hover:bg-hover-bg transition-colors flex items-center gap-2",
+                    selectedBranch === branch.name && "bg-accent/10"
+                  )}
+                >
+                  <GitBranchIcon className="h-4 w-4 text-text-secondary shrink-0" />
+                  <span className="truncate">{branch.name}</span>
+                  {branch.protected && (
+                    <span className="text-xs bg-warning/20 text-warning px-1.5 py-0.5 rounded shrink-0">
+                      Protected
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -3,22 +3,24 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@ship/convex/convex/_generated/api";
 import { Id } from "@ship/convex/convex/_generated/dataModel";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
-import { cn } from "@/lib/utils";
 
 interface ChatContainerProps {
   sessionId: Id<"sessions">;
+  initialPrompt?: string;
+  onInitialPromptSent?: () => void;
 }
 
-export function ChatContainer({ sessionId }: ChatContainerProps) {
+export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }: ChatContainerProps) {
   const session = useQuery(api.sessions.get, { id: sessionId });
   const messages = useQuery(api.messages.list, { sessionId });
   const sendMessage = useMutation(api.messages.send);
 
   const [streamingContent, setStreamingContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const initialPromptSentRef = useRef(false);
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -85,6 +87,21 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     [session, sessionId, sendMessage]
   );
 
+  // Send initial prompt when session becomes ready
+  useEffect(() => {
+    if (
+      initialPrompt &&
+      !initialPromptSentRef.current &&
+      session?.status === "running" &&
+      messages &&
+      messages.length === 0
+    ) {
+      initialPromptSentRef.current = true;
+      handleSend(initialPrompt);
+      onInitialPromptSent?.();
+    }
+  }, [initialPrompt, session?.status, messages, handleSend, onInitialPromptSent]);
+
   if (!session) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -95,23 +112,11 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
 
   const isRunning = session.status === "running";
   const isStarting = session.status === "starting";
+  const isIdle = session.status === "idle";
   const isError = session.status === "error";
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="border-b border-border px-4 py-3 bg-bg-secondary">
-        <div className="flex items-center justify-between max-w-4xl mx-auto">
-          <div className="flex items-center gap-3">
-            <StatusIndicator status={session.status} />
-            <div>
-              <h2 className="font-medium text-sm">{session.repoName}</h2>
-              <p className="text-xs text-text-secondary">{session.branch}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Messages */}
       <MessageList
         messages={(messages || []) as any}
@@ -135,33 +140,14 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
       ) : (
         <ChatInput
           onSend={handleSend}
-          disabled={isLoading || !isRunning}
+          disabled={isLoading || !(isRunning || isIdle)}
           placeholder={
-            isRunning
+            isRunning || isIdle
               ? "Send a message..."
               : "Session is not running"
           }
         />
       )}
     </div>
-  );
-}
-
-function StatusIndicator({
-  status,
-}: {
-  status: "starting" | "running" | "idle" | "stopped" | "error";
-}) {
-  return (
-    <div
-      className={cn(
-        "h-2.5 w-2.5 rounded-full",
-        status === "running" && "bg-success animate-pulse",
-        status === "idle" && "bg-success",
-        status === "starting" && "bg-warning animate-pulse",
-        status === "stopped" && "bg-text-secondary",
-        status === "error" && "bg-error"
-      )}
-    />
   );
 }

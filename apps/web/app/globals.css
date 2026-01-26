@@ -14,9 +14,21 @@
   --color-error: #ef4444;
   --color-border: #262626;
 
+  /* Sidebar */
+  --sidebar-width: 260px;
+  --color-sidebar-bg: #111111;
+  --color-sidebar-border: #1f1f1f;
+
+  /* Hover states */
+  --color-hover-bg: #1a1a1a;
+  --color-active-bg: #252525;
+
   /* Typography */
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* Transitions */
+  --transition-sidebar: 200ms ease-in-out;
 }
 
 /* Base styles */
@@ -63,4 +75,30 @@ pre {
 ::selection {
   background-color: var(--color-accent-muted);
   color: var(--color-text-primary);
+}
+
+/* Sidebar transition */
+.sidebar-transition {
+  transition: width var(--transition-sidebar), transform var(--transition-sidebar);
+}
+
+/* Status dot pulse animation */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* Button hover transitions */
+.btn-transition {
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }

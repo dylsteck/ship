@@ -9,6 +9,13 @@ pnpm install
 pnpm dev
 ```
 
+## Build
+
+```bash
+pnpm build          # Build all packages and apps
+pnpm build:web      # Build only web app (or: cd apps/web && pnpm build)
+```
+
 ## Ports
 
 - Web app: `http://localhost:3001`
