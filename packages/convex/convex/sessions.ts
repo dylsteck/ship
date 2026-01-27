@@ -96,7 +96,9 @@ export const updateStatus = mutation({
       v.literal("stopped"),
       v.literal("error")
     ),
-    modalSandboxId: v.optional(v.string()),
+    sandboxId: v.optional(v.string()),
+    sandboxUrl: v.optional(v.string()),
+    previewUrl: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     // Optional API key for server-side calls
     apiKey: v.optional(v.string()),
@@ -108,7 +110,9 @@ export const updateStatus = mutation({
       // API key auth - allow update without user check
       await ctx.db.patch(args.id, {
         status: args.status,
-        modalSandboxId: args.modalSandboxId,
+        sandboxId: args.sandboxId,
+        sandboxUrl: args.sandboxUrl,
+        previewUrl: args.previewUrl,
         errorMessage: args.errorMessage,
         updatedAt: Date.now(),
       });
@@ -128,7 +132,9 @@ export const updateStatus = mutation({
 
     await ctx.db.patch(args.id, {
       status: args.status,
-      modalSandboxId: args.modalSandboxId,
+      sandboxId: args.sandboxId,
+      sandboxUrl: args.sandboxUrl,
+      previewUrl: args.previewUrl,
       errorMessage: args.errorMessage,
       updatedAt: Date.now(),
     });
@@ -146,14 +152,92 @@ export const internalUpdateStatus = internalMutation({
       v.literal("stopped"),
       v.literal("error")
     ),
-    modalSandboxId: v.optional(v.string()),
+    sandboxId: v.optional(v.string()),
+    sandboxUrl: v.optional(v.string()),
+    previewUrl: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
       status: args.status,
-      modalSandboxId: args.modalSandboxId,
+      sandboxId: args.sandboxId,
+      sandboxUrl: args.sandboxUrl,
+      previewUrl: args.previewUrl,
       errorMessage: args.errorMessage,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update PR info
+export const updatePR = mutation({
+  args: {
+    id: v.id("sessions"),
+    prUrl: v.optional(v.string()),
+    prNumber: v.optional(v.number()),
+    prStatus: v.optional(v.union(v.literal("draft"), v.literal("open"), v.literal("merged"), v.literal("closed"))),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const session = await ctx.db.get(args.id);
+    if (!session || session.userId !== userId) {
+      throw new Error("Session not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      prUrl: args.prUrl,
+      prNumber: args.prNumber,
+      prStatus: args.prStatus,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update files changed
+export const updateFilesChanged = internalMutation({
+  args: {
+    id: v.id("sessions"),
+    filesChanged: v.array(v.object({
+      path: v.string(),
+      additions: v.number(),
+      deletions: v.number(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      filesChanged: args.filesChanged,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update tasks
+export const updateTasks = mutation({
+  args: {
+    id: v.id("sessions"),
+    tasks: v.array(v.object({
+      id: v.string(),
+      content: v.string(),
+      completed: v.boolean(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const session = await ctx.db.get(args.id);
+    if (!session || session.userId !== userId) {
+      throw new Error("Session not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      tasks: args.tasks,
       updatedAt: Date.now(),
     });
   },

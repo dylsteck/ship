@@ -8,7 +8,7 @@ Personal background coding agent. Select a repo, spin up a sandboxed VM, and let
 - **Backend**: Hono API
 - **Database**: Convex (real-time)
 - **Auth**: Convex Auth + GitHub OAuth
-- **Sandboxes**: Modal
+- **Sandboxes**: Vercel Sandbox
 - **Agent**: OpenCode
 
 ## Structure
@@ -92,7 +92,7 @@ NEXT_PUBLIC_CONVEX_URL=https://your-project.convex.cloud
 NEXT_PUBLIC_API_URL=http://localhost:3000  # For local dev
 ```
 
-#### API (`apps/api/.env`)
+#### API (`apps/api/.env.local`)
 
 ```env
 # Convex
@@ -104,10 +104,6 @@ API_KEY=your-api-key-secret
 
 # Anthropic (for Claude)
 ANTHROPIC_API_KEY=sk-ant-...
-
-# Modal (for sandboxes)
-MODAL_TOKEN_ID=...
-MODAL_TOKEN_SECRET=...
 
 # GitHub App (for bot commits)
 GITHUB_APP_ID=your-app-id
@@ -125,14 +121,18 @@ AUTH_GITHUB_SECRET=your-oauth-client-secret
 API_KEY=your-api-key-secret
 ```
 
-### 6. Modal Setup
+### 6. Vercel Sandbox Setup
 
+Vercel Sandbox is used to run sandboxed environments with OpenCode.
+
+**For Local Development:**
 ```bash
-pip install modal
-modal setup
+cd apps/api
+vercel env pull  # Pulls VERCEL_OIDC_TOKEN to .env.local
 ```
 
-Get tokens from [modal.com/settings](https://modal.com/settings) and add to API env.
+**For Production:**
+When deployed to Vercel, the OIDC token is automatically available.
 
 ### 7. Run Development
 
@@ -178,11 +178,12 @@ pnpm build --filter=api       # Build API only
 3. Add environment variables:
    - `CONVEX_URL`
    - `ANTHROPIC_API_KEY`
-   - `MODAL_TOKEN_ID`
-   - `MODAL_TOKEN_SECRET`
+   - `API_KEY`
    - `GITHUB_APP_ID`
    - `GITHUB_APP_PRIVATE_KEY`
    - `GITHUB_APP_INSTALLATION_ID`
+
+Note: Vercel Sandbox uses OIDC tokens which are automatically available when deployed to Vercel.
 
 ### Convex
 

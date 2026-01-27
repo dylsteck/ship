@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { ToolCallDisplay } from "./tool-call-display";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export interface ToolCall {
   id: string;
@@ -35,7 +36,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
   if (isSystem) {
     return (
       <div className="flex justify-center py-2">
-        <span className="text-xs text-text-secondary bg-bg-secondary px-3 py-1 rounded-full">
+        <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
           {message.content}
         </span>
       </div>
@@ -43,27 +44,44 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
   }
 
   return (
-    <div
-      className={cn(
-        "flex w-full",
-        isUser ? "justify-end" : "justify-start"
-      )}
-    >
-      <div
-        className={cn(
-          "max-w-[85%] rounded-2xl px-4 py-3",
-          isUser
-            ? "bg-accent text-white"
-            : "bg-bg-elevated border border-border"
+    <div className="flex gap-3 py-4">
+      {/* Avatar */}
+      <div className="shrink-0">
+        {isUser ? (
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+              You
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          <Avatar className="h-8 w-8 bg-amber-100">
+            <AvatarFallback className="bg-amber-100 text-amber-800 text-xs">
+              AI
+            </AvatarFallback>
+          </Avatar>
         )}
-      >
-        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-          {message.content}
-          {isStreaming && (
-            <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {/* Message content */}
+        <div
+          className={cn(
+            "text-sm leading-relaxed",
+            isUser
+              ? "bg-muted rounded-lg px-4 py-3 inline-block max-w-[90%]"
+              : "text-foreground"
           )}
+        >
+          <div className="whitespace-pre-wrap break-words">
+            {message.content}
+            {isStreaming && (
+              <span className="inline-block w-1.5 h-4 ml-0.5 bg-current animate-pulse rounded-sm" />
+            )}
+          </div>
         </div>
 
+        {/* Tool calls - displayed inline as action badges */}
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="mt-3 space-y-2">
             {message.toolCalls.map((toolCall) => (
@@ -78,12 +96,8 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
           </div>
         )}
 
-        <div
-          className={cn(
-            "text-xs mt-2",
-            isUser ? "text-white/70" : "text-text-secondary"
-          )}
-        >
+        {/* Timestamp */}
+        <div className="text-[10px] text-muted-foreground mt-1">
           {formatTime(message.createdAt)}
         </div>
       </div>

@@ -8,11 +8,16 @@
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
 
-  /* Sidebar */
-  --sidebar-width: 260px;
+  /* Layout */
+  --sidebar-width: 280px;
+  --right-panel-width: 300px;
+  --header-height: 56px;
+  --action-bar-height: 64px;
 
   /* Transitions */
-  --transition-sidebar: 200ms ease-in-out;
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
 }
 
 /* Base styles */
@@ -34,7 +39,7 @@ pre {
   font-family: var(--font-mono);
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - minimal */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -55,13 +60,17 @@ pre {
 
 /* Selection styling */
 ::selection {
-  background-color: hsl(var(--primary) / 0.2);
+  background-color: hsl(var(--primary) / 0.1);
   color: hsl(var(--foreground));
 }
 
-/* Sidebar transition */
+/* Layout transitions */
 .sidebar-transition {
-  transition: width var(--transition-sidebar), transform var(--transition-sidebar);
+  transition: width var(--transition-normal), transform var(--transition-normal);
+}
+
+.panel-transition {
+  transition: width var(--transition-normal), opacity var(--transition-fast);
 }
 
 /* Status dot pulse animation */
@@ -78,6 +87,52 @@ pre {
 
 .animate-pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Subtle hover animation */
+@keyframes subtle-lift {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-1px);
+  }
+}
+
+.hover-lift {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Message bubble styles */
+.message-bubble {
+  transition: background-color var(--transition-fast);
+}
+
+/* Tool action styles */
+.tool-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  transition: background-color var(--transition-fast);
+}
+
+.tool-action:hover {
+  background: hsl(var(--accent));
+}
+
+/* Stats card gradient */
+.stats-card-gradient {
+  background: linear-gradient(to bottom, transparent, hsl(var(--muted) / 0.3));
 }
 
 @theme inline {
@@ -114,42 +169,48 @@ pre {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  /* Status colors */
-  --color-success: oklch(0.723 0.219 149.579);
-  --color-warning: oklch(0.795 0.184 86.047);
-  --color-error: oklch(0.637 0.237 25.331);
+  /* Status colors - softer, professional */
+  --color-success: oklch(0.65 0.18 145);
+  --color-warning: oklch(0.75 0.16 80);
+  --color-error: oklch(0.60 0.20 25);
+  /* Brand accent - subtle yellow like Ramp's mascot */
+  --color-brand: oklch(0.85 0.15 85);
+  --color-brand-foreground: oklch(0.25 0 0);
 }
 
+/* Light theme (default) - Clean, minimal like Ramp Inspect */
 :root {
   --radius: 0.5rem;
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.15 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.15 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --popover-foreground: oklch(0.15 0 0);
+  --primary: oklch(0.15 0 0);
+  --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --secondary-foreground: oklch(0.15 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.95 0 0);
+  --accent-foreground: oklch(0.15 0 0);
+  --destructive: oklch(0.55 0.22 25);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0.65 0 0);
+  /* Sidebar - slightly off-white */
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-foreground: oklch(0.15 0 0);
+  --sidebar-primary: oklch(0.15 0 0);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.95 0 0);
+  --sidebar-accent-foreground: oklch(0.15 0 0);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-ring: oklch(0.65 0 0);
 }
 
+/* Dark theme */
 .dark {
   --background: oklch(0.09 0 0);
   --foreground: oklch(0.95 0 0);
@@ -165,7 +226,7 @@ pre {
   --muted-foreground: oklch(0.6 0 0);
   --accent: oklch(0.18 0 0);
   --accent-foreground: oklch(0.95 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: oklch(0.65 0.18 22);
   --border: oklch(0.2 0 0);
   --input: oklch(0.2 0 0);
   --ring: oklch(0.4 0 0);
@@ -185,5 +246,16 @@ pre {
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Typography utilities */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
   }
 }

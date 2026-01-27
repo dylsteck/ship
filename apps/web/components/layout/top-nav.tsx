@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { MenuIcon } from "@/components/ui/icons";
+import { MenuIcon, PanelRightIcon } from "@/components/ui/icons";
 import { UserDropdown } from "./user-dropdown";
+import { cn } from "@/lib/utils";
 
 interface TopNavProps {
   user: {
@@ -13,6 +14,8 @@ interface TopNavProps {
     githubUsername?: string | null;
   } | null;
   onToggleSidebar: () => void;
+  onToggleRightPanel?: () => void;
+  rightPanelOpen?: boolean;
   onSignOut: () => void;
   showDashboardLink?: boolean;
   children?: React.ReactNode;
@@ -21,6 +24,8 @@ interface TopNavProps {
 export function TopNav({
   user,
   onToggleSidebar,
+  onToggleRightPanel,
+  rightPanelOpen,
   onSignOut,
   showDashboardLink = true,
   children,
@@ -50,7 +55,18 @@ export function TopNav({
       </div>
 
       {/* Right section */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        {onToggleRightPanel && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleRightPanel}
+            className={cn("h-8 w-8 hidden lg:flex", rightPanelOpen && "bg-muted")}
+            aria-label="Toggle details panel"
+          >
+            <PanelRightIcon className="h-4 w-4" />
+          </Button>
+        )}
         <Button variant="ghost" size="sm" asChild className="text-muted-foreground">
           {showDashboardLink ? (
             <Link href="/dashboard">Dashboard</Link>

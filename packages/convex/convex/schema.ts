@@ -46,8 +46,29 @@ export default defineSchema({
       v.literal("stopped"),
       v.literal("error")
     ),
-    modalSandboxId: v.optional(v.string()),
+    // Sandbox info (Vercel Sandbox)
+    sandboxId: v.optional(v.string()),
+    sandboxUrl: v.optional(v.string()),
+    previewUrl: v.optional(v.string()),
+    // PR info
+    prUrl: v.optional(v.string()),
+    prNumber: v.optional(v.number()),
+    prStatus: v.optional(v.union(v.literal("draft"), v.literal("open"), v.literal("merged"), v.literal("closed"))),
+    // Files changed tracking
+    filesChanged: v.optional(v.array(v.object({
+      path: v.string(),
+      additions: v.number(),
+      deletions: v.number(),
+    }))),
+    // Tasks tracking
+    tasks: v.optional(v.array(v.object({
+      id: v.string(),
+      content: v.string(),
+      completed: v.boolean(),
+    }))),
+    // Error info
     errorMessage: v.optional(v.string()),
+    // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
   })

@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { FileIcon, TerminalIcon, SearchIcon, ChevronDownIcon } from "@/components/ui/icons";
 
 interface ToolCall {
   id: string;
@@ -22,103 +23,93 @@ interface ToolCallDisplayProps {
 export function ToolCallDisplay({ toolCall, result }: ToolCallDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const getToolIcon = (name: string) => {
-    if (name.includes("file") || name.includes("read") || name.includes("write")) {
-      return "file";
+  const getToolInfo = (name: string) => {
+    const nameLower = name.toLowerCase();
+    if (nameLower.includes("read") || nameLower.includes("file")) {
+      return { icon: FileIcon, label: "Read", color: "text-blue-600 bg-blue-50" };
     }
-    if (name.includes("exec") || name.includes("run") || name.includes("shell")) {
-      return "terminal";
+    if (nameLower.includes("write") || nameLower.includes("edit")) {
+      return { icon: FileIcon, label: "Edit", color: "text-amber-600 bg-amber-50" };
     }
-    if (name.includes("search") || name.includes("find")) {
-      return "search";
+    if (nameLower.includes("exec") || nameLower.includes("run") || nameLower.includes("shell") || nameLower.includes("bash")) {
+      return { icon: TerminalIcon, label: "Run", color: "text-green-600 bg-green-50" };
     }
-    return "tool";
+    if (nameLower.includes("search") || nameLower.includes("find") || nameLower.includes("grep")) {
+      return { icon: SearchIcon, label: "Search", color: "text-purple-600 bg-purple-50" };
+    }
+    return { icon: TerminalIcon, label: "Tool", color: "text-gray-600 bg-gray-50" };
   };
 
-  const icon = getToolIcon(toolCall.name);
+  const { icon: Icon, label, color } = getToolInfo(toolCall.name);
+
+  // Get a short description of what the tool is doing
+  const getShortDescription = () => {
+    const args = toolCall.arguments;
+    if (args.path && typeof args.path === "string") {
+      const fileName = args.path.split("/").pop();
+      return fileName;
+    }
+    if (args.command && typeof args.command === "string") {
+      return args.command.split(" ")[0];
+    }
+    if (args.query && typeof args.query === "string") {
+      return args.query.substring(0, 30) + (args.query.length > 30 ? "..." : "");
+    }
+    return toolCall.name;
+  };
 
   return (
-    <div className="rounded-lg bg-bg-secondary border border-border overflow-hidden">
+    <div className="group">
+      {/* Inline action badge */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-primary/50 transition-colors"
+        className={cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+          color,
+          "hover:opacity-80"
+        )}
       >
-        <ToolIcon type={icon} className="h-4 w-4 text-text-secondary" />
-        <span className="font-mono text-xs text-text-primary truncate flex-1">
-          {toolCall.name}
+        <Icon className="h-3 w-3" />
+        <span>{label}</span>
+        <span className="font-mono text-[10px] opacity-70 max-w-[150px] truncate">
+          {getShortDescription()}
         </span>
-        <ChevronIcon
+        <ChevronDownIcon
           className={cn(
-            "h-4 w-4 text-text-secondary transition-transform",
+            "h-3 w-3 opacity-50 transition-transform",
             isExpanded && "rotate-180"
           )}
         />
       </button>
 
+      {/* Expanded details */}
       {isExpanded && (
-        <div className="px-3 pb-3 space-y-2">
-          <div>
-            <div className="text-xs text-text-secondary mb-1">Arguments</div>
-            <pre className="text-xs font-mono bg-bg-primary p-2 rounded overflow-x-auto">
-              {JSON.stringify(toolCall.arguments, null, 2)}
-            </pre>
-          </div>
-
-          {result && (
+        <div className="mt-2 rounded-lg border border-border bg-muted/30 overflow-hidden">
+          <div className="px-3 py-2 space-y-2">
             <div>
-              <div className="text-xs text-text-secondary mb-1">Result</div>
-              <pre className="text-xs font-mono bg-bg-primary p-2 rounded overflow-x-auto max-h-40">
-                {typeof result.result === "string"
-                  ? result.result
-                  : JSON.stringify(result.result, null, 2)}
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                {toolCall.name}
+              </div>
+              <pre className="text-xs font-mono bg-background p-2 rounded overflow-x-auto text-muted-foreground">
+                {JSON.stringify(toolCall.arguments, null, 2)}
               </pre>
             </div>
-          )}
+
+            {result && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                  Result
+                </div>
+                <pre className="text-xs font-mono bg-background p-2 rounded overflow-x-auto max-h-40 text-foreground">
+                  {typeof result.result === "string"
+                    ? result.result.substring(0, 500) + (typeof result.result === "string" && result.result.length > 500 ? "..." : "")
+                    : JSON.stringify(result.result, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
-  );
-}
-
-function ToolIcon({ type, className }: { type: string; className?: string }) {
-  if (type === "file") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" />
-        <polyline points="14 2 14 8 20 8" />
-      </svg>
-    );
-  }
-
-  if (type === "terminal") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="4 17 10 11 4 5" />
-        <line x1="12" y1="19" x2="20" y2="19" />
-      </svg>
-    );
-  }
-
-  if (type === "search") {
-    return (
-      <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
   );
 }

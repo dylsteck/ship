@@ -5,10 +5,11 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@ship/convex/convex/_generated/api";
 import { Id } from "@ship/convex/convex/_generated/dataModel";
 import { useAuth } from "@/lib/auth";
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 import Link from "next/link";
 import { ChatContainer } from "@/components/chat";
 import { AppShell } from "@/components/layout";
+import { ActionBar } from "@/components/session/action-bar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -21,9 +22,21 @@ export default function SessionPage() {
   const sessionId = params.id as Id<"sessions">;
   const session = useQuery(api.sessions.get, { id: sessionId });
   const stopSession = useMutation(api.sessions.stop);
+  const updateTasks = useMutation(api.sessions.updateTasks);
 
   const initialPrompt = searchParams.get("prompt") || undefined;
   const initialPromptSentRef = useRef(false);
+
+  const handleTaskToggle = useCallback(
+    async (taskId: string, completed: boolean) => {
+      if (!session?.tasks) return;
+      const updatedTasks = session.tasks.map((task) =>
+        task.id === taskId ? { ...task, completed } : task
+      );
+      await updateTasks({ id: sessionId, tasks: updatedTasks });
+    },
+    [session?.tasks, sessionId, updateTasks]
+  );
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -88,15 +101,44 @@ export default function SessionPage() {
     </div>
   );
 
+  // Transform session to match RightPanel expected shape
+  const sessionForPanel = {
+    _id: session._id,
+    repoName: session.repoName,
+    branch: session.branch,
+    status: session.status,
+    createdAt: session.createdAt,
+    prUrl: session.prUrl,
+    prNumber: session.prNumber,
+    prStatus: session.prStatus,
+    previewUrl: session.previewUrl,
+    filesChanged: session.filesChanged,
+    tasks: session.tasks,
+  };
+
   return (
-    <AppShell activeSessionId={sessionId} topNavChildren={sessionInfo}>
+    <AppShell
+      activeSessionId={sessionId}
+      topNavChildren={sessionInfo}
+      session={sessionForPanel}
+      showRightPanel
+      onTaskToggle={handleTaskToggle}
+    >
       <div className="h-full flex flex-col">
-        <ChatContainer
+        <div className="flex-1 overflow-hidden">
+          <ChatContainer
+            sessionId={sessionId}
+            initialPrompt={!initialPromptSentRef.current ? initialPrompt : undefined}
+            onInitialPromptSent={() => {
+              initialPromptSentRef.current = true;
+            }}
+          />
+        </div>
+        {/* Action Bar */}
+        <ActionBar
+          previewUrl={session.previewUrl}
+          prUrl={session.prUrl}
           sessionId={sessionId}
-          initialPrompt={!initialPromptSentRef.current ? initialPrompt : undefined}
-          onInitialPromptSent={() => {
-            initialPromptSentRef.current = true;
-          }}
         />
       </div>
     </AppShell>

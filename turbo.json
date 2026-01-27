@@ -7,10 +7,9 @@
         "VERCEL",
         "CONVEX_URL",
         "NEXT_PUBLIC_CONVEX_URL",
-        "MODAL_TOKEN_ID",
-        "MODAL_TOKEN_SECRET",
         "ANTHROPIC_API_KEY",
-        "NEXT_PUBLIC_API_URL"
+        "NEXT_PUBLIC_API_URL",
+        "API_KEY"
       ],
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],

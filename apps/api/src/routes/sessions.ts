@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { createSandbox, terminateSandbox, getSandboxStatus } from "../modal.js";
+import { createSandbox, terminateSandbox, getSandboxStatus } from "../vercel-sandbox.js";
 import { OpenCodeClient, type StreamEvent } from "../opencode.js";
 import type { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
@@ -19,24 +19,29 @@ const getApiKey = () => {
 const sessionsGet = makeFunctionReference<
   "query",
   { id: string },
-  { modalSandboxId?: string; status: string; repoName: string; branch: string } | null
+  { sandboxId?: string; sandboxUrl?: string; previewUrl?: string; status: string; repoName: string; branch: string } | null
 >("sessions:get");
 
 // Helper to call Convex HTTP action for updating session status
 async function updateSessionStatus(
   sessionId: string,
   status: string,
-  modalSandboxId?: string,
+  sandboxId?: string,
+  sandboxUrl?: string,
+  previewUrl?: string,
   errorMessage?: string
 ) {
   const convexUrl = getConvexUrl();
   const apiKey = getApiKey();
-  
+
   if (!convexUrl) {
     throw new Error("CONVEX_URL not configured");
   }
 
-  const response = await fetch(`${convexUrl}/api/sessions/updateStatus`, {
+  // Convert Convex cloud URL to site URL for HTTP actions
+  const siteUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+
+  const response = await fetch(`${siteUrl}/api/sessions/updateStatus`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -45,7 +50,9 @@ async function updateSessionStatus(
     body: JSON.stringify({
       id: sessionId,
       status,
-      modalSandboxId,
+      sandboxId,
+      sandboxUrl,
+      previewUrl,
       errorMessage,
     }),
   });
@@ -66,12 +73,15 @@ async function addMessage(
 ) {
   const convexUrl = getConvexUrl();
   const apiKey = getApiKey();
-  
+
   if (!convexUrl) {
     throw new Error("CONVEX_URL not configured");
   }
 
-  const response = await fetch(`${convexUrl}/api/messages/add`, {
+  // Convert Convex cloud URL to site URL for HTTP actions
+  const siteUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+
+  const response = await fetch(`${siteUrl}/api/messages/add`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -119,7 +129,7 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
       }
 
       try {
-        // Create Modal sandbox
+        // Create Vercel Sandbox
         const result = await createSandbox({
           repoUrl,
           branch,
@@ -127,46 +137,49 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
           anthropicApiKey,
         });
 
-        // Check if we got a tunnel URL - this is required for the session to work
-        if (!result.tunnelUrl) {
+        // Check if we got a sandbox URL - this is required for the session to work
+        if (!result.sandboxUrl) {
           await updateSessionStatus(
             sessionId,
             "error",
             result.sandboxId,
-            "Failed to establish connection to sandbox - no tunnel URL available"
+            undefined,
+            undefined,
+            "Failed to establish connection to sandbox - no URL available"
           );
 
-          return c.json({
-            error: "Failed to establish connection to sandbox",
-            sandboxId: result.sandboxId,
-          }, 500);
+          return c.json(
+            {
+              error: "Failed to establish connection to sandbox",
+              sandboxId: result.sandboxId,
+            },
+            500
+          );
         }
 
         // Store OpenCode client
-        openCodeClients.set(sessionId, new OpenCodeClient(result.tunnelUrl));
+        openCodeClients.set(sessionId, new OpenCodeClient(result.sandboxUrl));
 
-        // Update session with sandbox ID - only set to running if we have a working connection
+        // Update session with sandbox info - only set to running if we have a working connection
         await updateSessionStatus(
           sessionId,
           "running",
-          result.sandboxId
+          result.sandboxId,
+          result.sandboxUrl,
+          result.previewUrl
         );
 
         return c.json({
           success: true,
           sandboxId: result.sandboxId,
-          tunnelUrl: result.tunnelUrl,
+          sandboxUrl: result.sandboxUrl,
+          previewUrl: result.previewUrl,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
 
         // Update session with error
-        await updateSessionStatus(
-          sessionId,
-          "error",
-          undefined,
-          message
-        );
+        await updateSessionStatus(sessionId, "error", undefined, undefined, undefined, message);
 
         return c.json({ error: message }, 500);
       }
@@ -261,7 +274,7 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
         id: sessionId,
       });
 
-      if (session?.modalSandboxId) {
+      if (session?.sandboxId) {
         // Stop OpenCode first
         if (client) {
           await client.stop();
@@ -269,7 +282,7 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
         }
 
         // Terminate sandbox
-        await terminateSandbox(session.modalSandboxId);
+        await terminateSandbox(session.sandboxId);
       }
 
       // Update session status
@@ -296,8 +309,8 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
       }
 
       let sandboxStatus: "running" | "stopped" | "error" | null = null;
-      if (session.modalSandboxId) {
-        sandboxStatus = await getSandboxStatus(session.modalSandboxId);
+      if (session.sandboxId) {
+        sandboxStatus = await getSandboxStatus(session.sandboxId);
       }
 
       return c.json({
@@ -305,6 +318,8 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
         sandboxStatus,
         repoName: session.repoName,
         branch: session.branch,
+        sandboxUrl: session.sandboxUrl,
+        previewUrl: session.previewUrl,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
