@@ -1,27 +1,40 @@
 # Ship
 
-Personal background coding agent. Select a repo, spin up a sandboxed VM, and let OpenCode work autonomously.
+Personal background coding agent. Select a repo, spin up a sandboxed VM, and let AI agents work autonomously.
 
 ## Stack
 
-- **Frontend**: Next.js + React + Tailwind CSS + shadcn/ui
-- **Backend**: Hono API
-- **Database**: Convex (real-time)
-- **Auth**: Convex Auth + GitHub OAuth
+- **Framework**: Next.js 16 (App Router)
+- **Database**: Neon Postgres + Drizzle ORM
+- **Auth**: JWE sessions + GitHub OAuth
 - **Sandboxes**: Vercel Sandbox
-- **Agent**: OpenCode
+- **Agents**: Claude, Codex, Copilot, Cursor, Gemini, OpenCode
+- **UI**: Tailwind CSS + shadcn/ui
 
 ## Structure
 
 ```
 ship/
-├── apps/
-│   ├── web/          # Next.js frontend (port 3001)
-│   └── api/          # Hono API (port 3000)
-├── packages/
-│   ├── convex/       # Convex schema + auth
-│   ├── ui/           # Shared components
-│   └── ...           # Config packages
+├── app/              # Next.js App Router pages & API routes
+│   ├── api/          # API routes (auth, tasks, repos, etc.)
+│   ├── tasks/        # Task pages
+│   ├── repos/        # Repo pages
+│   └── page.tsx      # Home page
+├── components/       # React components
+│   ├── auth/         # Auth components
+│   ├── dialogs/      # Dialog components
+│   ├── file-browser/ # File browser & editor
+│   ├── layout/       # Layout components
+│   ├── logos/        # Agent logo SVGs
+│   ├── terminal/     # Terminal/logs pane
+│   └── ui/           # shadcn/ui components
+├── lib/              # Utilities and business logic
+│   ├── atoms/        # Jotai atoms for state
+│   ├── db/           # Drizzle schema and client
+│   ├── sandbox/      # Vercel Sandbox utilities
+│   ├── session/      # JWE session management
+│   └── utils/        # Helper utilities
+└── public/           # Static assets
 ```
 
 ## Setup
@@ -32,168 +45,116 @@ ship/
 pnpm install
 ```
 
-### 2. Convex Setup
+### 2. Database Setup (Neon Postgres)
+
+1. Create a Neon project at [neon.tech](https://neon.tech)
+2. Copy your connection string
+3. Run migrations:
 
 ```bash
-cd packages/convex
-npx convex dev
-# Creates your project and generates .env.local
+pnpm db:push
 ```
 
-### 3. GitHub OAuth App (User Login)
+### 3. Generate Secrets
+
+```bash
+# JWE Secret (32 bytes)
+openssl rand -hex 32
+
+# Encryption Key (32 bytes)
+openssl rand -hex 32
+```
+
+### 4. GitHub OAuth App
 
 1. Go to [github.com/settings/developers](https://github.com/settings/developers)
 2. Click **New OAuth App**
 3. Fill in:
    - **Application name**: `Ship`
-   - **Homepage URL**: `https://ship.yourdomain.com`
-   - **Authorization callback URL**: `https://your-project.convex.site/api/auth/callback/github`
+   - **Homepage URL**: `http://localhost:3000`
+   - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
 4. Copy **Client ID** and **Client Secret**
-5. Add to Convex dashboard environment variables:
-   - `AUTH_GITHUB_ID` = Client ID
-   - `AUTH_GITHUB_SECRET` = Client Secret
 
-### 4. GitHub App (Bot Commits)
+### 5. Vercel Sandbox
 
-This allows commits to appear as "Ship[bot]" instead of the user.
+For sandbox functionality, you need:
+- A Vercel account with sandbox access
+- Create a project for sandbox usage
+- Generate an API token
 
-1. Go to [github.com/settings/apps/new](https://github.com/settings/apps/new)
-2. Fill in:
-   | Field | Value |
-   |-------|-------|
-   | **GitHub App name** | `Ship` (or `Ship-dev` for testing) |
-   | **Homepage URL** | `https://ship.yourdomain.com` |
-   | **Webhook** | Uncheck "Active" |
+### 6. Environment Variables
 
-3. Set **Repository Permissions**:
-   | Permission | Access |
-   |------------|--------|
-   | **Contents** | Read and write |
-   | **Metadata** | Read-only (auto-selected) |
-
-4. **Where can this app be installed?**: Only on this account
-5. Click **Create GitHub App**
-6. Note the **App ID** (number at top of settings page)
-7. Click **Generate a private key** → downloads a `.pem` file
-8. Convert the private key for env var:
-   ```bash
-   cat ~/Downloads/your-app.private-key.pem | awk 'NF {sub(/\r/, ""); printf "%s\\n", $0}' | pbcopy
-   ```
-9. Click **Install App** in the left sidebar
-10. Install on your account (select repos or all)
-11. Note the **Installation ID** from the URL: `github.com/settings/installations/XXXXX`
-
-### 5. Environment Variables
-
-#### Web App (`apps/web/.env.local`)
+Create `.env.local` with:
 
 ```env
-NEXT_PUBLIC_CONVEX_URL=https://your-project.convex.cloud
-NEXT_PUBLIC_API_URL=http://localhost:3000  # For local dev
-```
+# Database (required)
+POSTGRES_URL=postgresql://user:pass@host/db?sslmode=require
 
-#### API (`apps/api/.env.local`)
+# Auth Secrets (required)
+JWE_SECRET=your-32-byte-hex-secret
+ENCRYPTION_KEY=your-32-byte-hex-secret
 
-```env
-# Convex
-CONVEX_URL=https://your-project.convex.cloud
+# GitHub OAuth (required)
+NEXT_PUBLIC_GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
 
-# API Key (shared secret with Convex - must match Convex API_KEY)
-# Generate with: openssl rand -hex 32
-API_KEY=your-api-key-secret
+# Vercel Sandbox (required for running agents)
+SANDBOX_VERCEL_TOKEN=your-vercel-token
+SANDBOX_VERCEL_TEAM_ID=your-team-id
+SANDBOX_VERCEL_PROJECT_ID=your-project-id
 
-# Anthropic (for Claude)
+# Agent API Keys (optional - users can provide their own)
 ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+CURSOR_API_KEY=...
+GEMINI_API_KEY=...
+AI_GATEWAY_API_KEY=...
 
-# GitHub App (for bot commits)
-GITHUB_APP_ID=your-app-id
-GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
-GITHUB_APP_INSTALLATION_ID=your-installation-id
+# Limits
+MAX_SANDBOX_DURATION=300
+MAX_MESSAGES_PER_DAY=50
 ```
-
-#### Convex (`packages/convex/.env.local`)
-
-```env
-AUTH_GITHUB_ID=your-oauth-client-id
-AUTH_GITHUB_SECRET=your-oauth-client-secret
-
-# API Key (shared secret with API server - must match API API_KEY)
-API_KEY=your-api-key-secret
-```
-
-### 6. Vercel Sandbox Setup
-
-Vercel Sandbox is used to run sandboxed environments with OpenCode.
-
-**For Local Development:**
-```bash
-cd apps/api
-vercel env pull  # Pulls VERCEL_OIDC_TOKEN to .env.local
-```
-
-**For Production:**
-When deployed to Vercel, the OIDC token is automatically available.
 
 ### 7. Run Development
 
 ```bash
-# From root directory
 pnpm dev
-
-# Or run separately:
-# Terminal 1: Convex
-cd packages/convex && npx convex dev
-
-# Terminal 2: API
-cd apps/api && pnpm dev
-
-# Terminal 3: Web
-cd apps/web && pnpm dev
 ```
 
-Open http://localhost:3001
+Open http://localhost:3000
 
 ## Build
 
 ```bash
-pnpm build                    # Build all
-pnpm build --filter=web       # Build web only
-pnpm build --filter=api       # Build API only
+pnpm build       # Build the app
+pnpm start       # Start production server
 ```
 
-## Deployment
-
-### Web App (Vercel)
-
-1. Create new Vercel project, select this repo
-2. Set **Root Directory** to `apps/web`
-3. Add environment variables:
-   - `NEXT_PUBLIC_CONVEX_URL`
-   - `NEXT_PUBLIC_API_URL` = `https://api.ship.yourdomain.com`
-
-### API (Vercel)
-
-1. Create new Vercel project, select this repo
-2. Set **Root Directory** to `apps/api`
-3. Add environment variables:
-   - `CONVEX_URL`
-   - `ANTHROPIC_API_KEY`
-   - `API_KEY`
-   - `GITHUB_APP_ID`
-   - `GITHUB_APP_PRIVATE_KEY`
-   - `GITHUB_APP_INSTALLATION_ID`
-
-Note: Vercel Sandbox uses OIDC tokens which are automatically available when deployed to Vercel.
-
-### Convex
+## Database Commands
 
 ```bash
-cd packages/convex && npx convex deploy
+pnpm db:generate  # Generate migrations
+pnpm db:migrate   # Run migrations
+pnpm db:push      # Push schema to database
+pnpm db:studio    # Open Drizzle Studio
 ```
 
-Or configure automatic deploys via Vercel integration.
+## Deployment (Vercel)
 
-## Production URLs
+1. Create a new Vercel project
+2. Connect your repo
+3. Add environment variables
+4. Deploy
 
-- **Web app**: https://ship.dylansteck.com
-- **API**: https://api.ship.dylansteck.com
+Note: Vercel Sandbox tokens work automatically when deployed to Vercel.
+
+## Supported Agents
+
+| Agent | CLI | Description |
+|-------|-----|-------------|
+| Claude | `claude` | Anthropic's Claude Code CLI |
+| Codex | `codex` | OpenAI's Codex CLI |
+| Copilot | `gh copilot` | GitHub Copilot CLI |
+| Cursor | `cursor` | Cursor's AI CLI |
+| Gemini | `gemini` | Google's Gemini CLI |
+| OpenCode | OpenCode SDK | Vercel's OpenCode SDK |

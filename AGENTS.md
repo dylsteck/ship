@@ -12,53 +12,94 @@ pnpm dev
 ## Build
 
 ```bash
-pnpm build          # Build all packages and apps
-pnpm build:web      # Build only web app (or: cd apps/web && pnpm build)
+pnpm build        # Build the app
+pnpm type-check   # Type check only
 ```
 
-## Ports
+## Port
 
-- Web app: `http://localhost:3001`
-- API: `http://localhost:3000`
+- App: `http://localhost:3000`
 
 ## Project Structure
 
 ```
 ship/
-├── apps/
-│   ├── web/          # Next.js 16 frontend
-│   └── api/          # Hono API backend
-├── packages/
-│   ├── convex/       # Convex schema, auth, queries/mutations
-│   ├── ui/           # Shared UI components
-│   ├── constants/    # Shared constants
-│   └── ...           # Config packages
+├── app/                  # Next.js App Router
+│   ├── api/              # API routes
+│   │   ├── auth/         # Auth endpoints
+│   │   ├── tasks/        # Task CRUD
+│   │   ├── repos/        # GitHub repos
+│   │   ├── connectors/   # MCP connectors
+│   │   └── user/         # User settings/keys
+│   ├── tasks/            # Task pages
+│   └── page.tsx          # Home page
+├── components/           # React components
+│   ├── auth/             # Auth components
+│   ├── layout/           # Layout (AppLayout, Sidebar, Header)
+│   ├── logos/            # Agent logo SVGs
+│   └── ui/               # shadcn/ui primitives
+├── lib/                  # Business logic
+│   ├── atoms/            # Jotai state atoms
+│   ├── db/               # Drizzle ORM (schema, client)
+│   ├── sandbox/          # Vercel Sandbox utilities
+│   │   ├── agents/       # Agent implementations
+│   │   ├── creation.ts   # Sandbox creation
+│   │   ├── commands.ts   # Command execution
+│   │   └── git.ts        # Git operations
+│   ├── session/          # JWE session management
+│   └── utils/            # Helpers (id, logging, rate-limit)
+└── public/               # Static assets
 ```
 
 ## Code Style
 
-- **TypeScript**: Strict mode enabled across all packages
-- **Module system**: ESM (ECMAScript Modules)
-- **Formatting**: Prettier (run `pnpm format`)
-- **Linting**: ESLint with TypeScript support
+- **TypeScript**: Strict mode enabled
+- **Module system**: ESM
+- **Formatting**: Prettier (`pnpm format`)
+- **Linting**: ESLint with Next.js config
 
 ## Key Conventions
 
 - Use `pnpm` (not npm or yarn)
-- Import from workspace packages using `@repo/` prefix (e.g., `@repo/ui`, `@repo/convex`)
-- API routes in `apps/api/src/routes/`
+- Import with `@/` path alias (e.g., `@/lib/db/client`)
+- API routes in `app/api/`
 - React components use `.tsx` extension
 - Prefer named exports over default exports
 
 ## Environment Variables
 
-Required env vars are documented in `.env.example` files in each app.
+See `.env.example` for all variables. Key ones:
 
-Key variables:
-- `CONVEX_DEPLOYMENT` / `NEXT_PUBLIC_CONVEX_URL` - Convex connection
-- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` - GitHub OAuth
-- `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` - Modal sandbox access
-- `ANTHROPIC_API_KEY` - For OpenCode agent
+```env
+# Database
+POSTGRES_URL=postgresql://...
+
+# Auth
+JWE_SECRET=...
+ENCRYPTION_KEY=...
+NEXT_PUBLIC_GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+
+# Vercel Sandbox
+SANDBOX_VERCEL_TOKEN=...
+SANDBOX_VERCEL_TEAM_ID=...
+SANDBOX_VERCEL_PROJECT_ID=...
+
+# Agent API Keys (optional)
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+```
+
+## Database
+
+Using Drizzle ORM with Neon Postgres.
+
+```bash
+pnpm db:push      # Push schema to database
+pnpm db:studio    # Open Drizzle Studio
+pnpm db:generate  # Generate migrations
+pnpm db:migrate   # Run migrations
+```
 
 ## Testing
 
