@@ -31,6 +31,7 @@ export function SidebarSessionItem({
   const router = useRouter();
   const deleteSession = useMutation(api.sessions.deleteSession);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isHoveringDelete, setIsHoveringDelete] = useState(false);
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -73,7 +74,7 @@ export function SidebarSessionItem({
         href={`/session/${id}`}
         onClick={onClick}
         className={cn(
-          "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors group",
+          "flex items-center gap-3 px-3 py-2 pr-9 rounded-md text-sm transition-colors group",
           isActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
@@ -81,22 +82,25 @@ export function SidebarSessionItem({
       >
         <StatusDot status={status} />
         <span className="truncate flex-1 min-w-0">{repoName}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] text-muted-foreground opacity-0 group-hover/item:opacity-100 transition-opacity tabular-nums">
-            {formatRelativeTime(updatedAt)}
-          </span>
-        </div>
+        <span className={cn(
+          "text-[11px] text-muted-foreground opacity-0 group-hover/item:opacity-100 transition-opacity tabular-nums shrink-0 mr-1",
+          isHoveringDelete && "opacity-0"
+        )}>
+          {formatRelativeTime(updatedAt)}
+        </span>
       </Link>
       <button
         onClick={handleDelete}
         disabled={isDeleting}
+        onMouseEnter={() => setIsHoveringDelete(true)}
+        onMouseLeave={() => setIsHoveringDelete(false)}
         className={cn(
           "absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 transition-opacity",
           "p-1 rounded hover:bg-sidebar-accent/80 text-muted-foreground hover:text-destructive",
           "z-10",
           isDeleting && "opacity-100 cursor-wait"
         )}
-        title="Delete session"
+        aria-label="Delete session"
       >
         <XIcon className="h-3.5 w-3.5" />
       </button>

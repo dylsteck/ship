@@ -202,12 +202,31 @@ export async function execInSandbox(sandboxId: string, command: string[]): Promi
 }
 
 export async function terminateSandbox(sandboxId: string): Promise<void> {
-  const sandbox = activeSandboxes.get(sandboxId);
+  let sandbox = activeSandboxes.get(sandboxId);
+  
+  // If sandbox not in memory, try to retrieve it by ID
+  if (!sandbox) {
+    try {
+      console.log(`Sandbox ${sandboxId} not in memory, retrieving from Vercel...`);
+      sandbox = await Sandbox.get({ sandboxId });
+      console.log(`Retrieved sandbox ${sandboxId} from Vercel`);
+    } catch (error) {
+      console.error(`Could not retrieve sandbox ${sandboxId}:`, error);
+      // Sandbox might already be stopped or deleted
+      activeSandboxes.delete(sandboxId);
+      return;
+    }
+  }
+
   if (sandbox) {
     try {
+      console.log(`Stopping sandbox ${sandboxId}...`);
       await sandbox.stop();
+      console.log(`Sandbox ${sandboxId} stopped successfully`);
     } catch (error) {
-      console.error(`Error stopping sandbox ${sandboxId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Error stopping sandbox ${sandboxId}:`, errorMessage);
+      // Continue even if stop fails - sandbox might already be stopped
     }
     activeSandboxes.delete(sandboxId);
   }

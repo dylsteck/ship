@@ -19,7 +19,10 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
   const sendMessage = useMutation(api.messages.send);
 
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingToolCalls, setStreamingToolCalls] = useState<Array<{ id: string; name: string; arguments: Record<string, unknown> }>>([]);
+  const [streamingToolResults, setStreamingToolResults] = useState<Array<{ toolCallId: string; result: unknown }>>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const initialPromptSentRef = useRef(false);
 
   const handleSend = useCallback(
@@ -28,6 +31,9 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
 
       setIsLoading(true);
       setStreamingContent("");
+      setStreamingToolCalls([]);
+      setStreamingToolResults([]);
+      setIsThinking(false);
 
       try {
         // Save user message to Convex
@@ -53,6 +59,8 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
 
         const decoder = new TextDecoder();
         let accumulated = "";
+        const toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+        const toolResults: Array<{ toolCallId: string; result: unknown }> = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -64,13 +72,32 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
           for (const line of lines) {
             if (line.startsWith("data: ")) {
               const data = line.slice(6);
-              if (data === "[DONE]") continue;
+              if (data === "[DONE]") {
+                setIsThinking(false);
+                continue;
+              }
 
               try {
                 const parsed = JSON.parse(data);
                 if (parsed.type === "text") {
                   accumulated += parsed.data;
                   setStreamingContent(accumulated);
+                  setIsThinking(false);
+                } else if (parsed.type === "tool_call") {
+                  setIsThinking(true);
+                  const toolCall = parsed.data as { id: string; name: string; arguments: Record<string, unknown> };
+                  toolCalls.push(toolCall);
+                  setStreamingToolCalls([...toolCalls]);
+                } else if (parsed.type === "tool_result") {
+                  const toolResult = parsed.data as { toolCallId: string; result: unknown };
+                  toolResults.push(toolResult);
+                  setStreamingToolResults([...toolResults]);
+                  // Keep thinking indicator until we get text or done
+                } else if (parsed.type === "done") {
+                  setIsThinking(false);
+                } else if (parsed.type === "error") {
+                  setIsThinking(false);
+                  console.error("Stream error:", parsed.data);
                 }
               } catch {
                 // Ignore malformed JSON
@@ -80,9 +107,13 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
         }
       } catch (error) {
         console.error("Error sending message:", error);
+        setIsThinking(false);
       } finally {
         setIsLoading(false);
         setStreamingContent("");
+        setStreamingToolCalls([]);
+        setStreamingToolResults([]);
+        setIsThinking(false);
       }
     },
     [session, sessionId, sendMessage]
@@ -149,10 +180,27 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
         </div>
       )}
 
+      {/* Thinking indicator */}
+      {(isThinking || (isLoading && streamingToolCalls.length > 0)) && (
+        <div className="px-4 py-2 border-b border-border bg-muted/30">
+          <div className="max-w-4xl mx-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+            <span>Agent is thinking and working...</span>
+            {streamingToolCalls.length > 0 && (
+              <span className="text-[10px] opacity-70">
+                ({streamingToolCalls.length} {streamingToolCalls.length === 1 ? "action" : "actions"})
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <MessageList
         messages={(messages || []) as any}
         streamingContent={isLoading ? streamingContent : undefined}
+        streamingToolCalls={isLoading && streamingToolCalls.length > 0 ? streamingToolCalls : undefined}
+        streamingToolResults={isLoading && streamingToolResults.length > 0 ? streamingToolResults : undefined}
       />
 
       {/* Input - always show but disable when not ready */}

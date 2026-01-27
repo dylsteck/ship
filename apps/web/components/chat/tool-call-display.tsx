@@ -58,6 +58,9 @@ export function ToolCallDisplay({ toolCall, result }: ToolCallDisplayProps) {
     return toolCall.name;
   };
 
+  const hasResult = !!result;
+  const isPending = !hasResult;
+
   return (
     <div className="group">
       {/* Inline action badge */}
@@ -66,20 +69,26 @@ export function ToolCallDisplay({ toolCall, result }: ToolCallDisplayProps) {
         className={cn(
           "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
           color,
-          "hover:opacity-80"
+          "hover:opacity-80",
+          isPending && "opacity-70"
         )}
       >
-        <Icon className="h-3 w-3" />
+        {isPending && (
+          <div className="h-2 w-2 animate-spin rounded-full border border-current border-t-transparent" />
+        )}
+        {!isPending && <Icon className="h-3 w-3" />}
         <span>{label}</span>
         <span className="font-mono text-[10px] opacity-70 max-w-[150px] truncate">
           {getShortDescription()}
         </span>
-        <ChevronDownIcon
-          className={cn(
-            "h-3 w-3 opacity-50 transition-transform",
-            isExpanded && "rotate-180"
-          )}
-        />
+        {hasResult && (
+          <ChevronDownIcon
+            className={cn(
+              "h-3 w-3 opacity-50 transition-transform",
+              isExpanded && "rotate-180"
+            )}
+          />
+        )}
       </button>
 
       {/* Expanded details */}

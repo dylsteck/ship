@@ -317,15 +317,24 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
         id: sessionId,
       });
 
-      if (session?.sandboxId) {
-        // Stop OpenCode first
-        if (client) {
+      // Stop OpenCode client if exists
+      if (client) {
+        try {
           await client.stop();
-          openCodeClients.delete(sessionId);
+        } catch (error) {
+          console.error(`Error stopping OpenCode client for session ${sessionId}:`, error);
         }
+        openCodeClients.delete(sessionId);
+      }
 
-        // Terminate sandbox
-        await terminateSandbox(session.sandboxId);
+      // Terminate sandbox if it exists
+      if (session?.sandboxId) {
+        try {
+          await terminateSandbox(session.sandboxId);
+        } catch (error) {
+          console.error(`Error terminating sandbox ${session.sandboxId}:`, error);
+          // Continue with deletion even if sandbox termination fails
+        }
       }
 
       // Delete session from Convex (this will also delete messages)
@@ -334,6 +343,7 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
       return c.json({ success: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`Error deleting session ${sessionId}:`, error);
       return c.json({ error: message }, 500);
     }
   });

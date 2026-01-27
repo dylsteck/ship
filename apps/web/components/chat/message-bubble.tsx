@@ -65,25 +65,27 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Message content */}
-        <div
-          className={cn(
-            "text-sm leading-relaxed",
-            isUser
-              ? "bg-muted rounded-lg px-4 py-3 inline-block max-w-[90%]"
-              : "text-foreground"
-          )}
-        >
-          <div className="whitespace-pre-wrap break-words">
-            {message.content}
-            {isStreaming && (
-              <span className="inline-block w-1.5 h-4 ml-0.5 bg-current animate-pulse rounded-sm" />
+        {(message.content || isStreaming) && (
+          <div
+            className={cn(
+              "text-sm leading-relaxed",
+              isUser
+                ? "bg-muted rounded-lg px-4 py-3 inline-block max-w-[90%]"
+                : "text-foreground"
             )}
+          >
+            <div className="whitespace-pre-wrap break-words">
+              {message.content || (isStreaming && !message.toolCalls?.length ? "Thinking..." : "")}
+              {isStreaming && message.content && (
+                <span className="inline-block w-1.5 h-4 ml-0.5 bg-current animate-pulse rounded-sm" />
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tool calls - displayed inline as action badges */}
         {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mt-3 space-y-2">
+          <div className={cn("space-y-2", message.content ? "mt-3" : "")}>
             {message.toolCalls.map((toolCall) => (
               <ToolCallDisplay
                 key={toolCall.id}
