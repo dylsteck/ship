@@ -44,7 +44,8 @@ export function ChatContainer({ sessionId, initialPrompt, onInitialPromptSent }:
         });
 
         if (!response.ok) {
-          throw new Error("Failed to send message");
+          const errorText = await response.text().catch(() => "Unknown error");
+          throw new Error(`Failed to send message: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const reader = response.body?.getReader();

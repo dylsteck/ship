@@ -144,6 +144,10 @@ export default function HomePage() {
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Failed to create sandbox" }));
         console.error("Sandbox creation failed:", error);
+        setIsCreating(false);
+        // Show error to user
+        alert(`Failed to create sandbox: ${error.error || "Unknown error"}`);
+        return;
       }
 
       router.push(`/session/${sessionId}?prompt=${encodeURIComponent(prompt.trim())}`);

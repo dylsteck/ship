@@ -8,16 +8,19 @@ const activeSandboxes = new Map<string, Sandbox>();
 async function getAndLogOIDCToken(): Promise<string | undefined> {
   try {
     const token = await getVercelOidcToken();
-    console.log("\n" + "=".repeat(80));
-    console.log("VERCEL_OIDC_TOKEN (copy this to your .env.local):");
-    console.log("=".repeat(80));
-    console.log(token);
-    console.log("=".repeat(80) + "\n");
+    // Set it as env var so Sandbox SDK can use it
+    if (token) {
+      process.env.VERCEL_OIDC_TOKEN = token;
+    }
     return token;
   } catch (error) {
     console.log("Could not get Vercel OIDC token (this is normal in local dev):", error);
     // Fall back to env var if available
-    return process.env.VERCEL_OIDC_TOKEN;
+    const envToken = process.env.VERCEL_OIDC_TOKEN;
+    if (envToken) {
+      console.log("Using VERCEL_OIDC_TOKEN from environment");
+    }
+    return envToken;
   }
 }
 
@@ -43,15 +46,45 @@ export async function createSandbox(config: SandboxConfig): Promise<SandboxResul
   console.log(`Creating Vercel Sandbox for ${repoUrl} (branch: ${branch})`);
 
   // Try to get and log OIDC token (for copying to .env.local)
-  await getAndLogOIDCToken();
+  const oidcToken = await getAndLogOIDCToken();
+  
+  if (!oidcToken && !process.env.VERCEL_OIDC_TOKEN) {
+    throw new Error("Vercel OIDC token not available. Sandbox creation requires authentication.");
+  }
 
   // Create sandbox with git source
-  const sandbox = await Sandbox.create({
-    runtime: "node22",
-    resources: { vcpus: 4 },
-    timeout: 60 * 60 * 1000, // 1 hour
-    ports: [OPENCODE_PORT, PREVIEW_PORT],
-  });
+  let sandbox;
+  try {
+    console.log("Calling Sandbox.create()...");
+    console.log("VERCEL_OIDC_TOKEN available:", !!process.env.VERCEL_OIDC_TOKEN);
+    
+    // For GitHub authentication, use "git" as username and token as password
+    // This is the standard way to authenticate with GitHub using tokens
+    sandbox = await Sandbox.create({
+      runtime: "node22",
+      resources: { vcpus: 4 },
+      timeout: 45 * 60 * 1000, // 45 minutes (max for Hobby plan, can extend later)
+      ports: [OPENCODE_PORT, PREVIEW_PORT],
+      source: {
+        type: "git",
+        url: repoUrl,
+        username: "git",
+        password: githubToken,
+        revision: branch, // Specify the branch to checkout
+      },
+    });
+    
+    console.log("Sandbox.create() succeeded");
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("Failed to create sandbox:", errorMessage);
+    if (errorStack) {
+      console.error("Error stack:", errorStack);
+    }
+    // Include more details in error message
+    throw new Error(`Failed to create Vercel Sandbox: ${errorMessage}${errorStack ? `\n${errorStack}` : ""}`);
+  }
 
   const sandboxId = sandbox.sandboxId;
   activeSandboxes.set(sandboxId, sandbox);
@@ -59,10 +92,9 @@ export async function createSandbox(config: SandboxConfig): Promise<SandboxResul
   console.log(`Sandbox created: ${sandboxId}`);
 
   try {
-    // Clone the repository (using token for auth)
-    console.log("Cloning repository...");
-    const cloneUrl = repoUrl.replace("https://", `https://${githubToken}@`);
-    await sandbox.runCommand("git", ["clone", "--branch", branch, "--single-branch", cloneUrl, "/vercel/sandbox/workspace"]);
+    // Repository is already cloned by Sandbox.create() with source parameter
+    // The working directory should be /vercel/sandbox
+    console.log("Repository cloned via source parameter");
 
     // Configure git for Ship commits
     await sandbox.runCommand("git", ["config", "--global", "user.email", "ship@ship.dev"]);
@@ -93,12 +125,24 @@ export async function createSandbox(config: SandboxConfig): Promise<SandboxResul
     await sandbox.runCommand("npm", ["install", "-g", "opencode-ai"]);
 
     // Start OpenCode server in background (detached mode)
-    console.log("Starting OpenCode server...");
+    // When using source parameter, repo is cloned to /vercel/sandbox
+    // Check what directory was created
+    console.log("Determining workspace directory...");
+    const listResult = await sandbox.runCommand("ls", ["-la", "/vercel/sandbox"]);
+    const lsOutput = await listResult.stdout();
+    console.log("Contents of /vercel/sandbox:", lsOutput);
+    
+    // Extract repo name from URL (e.g., "https://github.com/dylsteck/5792-decoder.git" -> "5792-decoder")
+    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'workspace';
+    // Try the repo name directory first, fallback to /vercel/sandbox
+    const workspaceDir = `/vercel/sandbox/${repoName}`;
+    
+    console.log(`Starting OpenCode server in ${workspaceDir}...`);
     await sandbox.runCommand({
       cmd: "bash",
       args: [
         "-c",
-        `ANTHROPIC_API_KEY=${anthropicApiKey} nohup opencode serve --hostname 0.0.0.0 --port ${OPENCODE_PORT} --dir /vercel/sandbox/workspace > /tmp/opencode.log 2>&1 &`,
+        `ANTHROPIC_API_KEY=${anthropicApiKey} nohup opencode serve --hostname 0.0.0.0 --port ${OPENCODE_PORT} --dir ${workspaceDir} > /tmp/opencode.log 2>&1 &`,
       ],
       detached: true,
     });

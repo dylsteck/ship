@@ -262,3 +262,31 @@ export const stop = mutation({
     });
   },
 });
+
+export const deleteSession = mutation({
+  args: { id: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const session = await ctx.db.get(args.id);
+    if (!session || session.userId !== userId) {
+      throw new Error("Session not found");
+    }
+
+    // Delete all messages for this session
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.id))
+      .collect();
+    
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+
+    // Delete the session
+    await ctx.db.delete(args.id);
+  },
+});

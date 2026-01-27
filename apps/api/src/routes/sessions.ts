@@ -22,6 +22,12 @@ const sessionsGet = makeFunctionReference<
   { sandboxId?: string; sandboxUrl?: string; previewUrl?: string; status: string; repoName: string; branch: string } | null
 >("sessions:get");
 
+const sessionsDelete = makeFunctionReference<
+  "mutation",
+  { id: string },
+  void
+>("sessions:deleteSession");
+
 // Helper to call Convex HTTP action for updating session status
 async function updateSessionStatus(
   sessionId: string,
@@ -177,9 +183,13 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
+        console.error("Session creation error:", error);
+        console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
 
-        // Update session with error
-        await updateSessionStatus(sessionId, "error", undefined, undefined, undefined, message);
+        // Update session with error (don't await to avoid blocking response)
+        updateSessionStatus(sessionId, "error", undefined, undefined, undefined, message).catch(
+          (err) => console.error("Failed to update session status:", err)
+        );
 
         return c.json({ error: message }, 500);
       }
@@ -287,6 +297,39 @@ export function createSessionRoutes(convex: ConvexHttpClient) {
 
       // Update session status
       await updateSessionStatus(sessionId, "stopped");
+
+      return c.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  // Delete a session
+  app.delete("/:id", async (c) => {
+    const sessionId = c.req.param("id");
+
+    const client = openCodeClients.get(sessionId);
+
+    try {
+      // Get session from Convex to get sandbox ID
+      const session = await convex.query(sessionsGet, {
+        id: sessionId,
+      });
+
+      if (session?.sandboxId) {
+        // Stop OpenCode first
+        if (client) {
+          await client.stop();
+          openCodeClients.delete(sessionId);
+        }
+
+        // Terminate sandbox
+        await terminateSandbox(session.sandboxId);
+      }
+
+      // Delete session from Convex (this will also delete messages)
+      await convex.mutation(sessionsDelete, { id: sessionId });
 
       return c.json({ success: true });
     } catch (error) {
