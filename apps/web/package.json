@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "^15.2.3",
+    "next": "^16.0.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "@ship/ui": "workspace:*",
