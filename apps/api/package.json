@@ -8,7 +8,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.6.18"
+    "hono": "^4.6.18",
+    "@ship/types": "workspace:*"
   },
   "devDependencies": {
     "wrangler": "^3.99.1",
