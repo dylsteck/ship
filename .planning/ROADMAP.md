@@ -28,10 +28,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User can sign in with GitHub OAuth and is redirected to authenticated application
   2. User session persists across browser restarts and tab closures
   3. Application has access to configured LLM API keys for agent operations
-**Plans**: TBD
+**Plans**: 5 plans in 3 waves
 
 Plans:
-- [ ] TBD (to be planned)
+- [ ] 01-01-PLAN.md — Scaffold Turborepo monorepo with Next.js web app and Cloudflare Worker API
+- [ ] 01-02-PLAN.md — Set up D1 database schema and user management API
+- [ ] 01-03-PLAN.md — Implement GitHub OAuth flow with Arctic and JWT session management
+- [ ] 01-04-PLAN.md — Create login, onboarding, and dashboard pages with theme support
+- [ ] 01-05-PLAN.md — Configure LLM API keys and finalize environment setup
 
 ### Phase 2: Stateful Core
 **Goal**: Sessions exist as stateful entities that persist conversations, tasks, and real-time updates
@@ -106,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Authentication | 0/0 | Not started | - |
+| 1. Foundation & Authentication | 0/5 | Planned | - |
 | 2. Stateful Core | 0/0 | Not started | - |
 | 3. Execution Layer | 0/0 | Not started | - |
 | 4. Real-Time UI & Visibility | 0/0 | Not started | - |
@@ -114,4 +118,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 ---
 *Roadmap created: 2026-02-01*
-*Last updated: 2026-02-01*
+*Last updated: 2026-02-01 (Phase 1 planned)*
