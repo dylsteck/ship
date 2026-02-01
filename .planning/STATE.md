@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 1 of 5 (Foundation & Authentication)
-Plan: 3 of 5 in current phase
+Plan: 5 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 01-03-PLAN.md (GitHub OAuth and session management)
+Last activity: 2026-02-01 — Completed 01-05-PLAN.md (Environment configuration and LLM API keys)
 
-Progress: [███░░░░░░░] 60%
+Progress: [████░░░░░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 3 min
-- Total execution time: 0.15 hours
+- Total plans completed: 5
+- Average duration: 2.6 min
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation-authentication | 3 | 9 min | 3 min |
+| 01-foundation-authentication | 5 | 13 min | 2.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5min), 01-02 (2min), 01-03 (2min)
+- Last 5 plans: 01-01 (5min), 01-02 (2min), 01-03 (2min), 01-04 (2min), 01-05 (2min)
 - Trend: Stable velocity at 2min for implementation plans
 
 *Updated after each plan completion*
@@ -56,6 +56,9 @@ Recent decisions affecting current work:
 - Sessions: jose for JWT encryption (7-day expiry, httpOnly cookies)
 - Security: Data Access Layer (DAL) pattern for session verification in Server Components
 - Middleware: Next.js 16 proxy.ts for optimistic route protection (not security boundary)
+- Environment: Multi-environment (dev/staging/prod) in wrangler.toml from day one
+- Secrets: wrangler secret put for production, .dev.vars for local development
+- LLM API: ANTHROPIC_API_KEY configured as Worker secret for Phase 3 agent operations
 
 ### Pending Todos
 
@@ -67,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-01 23:03:37 UTC
-Stopped at: Completed 01-03-PLAN.md - GitHub OAuth and session management
+Last session: 2026-02-01 23:09:41 UTC
+Stopped at: Completed 01-05-PLAN.md - Environment configuration and LLM API keys
 Resume file: None
