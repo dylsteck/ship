@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 1 of 5 (Foundation & Authentication)
-Plan: 1 of TBD in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 01-01-PLAN.md (Turborepo monorepo scaffold)
+Last activity: 2026-02-01 — Completed 01-02-PLAN.md (D1 database schema and user API)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 5 min
-- Total execution time: 0.08 hours
+- Total plans completed: 2
+- Average duration: 3.5 min
+- Total execution time: 0.12 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation-authentication | 1 | 5 min | 5 min |
+| 01-foundation-authentication | 2 | 7 min | 3.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5min)
-- Trend: First plan complete
+- Last 5 plans: 01-01 (5min), 01-02 (2min)
+- Trend: Accelerating (2min vs 5min)
 
 *Updated after each plan completion*
 
@@ -48,6 +48,10 @@ Recent decisions affecting current work:
 - Monorepo: Turborepo 2.x with pnpm workspaces for Next.js + Cloudflare Workers
 - Tailwind v4: CSS-first configuration using @theme directive (not JS config)
 - TypeScript configs: Relative path extends (not package name resolution)
+- Database: D1 with Auth.js-compatible schema for users, accounts, sessions
+- API: Hono framework on Cloudflare Workers with D1 bindings
+- Types: DTO pattern to prevent leaking sensitive data in API responses
+- Timestamps: Unix timestamps (seconds) for all date fields in D1
 
 ### Pending Todos
 
@@ -59,6 +63,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-01
-Stopped at: Completed 01-01-PLAN.md - Turborepo monorepo scaffold
+Last session: 2026-02-01 23:02:49 UTC
+Stopped at: Completed 01-02-PLAN.md - D1 database schema and user API
 Resume file: None
