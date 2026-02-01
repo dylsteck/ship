@@ -1,0 +1,8 @@
+name = "ship-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ship-db"
+database_id = "local"  # Will be replaced with real ID in production
