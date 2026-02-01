@@ -48,10 +48,16 @@ Plans:
   4. Session state survives Durable Object hibernation and wakes correctly
   5. User sees real-time status updates when agent is working (via WebSocket)
   6. User can add multiple tasks to one session and tasks execute in order
-**Plans**: TBD
+**Plans**: 7 plans in 6 waves
 
 Plans:
-- [ ] TBD (to be planned)
+- [ ] 02-01-PLAN.md — Create SessionDO Durable Object with SQLite schema and bindings
+- [ ] 02-02-PLAN.md — Implement session CRUD API and session list UI
+- [ ] 02-03-PLAN.md — Add WebSocket Hibernation support for real-time updates
+- [ ] 02-04-PLAN.md — Create chat API with message persistence in DO
+- [ ] 02-05-PLAN.md — Build chat UI with streaming and real-time WebSocket integration
+- [ ] 02-06-PLAN.md — Integrate OpenCode SDK for agent execution and task system
+- [ ] 02-07-PLAN.md — Add session side panel, status indicators, and verify phase
 
 ### Phase 3: Execution Layer
 **Goal**: Agent autonomously executes multi-step coding tasks in isolated sandboxes with full Git workflow
@@ -111,11 +117,11 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Authentication | 5/5 | Complete | 2026-02-01 |
-| 2. Stateful Core | 0/0 | Not started | - |
+| 2. Stateful Core | 0/7 | Planning complete | - |
 | 3. Execution Layer | 0/0 | Not started | - |
 | 4. Real-Time UI & Visibility | 0/0 | Not started | - |
 | 5. External Integrations | 0/0 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-01*
-*Last updated: 2026-02-01 (Phase 1 complete)*
+*Last updated: 2026-02-01 (Phase 2 planned)*
