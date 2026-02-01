@@ -13,3 +13,23 @@
   --color-brand-900: oklch(0.18 0.02 264);
   --color-brand-950: oklch(0.12 0.01 264);
 }
+
+/* Light mode (default) */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.18 0 0);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --border: oklch(0.90 0 0);
+  --ring: oklch(0.18 0 0);
+}
+
+/* Dark mode */
+.dark {
+  --background: oklch(0.12 0 0);
+  --foreground: oklch(0.98 0 0);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.65 0 0);
+  --border: oklch(0.26 0 0);
+  --ring: oklch(0.98 0 0);
+}
