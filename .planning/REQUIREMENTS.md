@@ -9,9 +9,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Authentication
 
-- [ ] **AUTH-01**: User can sign in with GitHub OAuth
-- [ ] **AUTH-02**: User session persists across browser sessions
-- [ ] **AUTH-03**: LLM API keys configured via environment/config
+- [x] **AUTH-01**: User can sign in with GitHub OAuth
+- [x] **AUTH-02**: User session persists across browser sessions
+- [x] **AUTH-03**: LLM API keys configured via environment/config
 
 ### Sessions & Tasks
 
@@ -107,9 +107,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 1 | Pending |
-| AUTH-02 | Phase 1 | Pending |
-| AUTH-03 | Phase 1 | Pending |
+| AUTH-01 | Phase 1 | Complete |
+| AUTH-02 | Phase 1 | Complete |
+| AUTH-03 | Phase 1 | Complete |
 | SESS-01 | Phase 2 | Pending |
 | SESS-02 | Phase 2 | Pending |
 | SESS-03 | Phase 2 | Pending |
