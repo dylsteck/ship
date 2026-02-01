@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 1 of 5 (Foundation & Authentication)
-Plan: 5 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 01-05-PLAN.md (Environment configuration and LLM API keys)
+Last activity: 2026-02-01 — Completed 01-04-PLAN.md (UI pages and auth flow)
 
 Progress: [████░░░░░░] 80%
 
@@ -59,6 +59,9 @@ Recent decisions affecting current work:
 - Environment: Multi-environment (dev/staging/prod) in wrangler.toml from day one
 - Secrets: wrangler secret put for production, .dev.vars for local development
 - LLM API: ANTHROPIC_API_KEY configured as Worker secret for Phase 3 agent operations
+- UI Theme: Light mode as default (not system preference) with next-themes
+- Route groups: (auth) for public pages, (app) for protected pages in Next.js
+- Protected pages: Call verifySession() at top for defense in depth security
 
 ### Pending Todos
 
@@ -71,5 +74,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01 23:09:41 UTC
-Stopped at: Completed 01-05-PLAN.md - Environment configuration and LLM API keys
+Stopped at: Completed 01-04-PLAN.md - UI pages and auth flow
 Resume file: None
