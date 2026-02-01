@@ -47,3 +47,7 @@ coverage
 # Drizzle
 lib/db/migrations/*
 !lib/db/migrations/.gitkeep
+
+# Cloudflare
+.dev.vars
+.wrangler
