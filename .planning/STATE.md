@@ -10,31 +10,33 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 2 of 5 (Stateful Core)
-Plan: 1 of 7 in current phase
+Plan: 2 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 02-01-PLAN.md (Durable Object Infrastructure)
+Last activity: 2026-02-01 — Completed 02-02-PLAN.md (Session CRUD API and UI)
 
-Progress: [███░░░░░░░] 24%
+Progress: [████░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 2.8 min
-- Total execution time: 0.28 hours
+
+- Total plans completed: 7
+- Average duration: 2.9 min
+- Total execution time: 0.34 hours
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-foundation-authentication | 5 | 13 min | 2.6 min |
-| 02-stateful-core | 1 | 4 min | 4 min |
+| Phase                        | Plans | Total  | Avg/Plan |
+| ---------------------------- | ----- | ------ | -------- |
+| 01-foundation-authentication | 5     | 13 min | 2.6 min  |
+| 02-stateful-core             | 2     | 9 min  | 4.5 min  |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2min), 01-03 (2min), 01-04 (2min), 01-05 (2min), 02-01 (4min)
-- Trend: Stable velocity, slightly higher for infrastructure plans
 
-*Updated after each plan completion*
+- Last 5 plans: 01-03 (2min), 01-04 (2min), 01-05 (2min), 02-01 (4min), 02-02 (5min)
+- Trend: Infrastructure plans taking longer as expected (4-5 min vs 2 min for UI)
+
+_Updated after each plan completion_
 
 ## Accumulated Context
 
@@ -63,6 +65,10 @@ Recent decisions affecting current work:
 - UI Theme: Light mode as default (not system preference) with next-themes
 - Route groups: (auth) for public pages, (app) for protected pages in Next.js
 - Protected pages: Call verifySession() at top for defense in depth security
+- Session management: Soft delete pattern (status=deleted) for data retention
+- DTO pattern: Map snake_case DB columns to camelCase API responses
+- Server/Client split: Page fetches data (Server), interactions handled by Client Component
+- Repo selection: Text inputs in Phase 2, GitHub repo selector in Phase 3
 
 ### Pending Todos
 
@@ -75,7 +81,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-01-PLAN.md (Durable Object Infrastructure)
+Stopped at: Completed 02-02-PLAN.md (Session CRUD API and UI)
 Resume file: None
 
 ## Phase 1 Summary
@@ -83,6 +89,7 @@ Resume file: None
 **Foundation & Authentication** — 5 plans, 3 waves
 
 Delivered:
+
 - Turborepo monorepo with Next.js 16 + Cloudflare Worker API
 - D1 database with users/accounts/sessions tables
 - GitHub OAuth flow with Arctic and jose JWT sessions
@@ -91,6 +98,7 @@ Delivered:
 - Environment configuration with LLM API key setup
 
 Human verification needed before Phase 2:
+
 - Complete GitHub OAuth flow end-to-end
 - Session persistence across browser restarts
 - LLM API key accessibility (will verify in Phase 3)
