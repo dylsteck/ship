@@ -21,6 +21,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
+  DropdownMenuGroup,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   SidebarProvider,
   SidebarInset,
   SidebarTrigger,
@@ -28,7 +31,7 @@ import {
 } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon, Mic01Icon, AttachmentIcon, ArrowUp02Icon, GithubIcon, PlusSignIcon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon, Mic01Icon, AttachmentIcon, ArrowUp02Icon, GithubIcon, PlusSignIcon, Tick02Icon } from '@hugeicons/core-free-icons'
 
 interface DashboardClientProps {
   sessions: ChatSession[]
@@ -272,25 +275,33 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
                   {/* Left side: Add button and repo selector */}
                   <div className="flex items-center gap-1">
                     <DropdownMenu>
-                      <DropdownMenuTrigger className="inline-flex items-center justify-center size-8 rounded-full hover:bg-accent transition-colors">
-                        <HugeiconsIcon icon={PlusSignIcon} size={18} strokeWidth={2} />
-                      </DropdownMenuTrigger>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="ghost" size="icon-sm" className="rounded-full">
+                            <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} />
+                          </Button>
+                        }
+                      />
                       <DropdownMenuContent align="start" className="w-[220px]">
                         <DropdownMenuItem>
-                          <HugeiconsIcon icon={AttachmentIcon} size={16} strokeWidth={2} className="mr-2" />
+                          <HugeiconsIcon icon={AttachmentIcon} strokeWidth={2} />
                           Add files
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
 
                     <DropdownMenu>
-                      <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm hover:bg-accent transition-colors">
-                        <HugeiconsIcon icon={GithubIcon} size={16} strokeWidth={2} />
-                        <span className="max-w-[150px] truncate">
-                          {selectedRepo ? selectedRepo.fullName : 'Select repo'}
-                        </span>
-                        <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={2} className="opacity-50" />
-                      </DropdownMenuTrigger>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="ghost" className="h-8 px-3 rounded-full gap-1.5">
+                            <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
+                            <span className="max-w-[150px] truncate text-sm">
+                              {selectedRepo ? selectedRepo.fullName : 'Select repo'}
+                            </span>
+                            <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
+                          </Button>
+                        }
+                      />
                       <DropdownMenuContent align="start" className="w-[280px] max-h-[300px] overflow-y-auto">
                         {reposLoading ? (
                           <div className="p-3 text-center text-sm text-muted-foreground">
@@ -301,19 +312,23 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
                             No repos found
                           </div>
                         ) : (
-                          repos.slice(0, 20).map((repo) => (
-                            <DropdownMenuItem
-                              key={repo.id}
-                              onClick={() => setSelectedRepo(repo)}
-                              className="flex items-center gap-2"
-                            >
-                              <HugeiconsIcon icon={GithubIcon} size={14} strokeWidth={2} className="shrink-0" />
-                              <span className="truncate">{repo.fullName}</span>
-                              {repo.private && (
-                                <span className="ml-auto text-[10px] text-muted-foreground">private</span>
-                              )}
-                            </DropdownMenuItem>
-                          ))
+                          <DropdownMenuGroup>
+                            {repos.slice(0, 20).map((repo) => (
+                              <DropdownMenuItem
+                                key={repo.id}
+                                onClick={() => setSelectedRepo(repo)}
+                              >
+                                <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
+                                <span className="truncate flex-1">{repo.fullName}</span>
+                                {repo.private && (
+                                  <span className="text-[10px] text-muted-foreground">private</span>
+                                )}
+                                {selectedRepo?.id === repo.id && (
+                                  <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="text-foreground" />
+                                )}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuGroup>
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -321,25 +336,26 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
 
                   {/* Right side: Mic and Send */}
                   <div className="flex items-center gap-1">
-                    <button className="inline-flex items-center justify-center size-8 rounded-full hover:bg-accent transition-colors">
-                      <HugeiconsIcon icon={Mic01Icon} size={18} strokeWidth={2} />
-                    </button>
-                    <button 
+                    <Button variant="ghost" size="icon-sm" className="rounded-full">
+                      <HugeiconsIcon icon={Mic01Icon} strokeWidth={2} />
+                    </Button>
+                    <Button 
                       onClick={handleSubmit}
                       disabled={!selectedRepo || !prompt.trim() || isCreating}
+                      size="icon-sm"
                       className={cn(
-                        "inline-flex items-center justify-center size-8 rounded-full transition-colors",
+                        "rounded-full",
                         selectedRepo && prompt.trim() && !isCreating
                           ? "bg-foreground text-background hover:bg-foreground/90" 
-                          : "bg-muted text-muted-foreground cursor-not-allowed"
+                          : "bg-muted text-muted-foreground"
                       )}
                     >
                       {isCreating ? (
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <HugeiconsIcon icon={ArrowUp02Icon} size={18} strokeWidth={2} />
+                        <HugeiconsIcon icon={ArrowUp02Icon} strokeWidth={2} />
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -347,29 +363,32 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
               {/* Model selector below input */}
               <div className="flex items-center justify-between">
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    {modelsLoading ? 'Loading...' : (selectedModel?.name || 'Select model')}
-                    <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={2} className="opacity-50" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-[220px]">
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground">
+                        {modelsLoading ? 'Loading...' : (selectedModel?.name || 'Select model')}
+                        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="start" className="w-[240px]">
                     {Object.entries(groupedByProvider).map(([provider, providerModels], idx) => (
-                      <div key={provider}>
+                      <DropdownMenuGroup key={provider}>
                         {idx > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuLabel className="text-xs text-muted-foreground capitalize">
+                        <DropdownMenuLabel className="text-xs text-muted-foreground capitalize font-normal">
                           {provider}
                         </DropdownMenuLabel>
-                        {providerModels.map((model) => (
-                          <DropdownMenuItem
-                            key={model.id}
-                            onClick={() => setSelectedModel(model)}
-                            className={cn(
-                              selectedModel?.id === model.id && "bg-accent"
-                            )}
-                          >
-                            {model.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </div>
+                        <DropdownMenuRadioGroup value={selectedModel?.id || ''} onValueChange={(value) => {
+                          const model = providerModels.find(m => m.id === value)
+                          if (model) setSelectedModel(model)
+                        }}>
+                          {providerModels.map((model) => (
+                            <DropdownMenuRadioItem key={model.id} value={model.id}>
+                              {model.name}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuGroup>
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>

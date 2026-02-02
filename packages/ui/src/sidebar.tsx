@@ -247,27 +247,25 @@ function SidebarTrigger({
   className,
   onClick,
   ...props
-}: React.ComponentProps<"button">) {
+}: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
 
   return (
-    <button
-      type="button"
+    <Button
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
-      className={cn(
-        "inline-flex items-center justify-center size-8 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors",
-        className
-      )}
+      variant="ghost"
+      size="icon-sm"
+      className={cn(className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
       }}
       {...props}
     >
-      <HugeiconsIcon icon={SidebarLeftIcon} size={18} strokeWidth={2} />
+      <HugeiconsIcon icon={SidebarLeftIcon} strokeWidth={2} />
       <span className="sr-only">Toggle Sidebar</span>
-    </button>
+    </Button>
   )
 }
 

@@ -1,6 +1,16 @@
 'use client'
 
-import { Select, SelectGroup, SelectItem, Badge, cn } from '@ship/ui'
+import { 
+  Select, 
+  SelectTrigger, 
+  SelectValue, 
+  SelectContent, 
+  SelectGroup, 
+  SelectLabel, 
+  SelectItem,
+  Badge, 
+  cn 
+} from '@ship/ui'
 import { useModels, type ModelInfo } from '@/lib/api'
 
 // Re-export type for backward compatibility
@@ -29,24 +39,30 @@ export function ModelSelector({
 
   if (isLoading && !providedModels) {
     return (
-      <Select value="" onValueChange={() => {}} disabled>
-        <SelectItem value="">Loading models...</SelectItem>
+      <Select disabled>
+        <SelectTrigger>
+          <SelectValue placeholder="Loading models..." />
+        </SelectTrigger>
       </Select>
     )
   }
 
   if (isError && !providedModels) {
     return (
-      <Select value="" onValueChange={() => {}} disabled>
-        <SelectItem value="">Error loading models</SelectItem>
+      <Select disabled>
+        <SelectTrigger>
+          <SelectValue placeholder="Error loading models" />
+        </SelectTrigger>
       </Select>
     )
   }
 
   if (models.length === 0) {
     return (
-      <Select value="" onValueChange={() => {}} disabled>
-        <SelectItem value="">No models available</SelectItem>
+      <Select disabled>
+        <SelectTrigger>
+          <SelectValue placeholder="No models available" />
+        </SelectTrigger>
       </Select>
     )
   }
@@ -61,15 +77,24 @@ export function ModelSelector({
     : groupedByProvider
 
   return (
-    <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectItem value="">{placeholder}</SelectItem>
-      {Object.entries(groupedModels).map(([provider, providerModels]) => (
-        <SelectGroup key={provider} label={provider}>
-          {providerModels.map((model) => (
-            <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
-          ))}
-        </SelectGroup>
-      ))}
+    <Select 
+      value={value} 
+      onValueChange={(val) => val && onChange(val)} 
+      disabled={disabled}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(groupedModels).map(([provider, providerModels]) => (
+          <SelectGroup key={provider}>
+            <SelectLabel className="capitalize">{provider}</SelectLabel>
+            {providerModels.map((model) => (
+              <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+      </SelectContent>
     </Select>
   )
 }
