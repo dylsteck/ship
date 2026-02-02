@@ -1,12 +1,8 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Button, Input, Card, Badge, cn } from '@ship/ui'
 import { ModelSelector } from '@/components/model/model-selector'
-import { cn } from '@/lib/utils'
 
 interface CreateSessionDialogProps {
   isOpen: boolean

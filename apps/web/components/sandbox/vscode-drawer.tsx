@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@ship/ui'
 
 interface VSCodeDrawerProps {
   sandboxId: string | null

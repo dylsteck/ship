@@ -1,6 +1,7 @@
 'use client'
 
-import { ExternalLink, GitPullRequest } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { LinkSquare01Icon, GitPullRequestIcon } from '@hugeicons/core-free-icons'
 import { useState } from 'react'
 
 /**
@@ -74,7 +75,7 @@ export function PRPanel({ prNumber, prUrl, isDraft, onMarkReady }: PRPanelProps)
       <div className="space-y-2">
         {/* PR Number and Status */}
         <div className="flex items-center gap-2">
-          <GitPullRequest className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          <HugeiconsIcon icon={GitPullRequestIcon} strokeWidth={2} className="size-4 text-gray-500 dark:text-gray-400" />
           <span className="text-sm font-medium dark:text-gray-200">
             #{prNumber}
           </span>
@@ -96,7 +97,7 @@ export function PRPanel({ prNumber, prUrl, isDraft, onMarkReady }: PRPanelProps)
           rel="noopener noreferrer"
           className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
         >
-          <ExternalLink className="w-3 h-3" />
+          <HugeiconsIcon icon={LinkSquare01Icon} strokeWidth={2} className="size-3" />
           View on GitHub
         </a>
 

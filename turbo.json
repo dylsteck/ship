@@ -3,7 +3,11 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": [
+        "SESSION_SECRET",
+        "API_BASE_URL"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]

@@ -1,9 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Select, SelectGroup, SelectItem } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { Select, SelectGroup, SelectItem, Badge, cn } from '@ship/ui'
 
 export interface ModelInfo {
   id: string

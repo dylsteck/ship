@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import type { ChatSession } from '@/lib/api'
-import { Button } from '@/components/ui/button'
+import { Button } from '@ship/ui'
 
 interface SessionListProps {
   sessions: ChatSession[]

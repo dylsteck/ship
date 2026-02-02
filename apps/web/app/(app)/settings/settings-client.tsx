@@ -4,8 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ModelSelector, ModelBadge, type ModelInfo } from '@/components/model/model-selector'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
-import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@ship/ui'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 

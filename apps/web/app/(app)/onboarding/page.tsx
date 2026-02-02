@@ -1,6 +1,6 @@
 import { verifySession } from '@/lib/dal'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { Button } from '@ship/ui'
 
 export default async function OnboardingPage() {
   await verifySession()

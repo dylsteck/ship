@@ -1,6 +1,7 @@
 'use client'
 
-import { Code, Terminal } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { SourceCodeIcon, Terminal } from '@hugeicons/core-free-icons'
 
 interface SandboxToolbarProps {
   sandboxId: string | null
@@ -42,7 +43,7 @@ export function SandboxToolbar({
         title={isDisabled ? 'Sandbox not ready' : 'Open VS Code'}
         aria-label="Open VS Code"
       >
-        <Code className="h-4 w-4" />
+        <HugeiconsIcon icon={SourceCodeIcon} strokeWidth={2} className="size-4" />
       </button>
 
       {/* Terminal button */}
@@ -60,7 +61,7 @@ export function SandboxToolbar({
         title={isDisabled ? 'Sandbox not ready' : 'Open Terminal'}
         aria-label="Open Terminal"
       >
-        <Terminal className="h-4 w-4" />
+        <HugeiconsIcon icon={Terminal} strokeWidth={2} className="size-4" />
       </button>
     </div>
   )

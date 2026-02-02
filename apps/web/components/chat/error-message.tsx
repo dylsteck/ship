@@ -1,6 +1,7 @@
 'use client'
 
-import { AlertCircle } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert01Icon } from '@hugeicons/core-free-icons'
 
 /**
  * Error category for styling and behavior
@@ -105,7 +106,7 @@ export function ErrorMessage({
   return (
     <div className={`rounded-lg border p-4 ${styles.container}`}>
       <div className="flex items-start gap-3">
-        <AlertCircle className={`h-5 w-5 mt-0.5 flex-shrink-0 ${styles.icon}`} />
+        <HugeiconsIcon icon={Alert01Icon} strokeWidth={2} className={`size-5 mt-0.5 flex-shrink-0 ${styles.icon}`} />
         <div className="flex-1 min-w-0">
           <p className={`font-medium ${styles.title}`}>{title}</p>
           <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{message}</p>

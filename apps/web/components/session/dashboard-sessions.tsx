@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SessionList } from './session-list'
 import { CreateSessionDialog } from './create-session-dialog'
-import { Button } from '@/components/ui/button'
+import { Button } from '@ship/ui'
 import type { ChatSession } from '@/lib/api'
 
 interface DashboardSessionsProps {
