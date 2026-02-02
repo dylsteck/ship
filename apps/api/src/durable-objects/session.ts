@@ -103,7 +103,7 @@ export class SessionDO extends DurableObject<Env> {
    * Tables:
    * - messages: Chat history with optional tool parts
    * - tasks: Tasks inferred from chat
-   * - session_meta: Key-value metadata storage (includes sandbox_id, sandbox_status)
+   * - session_meta: Key-value metadata storage (includes sandbox_id, sandbox_status, git/PR state)
    */
   private initSchema(): void {
     this.sql.exec(`
@@ -128,7 +128,8 @@ export class SessionDO extends DurableObject<Env> {
       );
 
       -- Session metadata key-value store
-      -- Used for sandbox_id, sandbox_status, and other metadata
+      -- Used for sandbox_id, sandbox_status, git/PR state, and other metadata
+      -- Git/PR fields: pr_number, pr_url, pr_draft, branch_name, first_commit_done, repo_url
       CREATE TABLE IF NOT EXISTS session_meta (
         key TEXT PRIMARY KEY,
         value TEXT
@@ -470,6 +471,95 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
+   * Set branch name for this session
+   * @param name - Git branch name
+   */
+  async setBranchName(name: string): Promise<void> {
+    await this.setSessionMeta('branch_name', name)
+  }
+
+  /**
+   * Get current branch name
+   * @returns Branch name or null if not set
+   */
+  async getBranchName(): Promise<string | null> {
+    const meta = await this.getSessionMeta()
+    return meta['branch_name'] || null
+  }
+
+  /**
+   * Mark first commit as done
+   * Returns true if this was the first commit (transitions from false to true)
+   * Returns false if first commit was already marked
+   *
+   * This is used to trigger auto-PR creation on the first commit only
+   */
+  async markFirstCommit(): Promise<boolean> {
+    const meta = await this.getSessionMeta()
+    const wasFirstCommit = !meta['first_commit_done']
+
+    if (wasFirstCommit) {
+      await this.setSessionMeta('first_commit_done', 'true')
+    }
+
+    return wasFirstCommit
+  }
+
+  /**
+   * Set pull request information
+   * @param number - GitHub PR number
+   * @param url - GitHub PR URL
+   * @param draft - Whether PR is draft
+   */
+  async setPullRequest(number: number, url: string, draft: boolean): Promise<void> {
+    await this.setSessionMeta('pr_number', number.toString())
+    await this.setSessionMeta('pr_url', url)
+    await this.setSessionMeta('pr_draft', draft.toString())
+  }
+
+  /**
+   * Get pull request information
+   * @returns PR details or null if no PR exists
+   */
+  async getPullRequest(): Promise<{ number: number; url: string; draft: boolean } | null> {
+    const meta = await this.getSessionMeta()
+
+    if (!meta['pr_number']) {
+      return null
+    }
+
+    return {
+      number: parseInt(meta['pr_number']),
+      url: meta['pr_url'],
+      draft: meta['pr_draft'] === 'true',
+    }
+  }
+
+  /**
+   * Mark PR as ready for review (convert from draft to ready)
+   */
+  async markReadyForReview(): Promise<void> {
+    await this.setSessionMeta('pr_draft', 'false')
+  }
+
+  /**
+   * Set repository URL for this session
+   * @param url - Repository URL
+   */
+  async setRepoUrl(url: string): Promise<void> {
+    await this.setSessionMeta('repo_url', url)
+  }
+
+  /**
+   * Get repository URL
+   * @returns Repo URL or null if not set
+   */
+  async getRepoUrl(): Promise<string | null> {
+    const meta = await this.getSessionMeta()
+    return meta['repo_url'] || null
+  }
+
+  /**
    * Handle HTTP fetch requests to this Durable Object
    * Supports WebSocket upgrades and basic HTTP endpoints
    */
@@ -588,6 +678,32 @@ export class SessionDO extends DurableObject<Env> {
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : 'Failed to resume sandbox' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Get git state (branch, PR info)
+    if (url.pathname.endsWith('/git/state') && request.method === 'GET') {
+      const branchName = await this.getBranchName()
+      const pr = await this.getPullRequest()
+      const repoUrl = await this.getRepoUrl()
+
+      return Response.json({
+        branchName,
+        pr,
+        repoUrl,
+      })
+    }
+
+    // RPC: Mark PR as ready for review
+    if (url.pathname.endsWith('/git/pr/ready') && request.method === 'POST') {
+      try {
+        await this.markReadyForReview()
+        return Response.json({ success: true })
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to mark PR ready' },
           { status: 500 },
         )
       }
