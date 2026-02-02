@@ -40,9 +40,13 @@ export async function getOpenCodeClient(): Promise<OpencodeClient> {
 
   if (isDev) {
     // Auto-start server in development
+    // OpenCode will automatically load opencode.json from project root
+    // which configures the Vercel MCP server
     const { client, server } = await createOpencode({
       hostname: '127.0.0.1',
       port: 4096,
+      // Config file path - defaults to ./opencode.json if not specified
+      // configPath: './opencode.json',
     })
     clientInstance = client
     serverCleanup = server.close

@@ -53,6 +53,7 @@ export interface AgentExecutorConfig {
   repoUrl: string
   gitUser: GitUser
   sessionId?: string
+  env?: { DB: D1Database } // Optional DB access for Linear integration
   onError?: (event: ErrorEvent) => void
   onStatus?: (status: string, details?: string) => void
 }
@@ -89,6 +90,7 @@ export class AgentExecutor {
   private onError?: (event: ErrorEvent) => void
   private onStatus?: (status: string, details?: string) => void
   private isPaused: boolean = false
+  private env?: { DB: D1Database }
 
   constructor(config: AgentExecutorConfig) {
     this.sessionDO = config.sessionDO
@@ -98,6 +100,7 @@ export class AgentExecutor {
     this.gitUser = config.gitUser
     this.onError = config.onError
     this.onStatus = config.onStatus
+    this.env = config.env
 
     // Use provided session ID or generate one
     this.sessionId = config.sessionId || crypto.randomUUID()
@@ -175,15 +178,11 @@ export class AgentExecutor {
   /**
    * Handle agent response with Git workflow
    * Commits changes, pushes, and creates PR if first commit
+   * Updates Linear issue status if linked
    *
    * @param response - Agent response with summary
    */
   async onAgentResponse(response: AgentResponse): Promise<void> {
-    // Skip if no changes
-    if (!response.hasChanges) {
-      return
-    }
-
     // Skip if paused
     if (this.isPaused) {
       console.log('Agent paused, skipping git workflow')
@@ -191,6 +190,17 @@ export class AgentExecutor {
     }
 
     try {
+      // Update Linear issue status to "In Progress" if linked (before processing)
+      await this.updateLinearIssueStatus('In Progress').catch((err) => {
+        console.error('Failed to update Linear issue status:', err)
+        // Don't fail agent execution if Linear update fails
+      })
+
+      // Skip if no changes
+      if (!response.hasChanges) {
+        return
+      }
+
       // Commit changes with retry
       const commitHash = await this.commitChanges(response.summary)
 
@@ -204,10 +214,21 @@ export class AgentExecutor {
       await this.pushWithRetry(branchName)
 
       console.log(`Committed and pushed: ${commitHash}`)
+
+      // Update Linear issue status to "Done" if linked (after successful commit)
+      await this.updateLinearIssueStatus('Done').catch((err) => {
+        console.error('Failed to update Linear issue status:', err)
+        // Don't fail agent execution if Linear update fails
+      })
     } catch (error) {
       // Log error but don't fail agent execution
       const sanitized = sanitizeError(error)
       console.error('Git workflow error:', sanitized)
+
+      // Update Linear issue status to "Canceled" if linked (on error)
+      await this.updateLinearIssueStatus('Canceled').catch((err) => {
+        console.error('Failed to update Linear issue status on error:', err)
+      })
 
       const details = classifyError(error)
       const err = error instanceof Error ? error : new Error(String(error))
@@ -217,6 +238,55 @@ export class AgentExecutor {
       if (details.category === ErrorCategory.Persistent || details.category === ErrorCategory.Fatal) {
         this.pause()
       }
+    }
+  }
+
+  /**
+   * Update Linear issue status if linked to session
+   * Only updates if Linear issue is explicitly linked
+   *
+   * @param status - Target status name (e.g., "Done", "In Progress", "Canceled")
+   */
+  private async updateLinearIssueStatus(status: string): Promise<void> {
+    if (!this.env?.DB) {
+      return // No DB access, skip Linear update
+    }
+
+    try {
+      // Get linked Linear issue ID from session metadata
+      const linearIssueId = await this.sessionDO.getLinearIssueId()
+      if (!linearIssueId) {
+        return // No Linear issue linked, skip update
+      }
+
+      // Get userId from session metadata
+      const meta = await this.sessionDO.getSessionMeta()
+      const userId = meta['userId']
+      if (!userId) {
+        return // No userId, skip update
+      }
+
+      // Get Linear access token from accounts table
+      const account = await this.env.DB.prepare(
+        'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ?',
+      )
+        .bind(userId, 'linear')
+        .first<{ access_token: string }>()
+
+      if (!account?.access_token) {
+        return // No Linear account connected, skip update
+      }
+
+      // Import Linear client dynamically to avoid circular dependencies
+      const { createLinearClient } = await import('./linear')
+      const linearClient = createLinearClient(account.access_token)
+
+      // Update Linear issue status
+      await linearClient.updateIssueStatus(linearIssueId, status)
+      console.log(`Updated Linear issue ${linearIssueId} to status: ${status}`)
+    } catch (error) {
+      // Log but don't throw - Linear updates are optional
+      console.error('Error updating Linear issue status:', error)
     }
   }
 
@@ -330,6 +400,33 @@ export class AgentExecutor {
           await this.sessionDO.setPullRequest(pr.number, pr.htmlUrl, pr.draft)
 
           console.log(`Created draft PR #${pr.number}: ${pr.htmlUrl}`)
+
+          // Link PR to Linear issue if linked (conditional)
+          if (this.env?.DB) {
+            try {
+              const linearIssueId = await this.sessionDO.getLinearIssueId()
+              if (linearIssueId) {
+                const meta = await this.sessionDO.getSessionMeta()
+                const userId = meta['userId']
+                if (userId) {
+                  const account = await this.env.DB.prepare(
+                    'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ?',
+                  )
+                    .bind(userId, 'linear')
+                    .first<{ access_token: string }>()
+
+                  if (account?.access_token) {
+                    const { linkPRToLinearIssue } = await import('./github')
+                    await linkPRToLinearIssue(account.access_token, linearIssueId, pr.htmlUrl)
+                    console.log(`Linked PR ${pr.htmlUrl} to Linear issue ${linearIssueId}`)
+                  }
+                }
+              }
+            } catch (linearError) {
+              // Log but don't fail PR creation if Linear linking fails
+              console.error('Failed to link PR to Linear issue:', linearError)
+            }
+          }
         },
         {
           operationName: 'Create PR',

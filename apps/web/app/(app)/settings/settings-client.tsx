@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { ModelSelector, ModelBadge, type ModelInfo } from '@/components/model/model-selector'
+import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { Button } from '@/components/ui/button'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
@@ -145,6 +146,19 @@ export function SettingsClient({ userId }: SettingsClientProps) {
                 {isPending ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
+          </div>
+        </div>
+
+        <div className="mt-8 rounded-lg bg-white p-6 shadow dark:bg-gray-800">
+          <div className="border-b pb-4 dark:border-gray-700">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Integrations</h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Connect and manage your external service integrations
+            </p>
+          </div>
+
+          <div className="mt-6">
+            <ConnectorSettings userId={userId} />
           </div>
         </div>
       </div>

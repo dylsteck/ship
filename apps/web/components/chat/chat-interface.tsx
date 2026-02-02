@@ -6,6 +6,8 @@ import { ChatInput } from './chat-input'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
 import { sendChatMessage, getChatMessages, stopChatStream } from '@/lib/api'
 import type { AgentStatus } from '@/components/session/status-indicator'
+import { aggregateCosts, type CostBreakdown } from '@/lib/cost-tracker'
+import { CostBreakdown as CostBreakdownComponent } from '@/components/cost/cost-breakdown'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
@@ -24,6 +26,8 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
   const [hasMore, setHasMore] = useState(false)
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
+  const costEventsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([])
+  const messageCostsRef = useRef<Map<string, CostBreakdown>>(new Map())
 
   // Load initial messages
   useEffect(() => {
@@ -161,6 +165,8 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
+        // Reset cost events for this message
+        costEventsRef.current = []
 
         while (true) {
           const { done, value } = await reader.read()
@@ -185,9 +191,38 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
                 }
 
                 if (data.type === 'done') {
+                  // Aggregate costs and store for this message
+                  if (costEventsRef.current.length > 0 && streamingMessageRef.current) {
+                    const breakdowns = aggregateCosts(costEventsRef.current)
+                    if (breakdowns.length > 0) {
+                      // Store cost breakdown for this message
+                      const messageId = streamingMessageRef.current
+                      messageCostsRef.current.set(messageId, breakdowns[0])
+                      // Update message to include cost data
+                      setMessages((prev) =>
+                        prev.map((m) =>
+                          m.id === messageId
+                            ? { ...m, costBreakdown: breakdowns[0] } as Message & { costBreakdown?: CostBreakdown }
+                            : m,
+                        ),
+                      )
+                    }
+                  }
+                  costEventsRef.current = []
                   setIsStreaming(false)
                   streamingMessageRef.current = null
                   onStatusChange?.('idle')
+                }
+
+                // Track token events for cost calculation
+                if (data.type === 'tool-call' && (data.tokens || data.model)) {
+                  costEventsRef.current.push({
+                    type: 'tool-call',
+                    tokens: data.tokens,
+                    model: data.model,
+                    taskId: data.taskId || data.messageId || streamingMessageRef.current,
+                    messageId: streamingMessageRef.current,
+                  })
                 }
 
                 if (data.type === 'tool-call' && data.toolName) {
@@ -298,8 +333,11 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
     <div className="flex h-full flex-col bg-white dark:bg-gray-900">
       {/* Connection status indicator */}
       {wsStatus !== 'connected' && (
-        <div className="bg-yellow-100 px-4 py-2 text-sm text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-          {wsStatus === 'connecting' ? 'Connecting...' : 'Disconnected - Reconnecting...'}
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200">
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-1.5 rounded-full bg-yellow-500 animate-pulse"></div>
+            {wsStatus === 'connecting' ? 'Connecting...' : 'Disconnected - Reconnecting...'}
+          </div>
         </div>
       )}
 

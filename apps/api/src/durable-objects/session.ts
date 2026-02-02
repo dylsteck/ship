@@ -491,6 +491,39 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
+   * Link Linear issue to this session
+   * @param linearIssueId - Linear issue ID
+   */
+  async linkLinearIssue(linearIssueId: string): Promise<void> {
+    await this.setSessionMeta('linearIssueId', linearIssueId)
+  }
+
+  /**
+   * Get linked Linear issue ID for this session
+   * @returns Linear issue ID or null if not linked
+   */
+  async getLinearIssueId(): Promise<string | null> {
+    const meta = await this.getSessionMeta()
+    return meta['linearIssueId'] || null
+  }
+
+  /**
+   * Clear Linear issue link from this session
+   */
+  async clearLinearIssue(): Promise<void> {
+    this.sql.exec(`DELETE FROM session_meta WHERE key = ?`, 'linearIssueId')
+  }
+
+  /**
+   * Check if session has linked Linear issue
+   * @returns true if Linear issue is linked, false otherwise
+   */
+  async hasLinkedLinearIssue(): Promise<boolean> {
+    const linearIssueId = await this.getLinearIssueId()
+    return linearIssueId !== null
+  }
+
+  /**
    * Mark first commit as done
    * Returns true if this was the first commit (transitions from false to true)
    * Returns false if first commit was already marked
@@ -586,6 +619,7 @@ export class SessionDO extends DurableObject<Env> {
       repoUrl,
       gitUser,
       sessionId,
+      env: this.env, // Pass DB access for Linear integration
       onError: (event: ErrorEvent) => {
         // Emit error to WebSocket clients
         this.broadcast({

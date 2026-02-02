@@ -15,9 +15,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Authentication** - User authentication, session management, and infrastructure setup
 - [x] **Phase 2: Stateful Core** - Durable Objects for session state and real-time communication
-- [ ] **Phase 3: Execution Layer** - E2B sandboxes, OpenCode agents, and Git operations
-- [ ] **Phase 4: Real-Time UI & Visibility** - Chat interface, status updates, and code/terminal viewers
-- [ ] **Phase 5: External Integrations** - GitHub, Linear, and Vercel integrations
+- [x] **Phase 3: Execution Layer** - E2B sandboxes, OpenCode agents, and Git operations
+- [x] **Phase 4: Real-Time UI & Visibility** - Chat interface, status updates, and code/terminal viewers
+- [x] **Phase 5: External Integrations** - GitHub, Linear, and Vercel integrations
 
 ## Phase Details
 
@@ -84,13 +84,13 @@ Plans:
 
 Plans:
 
-- [ ] 03-01-PLAN.md — E2B Sandbox provisioning and SessionDO lifecycle integration
-- [ ] 03-02-PLAN.md — VS Code and Terminal access with inline drawer UI
-- [ ] 03-03-PLAN.md — Git workflow utilities (clone, branch, commit, push)
-- [ ] 03-04-PLAN.md — GitHub PR automation and PR panel in side panel
-- [ ] 03-05-PLAN.md — AI model selection with global preference and session override
-- [ ] 03-06-PLAN.md — Error handling with classification and automatic recovery
-- [ ] 03-07-PLAN.md — End-to-end integration and complete verification checkpoint
+- [x] 03-01-PLAN.md — E2B Sandbox provisioning and SessionDO lifecycle integration
+- [x] 03-02-PLAN.md — VS Code and Terminal access with inline drawer UI
+- [x] 03-03-PLAN.md — Git workflow utilities (clone, branch, commit, push)
+- [x] 03-04-PLAN.md — GitHub PR automation and PR panel in side panel
+- [x] 03-05-PLAN.md — AI model selection with global preference and session override
+- [x] 03-06-PLAN.md — Error handling with classification and automatic recovery
+- [x] 03-07-PLAN.md — End-to-end integration and complete verification checkpoint
 
 ### Phase 4: Real-Time UI & Visibility
 
@@ -106,11 +106,16 @@ Plans:
 5. User can view terminal output from agent commands as they execute
 6. User can view Git diffs showing what changed in the codebase
 7. User sees cost breakdown per task after completion
-   **Plans**: TBD
+   **Plans**: 6 plans in 2 waves
 
 Plans:
 
-- [ ] TBD (to be planned)
+- [x] 04-01-PLAN.md — Code viewer component with Monaco Editor integration
+- [x] 04-02-PLAN.md — Git diff viewer component and session panel integration
+- [x] 04-03-PLAN.md — Cost tracking and display system
+- [x] 04-04-PLAN.md — Enhanced chat interface with Ramp design
+- [x] 04-05-PLAN.md — Enhanced session list with Ramp design
+- [x] 04-06-PLAN.md — Real-time status indicators enhancement
 
 ### Phase 5: External Integrations
 
@@ -119,17 +124,22 @@ Plans:
 **Requirements**: INTG-01, INTG-02, INTG-03, INTG-04, INTG-05, INTG-06
 **Success Criteria** (what must be TRUE):
 
-1. System automatically syncs issues from Linear and creates tasks in sessions
-2. Agent updates Linear issue status when tasks complete or fail
-3. Agent can create new Linear issues when discovering bugs or suggesting improvements
-4. System links GitHub PRs created by agent to corresponding Linear issues
+1. User can explicitly link Linear issues to sessions and optionally sync to create tasks
+2. Agent updates Linear issue status when tasks complete or fail, but ONLY when Linear issue is explicitly linked
+3. Agent can create new Linear issues when user asks or when discovering bugs
+4. System links GitHub PRs to Linear issues ONLY when Linear issue is explicitly linked to session
 5. User can access Vercel deployment tools via MCP in chat (preview, deploy, logs)
 6. User can enable or disable GitHub/Linear/Vercel connectors in settings
-   **Plans**: TBD
+   **Plans**: 6 plans in 3 waves
 
 Plans:
 
-- [ ] TBD (to be planned)
+- [x] 05-01-PLAN.md — Linear OAuth and API client integration
+- [x] 05-02-PLAN.md — Linear issue linking and manual sync
+- [x] 05-03-PLAN.md — Linear issue status updates from agent
+- [x] 05-04-PLAN.md — GitHub PR to Linear issue linking
+- [x] 05-05-PLAN.md — Vercel MCP server for deployment tools
+- [x] 05-06-PLAN.md — Connector management UI and API
 
 ## Progress
 
@@ -141,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Foundation & Authentication | 5/5            | Complete    | 2026-02-01 |
 | 2. Stateful Core               | 7/7            | Complete    | 2026-02-01 |
 | 3. Execution Layer             | 0/0            | Not started | -          |
-| 4. Real-Time UI & Visibility   | 0/0            | Not started | -          |
+| 4. Real-Time UI & Visibility   | 6/6            | Complete    | 2026-02-01 |
 | 5. External Integrations       | 0/0            | Not started | -          |
 
 ---

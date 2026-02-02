@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "vercel": {
+      "type": "remote",
+      "url": "http://localhost:8787/mcp/vercel",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "enabled": true
+    }
+  },
+  "tools": {
+    "vercel*": true
+  },
+  "_comment": "Note: The Vercel MCP server requires userId for authentication. Currently, userId must be passed via X-User-Id header or X-Session-Id header. Future enhancement: extract userId from OpenCode session context automatically."
+}

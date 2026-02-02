@@ -98,29 +98,31 @@ export function SessionList({ sessions, onDelete }: SessionListProps) {
   }
 
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-4">
       {sessions.map((session) => (
         <li key={session.id}>
           <Link
             href={`/session/${session.id}`}
-            className="block rounded-lg border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:bg-gray-800"
+            className="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-gray-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:bg-gray-800"
           >
             <div className="flex items-start justify-between">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                <div className="flex items-center gap-3">
+                  <h3 className="truncate text-base font-semibold text-gray-900 dark:text-gray-100">
                     {session.repoOwner}/{session.repoName}
                   </h3>
                   <StatusBadge status={session.status} />
                 </div>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Last active {formatRelativeTime(session.lastActivity)}
-                </p>
-                {session.messageCount !== undefined && (
-                  <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                    {session.messageCount} messages
+                <div className="mt-2 space-y-1">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Last active {formatRelativeTime(session.lastActivity)}
                   </p>
-                )}
+                  {session.messageCount !== undefined && (
+                    <p className="text-xs text-gray-500 dark:text-gray-500">
+                      {session.messageCount} message{session.messageCount !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="ml-4 flex items-center gap-2">
                 {onDelete && (
@@ -128,7 +130,7 @@ export function SessionList({ sessions, onDelete }: SessionListProps) {
                     variant="ghost"
                     onClick={(e) => handleDelete(e, session.id)}
                     disabled={deletingId === session.id || isPending}
-                    className="text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                    className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors"
                   >
                     {deletingId === session.id ? (
                       <svg
@@ -168,7 +170,7 @@ export function SessionList({ sessions, onDelete }: SessionListProps) {
                   </Button>
                 )}
                 <svg
-                  className="h-5 w-5 text-gray-400"
+                  className="h-5 w-5 text-gray-400 dark:text-gray-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"

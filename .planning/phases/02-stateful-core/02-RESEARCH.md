@@ -1,16 +1,16 @@
 # Phase 2: Stateful Core - Research
 
 **Researched:** 2026-02-01
-**Domain:** Cloudflare Durable Objects, WebSocket real-time, AI SDK streaming
+**Domain:** Cloudflare Durable Objects, WebSocket real-time, OpenCode SDK
 **Confidence:** HIGH
 
 ## Summary
 
-This phase implements stateful sessions using Cloudflare Durable Objects with WebSocket hibernation for real-time updates and AI SDK for token-by-token streaming chat. The architecture follows Cloudflare's recommended pattern of one Durable Object per session (not a global singleton), with SQLite storage for persistence and the WebSocket Hibernation API for cost-efficient real-time connections.
+This phase implements stateful sessions using Cloudflare Durable Objects with WebSocket hibernation for real-time updates and **OpenCode SDK for agent execution**. The architecture follows Cloudflare's recommended pattern of one Durable Object per session (not a global singleton), with SQLite storage for persistence and the WebSocket Hibernation API for cost-efficient real-time connections.
 
-The standard stack combines Hono (already in use) for routing WebSocket upgrades to Durable Objects, AI SDK (@ai-sdk/anthropic) for streaming Claude responses with tool calls, and the useChat hook for client-side chat management. Key decisions from context (Build/Plan modes, collapsible tool blocks, message queuing) map directly to AI SDK's tool streaming and useChat's status-based rendering.
+The standard stack combines Hono (already in use) for routing, Durable Objects for session state, and **OpenCode SDK (@opencode-ai/sdk)** for all agent functionality. OpenCode handles LLM calls, tool execution, and streaming via SSE - we don't make direct LLM calls. The Durable Object coordinates with OpenCode server and broadcasts updates to connected clients via WebSocket.
 
-**Primary recommendation:** Use Durable Objects with SQLite storage and WebSocket Hibernation API for sessions; AI SDK useChat hook for streaming chat with tool calls displayed inline.
+**Primary recommendation:** Use Durable Objects with SQLite storage for session metadata and message persistence; OpenCode SDK for agent execution with SSE event streaming; WebSocket Hibernation API for client real-time updates.
 
 ## Standard Stack
 
@@ -20,29 +20,36 @@ The established libraries/tools for this domain:
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
 | Cloudflare Durable Objects | SQLite backend | Per-session state and coordination | Official CF recommended for stateful apps |
-| @ai-sdk/anthropic | ^3.0.13 | Claude provider for AI SDK | Official Vercel provider, tool streaming enabled by default |
-| ai (AI SDK) | ^6.x | streamText, useChat hooks | 20M+ monthly downloads, unified API across providers |
+| @opencode-ai/sdk | latest | Agent execution, LLM calls, tools | Full agent runtime with Build/Plan modes, tool streaming |
 | hono | ^4.6.18 | Route WebSocket upgrades to DOs | Already in stack, excellent CF Workers integration |
 
 ### Supporting
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| zod | ^3.22+ | Tool input schema validation | Define tool parameters for AI SDK |
+| opencode (CLI) | latest | OpenCode server process | Required backend for SDK |
 
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| AI SDK useChat | Custom WebSocket | useChat handles streaming, tool calls, status; custom requires significant hand-rolling |
+| OpenCode SDK | AI SDK + custom tools | OpenCode provides full agent runtime (Build/Plan modes, task inference); AI SDK requires building agent logic from scratch |
+| OpenCode SDK | AI SDK + OpenCode provider | Provider doesn't support custom AI SDK tools; just a passthrough to OpenCode anyway |
 | Durable Objects SQLite | D1 external | SQLite in DO provides zero-latency colocated storage; D1 adds network hop |
 | WebSocket Hibernation | Standard WebSocket | Hibernation reduces GB-second costs 10-100x for idle connections |
+
+**Why OpenCode SDK over AI SDK:**
+1. OpenCode provides Build mode vs Plan mode out of the box
+2. Full tool execution runtime (file ops, shell, code editing) - no custom tools needed
+3. Task inference from natural language (like Claude Code)
+4. SSE streaming with rich event types (tool calls, permission requests, etc.)
+5. AI SDK's OpenCode provider explicitly states "Tool Usage and Tool Streaming show ❌"
 
 **Installation:**
 ```bash
 # In apps/api
-pnpm add ai @ai-sdk/anthropic zod
+pnpm add @opencode-ai/sdk
 
-# In apps/web
-pnpm add ai @ai-sdk/anthropic
+# OpenCode server required (runs separately or auto-started by SDK)
+npm install -g opencode
 ```
 
 ## Architecture Patterns
@@ -52,10 +59,12 @@ pnpm add ai @ai-sdk/anthropic
 apps/api/src/
 ├── index.ts              # Hono router, WebSocket upgrade to DO
 ├── durable-objects/
-│   └── session.ts        # SessionDO class with SQLite + WebSocket
+│   └── session.ts        # SessionDO: state persistence, WebSocket, OpenCode coordination
 ├── routes/
 │   ├── sessions.ts       # CRUD endpoints for sessions
-│   └── chat.ts           # Chat streaming endpoint (AI SDK streamText)
+│   └── repos.ts          # GitHub repos listing for session creation
+├── lib/
+│   └── opencode.ts       # OpenCode SDK client wrapper
 └── env.d.ts              # Updated with DO bindings
 
 apps/web/
@@ -63,7 +72,7 @@ apps/web/
 │   └── page.tsx          # Session page with chat UI
 ├── components/
 │   ├── chat/
-│   │   ├── chat-interface.tsx  # useChat hook integration
+│   │   ├── chat-interface.tsx  # Chat with message rendering
 │   │   ├── message-list.tsx    # Message rendering with tool parts
 │   │   ├── tool-block.tsx      # Collapsible tool call display
 │   │   └── chat-input.tsx      # Input with stop/queue controls
@@ -123,119 +132,152 @@ export class SessionDO extends DurableObject {
 }
 ```
 
-### Pattern 3: AI SDK streamText with Tool Calls
-**What:** Use streamText with tools for agent functionality, stream responses token-by-token
-**When to use:** For all chat message processing
+### Pattern 3: OpenCode SDK Session Management
+**What:** Use OpenCode SDK to manage agent sessions and subscribe to events
+**When to use:** For all agent interactions
 **Example:**
 ```typescript
-// Source: AI SDK docs - streamText with tools
-import { anthropic } from '@ai-sdk/anthropic';
-import { streamText, tool } from 'ai';
-import { z } from 'zod';
+// Source: OpenCode SDK docs (https://opencode.ai/docs/sdk/)
+import { createOpencode } from '@opencode-ai/sdk';
 
-const result = streamText({
-  model: anthropic('claude-sonnet-4-20250514'),
-  messages: conversationHistory,
-  abortSignal: req.signal, // Enable stop button
-  tools: {
-    createTask: tool({
-      description: 'Create a new task for the agent to execute',
-      inputSchema: z.object({
-        title: z.string(),
-        description: z.string(),
-      }),
-      execute: async ({ title, description }) => {
-        // Persist task to DO storage
-        return { taskId: crypto.randomUUID(), status: 'created' };
-      },
-    }),
-  },
-  maxSteps: 5, // Allow multi-step tool use
+// Initialize OpenCode client (auto-starts server if needed)
+const opencode = await createOpencode({
+  hostname: '127.0.0.1',
+  port: 4096,
+  config: {
+    // Override opencode.json settings
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-20250514',
+  }
 });
 
-return result.toDataStreamResponse();
-```
+// Create a new OpenCode session
+const session = await opencode.session.create({
+  projectPath: '/path/to/cloned/repo'
+});
 
-### Pattern 4: useChat with Tool Part Rendering
-**What:** Use useChat hook with message.parts for inline tool display
-**When to use:** Client-side chat interface
-**Example:**
-```typescript
-// Source: AI SDK useChat docs
-'use client';
-import { useChat } from 'ai/react';
+// Send a prompt and receive streaming events
+const events = opencode.event.subscribe();
+await opencode.session.prompt(session.id, {
+  content: 'Add authentication to the login page'
+});
 
-export function ChatInterface({ sessionId }: { sessionId: string }) {
-  const { messages, sendMessage, stop, status } = useChat({
-    api: `/api/sessions/${sessionId}/chat`,
-  });
-
-  return (
-    <div>
-      {messages.map((message) => (
-        <div key={message.id}>
-          {message.parts.map((part, i) => {
-            if (part.type === 'text') {
-              return <p key={i}>{part.text}</p>;
-            }
-            if (part.type === 'tool-invocation') {
-              return (
-                <ToolBlock
-                  key={i}
-                  tool={part.toolName}
-                  input={part.args}
-                  state={part.state}
-                  result={part.result}
-                />
-              );
-            }
-          })}
-        </div>
-      ))}
-      {status === 'streaming' && <button onClick={stop}>Stop</button>}
-    </div>
-  );
+// Process events as they arrive
+for await (const event of events) {
+  if (event.type === 'part') {
+    // Tool call, text chunk, etc.
+    broadcastToWebSocket(event);
+  }
+  if (event.type === 'session.idle') {
+    // Agent finished processing
+    break;
+  }
 }
 ```
 
-### Pattern 5: SQLite Schema for Session State
-**What:** Define SQLite tables in DO for messages, tasks, and metadata
-**When to use:** All session data persistence
+### Pattern 4: Durable Object as Coordinator
+**What:** DO persists session metadata and coordinates between OpenCode and client WebSocket
+**When to use:** Core architectural pattern for this phase
 **Example:**
 ```typescript
-// Source: Cloudflare Durable Objects SQLite docs
+// apps/api/src/durable-objects/session.ts
+import { DurableObject } from 'cloudflare:workers';
+
 export class SessionDO extends DurableObject {
   private sql: SqlStorage;
+  private connections: Map<WebSocket, { userId: string }> = new Map();
+  private opencodeSessionId: string | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
 
     ctx.blockConcurrencyWhile(async () => {
-      this.sql.exec(`
-        CREATE TABLE IF NOT EXISTS messages (
-          id TEXT PRIMARY KEY,
-          role TEXT NOT NULL,
-          content TEXT NOT NULL,
-          parts TEXT, -- JSON for tool parts
-          created_at INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS tasks (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          description TEXT,
-          status TEXT DEFAULT 'pending',
-          created_at INTEGER NOT NULL,
-          completed_at INTEGER
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_messages_created
-          ON messages(created_at);
-        CREATE INDEX IF NOT EXISTS idx_tasks_status
-          ON tasks(status, created_at);
-      `);
+      this.initSchema();
+      this.ctx.getWebSockets().forEach((ws) => {
+        const attachment = ws.deserializeAttachment();
+        if (attachment) this.connections.set(ws, attachment);
+      });
     });
+  }
+
+  private initSchema() {
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        parts TEXT, -- JSON for tool parts from OpenCode events
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS session_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+  }
+
+  // When user sends a message, forward to OpenCode and stream events back
+  async handleChatMessage(content: string) {
+    // Persist user message
+    this.persistMessage({ role: 'user', content });
+
+    // Forward to OpenCode session
+    // OpenCode SDK call happens in Worker (not DO) due to external I/O
+    // DO receives events via internal RPC and broadcasts to WebSocket
+    return { action: 'prompt', content };
+  }
+
+  private broadcast(message: object) {
+    const json = JSON.stringify(message);
+    this.connections.forEach((_, ws) => {
+      try { ws.send(json); } catch {}
+    });
+  }
+}
+```
+
+### Pattern 5: OpenCode Event Types for UI
+**What:** Map OpenCode SSE events to UI components
+**When to use:** Rendering chat with tool calls
+**Example:**
+```typescript
+// OpenCode event types from SDK
+interface OpenCodeEvent {
+  type: 'part' | 'session.idle' | 'session.error' | 'permission.request';
+  // For 'part' events:
+  part?: {
+    type: 'text' | 'tool-call' | 'tool-result';
+    content?: string;
+    toolName?: string;
+    toolInput?: unknown;
+    toolOutput?: unknown;
+    state?: 'pending' | 'running' | 'complete' | 'error';
+  };
+}
+
+// Map to UI rendering
+function renderPart(part: OpenCodeEvent['part']) {
+  switch (part.type) {
+    case 'text':
+      return <TextChunk content={part.content} />;
+    case 'tool-call':
+      return (
+        <ToolBlock
+          name={part.toolName}
+          input={part.toolInput}
+          state={part.state}
+          collapsed={true} // Default collapsed per CONTEXT.md
+        />
+      );
+    case 'tool-result':
+      return <ToolResult output={part.toolOutput} />;
   }
 }
 ```
@@ -244,8 +286,8 @@ export class SessionDO extends DurableObject {
 - **Global singleton DO:** Never route all sessions through one DO instance - creates bottleneck
 - **In-memory only state:** Always persist to SQLite; in-memory lost on hibernation/eviction
 - **server.accept() instead of ctx.acceptWebSocket():** Prevents hibernation, increases costs
-- **Unawaited RPC calls:** Creates dangling promises, swallows errors
-- **blockConcurrencyWhile for normal requests:** Reserve for init/migrations only; limits throughput
+- **Direct LLM calls from DO:** Use OpenCode SDK; it handles tool execution, streaming, and agent logic
+- **External I/O in blockConcurrencyWhile:** Only use for init/migrations; limits throughput
 
 ## Don't Hand-Roll
 
@@ -253,14 +295,14 @@ Problems that look simple but have existing solutions:
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| Token streaming | Custom SSE parsing | AI SDK streamText + useChat | Handles backpressure, tool calls, parts rendering |
+| Agent runtime | Custom tool loop | OpenCode SDK | Build/Plan modes, task inference, tool execution all built-in |
+| Token streaming | Custom SSE parsing | OpenCode event.subscribe() | Handles backpressure, rich event types |
+| Tool execution | Custom tool definitions | OpenCode built-in tools | File ops, shell, code editing battle-tested |
 | WebSocket reconnection | Simple retry loop | Exponential backoff with jitter | Prevents thundering herd, handles network edge cases |
-| Tool call UI state | Custom state machine | message.parts with part.state | AI SDK tracks input-streaming/available/output states |
 | Chat message history | Array in memory | SQLite in Durable Object | Survives hibernation, supports pagination |
-| Stream cancellation | Manual AbortController | useChat stop() + streamText abortSignal | Properly cleans up both client and server |
 | Session coordination | Polling | WebSocket Hibernation API | Real-time with minimal cost during idle |
 
-**Key insight:** AI SDK and Durable Objects provide battle-tested primitives for exactly this use case. Hand-rolling streaming, reconnection, or state management leads to subtle bugs around backpressure, race conditions, and edge cases.
+**Key insight:** OpenCode SDK provides the complete agent runtime. Our job is state persistence (DO + SQLite) and real-time client updates (WebSocket). Don't rebuild what OpenCode already provides.
 
 ## Common Pitfalls
 
@@ -276,21 +318,21 @@ Problems that look simple but have existing solutions:
 **How to avoid:** Persist all important state to SQLite; reload in constructor
 **Warning signs:** State resets after ~10 seconds of inactivity
 
-### Pitfall 3: Input Gates Confusion with External I/O
-**What goes wrong:** Race conditions when calling external services
-**Why it happens:** Input gates reopen during await fetch(); requests interleave
-**How to avoid:** Use optimistic locking for external operations
-**Warning signs:** Inconsistent state after parallel requests
+### Pitfall 3: Running OpenCode SDK in Durable Object
+**What goes wrong:** External HTTP calls from DO have complex semantics
+**Why it happens:** DO input gates reopen during await fetch(); requests interleave
+**How to avoid:** Run OpenCode SDK calls in Worker, stream events to DO via RPC
+**Warning signs:** Race conditions, inconsistent state
 
-### Pitfall 4: Tool Streaming State Mismatch
-**What goes wrong:** Tool UI shows wrong state (loading when complete)
-**Why it happens:** Not checking part.state properly in render
-**How to avoid:** Always render based on part.state: 'input-streaming' | 'input-available' | 'output-available' | 'output-error'
-**Warning signs:** UI stuck in loading, tool results not appearing
+### Pitfall 4: Not Handling OpenCode Permission Requests
+**What goes wrong:** Agent hangs waiting for permission approval
+**Why it happens:** OpenCode emits 'permission.request' events that need response
+**How to avoid:** Subscribe to permission events, forward to client WebSocket for approval
+**Warning signs:** Agent stuck, no progress despite messages
 
 ### Pitfall 5: Message Queue During Streaming Not Working
 **What goes wrong:** User's follow-up message lost while AI is responding
-**Why it happens:** Sending new message while status === 'streaming' without proper handling
+**Why it happens:** Sending new message while streaming without proper handling
 **How to avoid:** Queue messages client-side; send after current stream completes or stops
 **Warning signs:** Messages disappear, user has to re-type
 
@@ -300,24 +342,110 @@ Problems that look simple but have existing solutions:
 **How to avoid:** Exponential backoff with random jitter (Math.random() * delay)
 **Warning signs:** Server overwhelmed after restarts, cascading failures
 
-### Pitfall 7: AI SDK RSC Incompatibility
-**What goes wrong:** Trying to use streamUI with stop() functionality
-**Why it happens:** AI SDK RSC (React Server Components) doesn't support stopping streams
-**How to avoid:** Use AI SDK UI (useChat) for this app, not RSC streaming
-**Warning signs:** stop() has no effect, AbortError not propagating
+### Pitfall 7: OpenCode Server Not Running
+**What goes wrong:** SDK calls fail with connection errors
+**Why it happens:** Forgot to start OpenCode server or auto-start disabled
+**How to avoid:** Use `createOpencode()` which auto-starts server, or ensure `opencode serve` running
+**Warning signs:** ECONNREFUSED errors
 
 ## Code Examples
 
 Verified patterns from official sources:
 
-### Durable Object with SQLite and WebSocket Hibernation
+### OpenCode SDK Client Initialization
+```typescript
+// Source: OpenCode SDK docs (https://opencode.ai/docs/sdk/)
+// apps/api/src/lib/opencode.ts
+import { createOpencode, createOpencodeClient } from '@opencode-ai/sdk';
+
+// Option 1: Managed - auto-starts server
+export async function getOpenCodeClient() {
+  return createOpencode({
+    hostname: '127.0.0.1',
+    port: 4096,
+    config: {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+    }
+  });
+}
+
+// Option 2: Client-only - connects to existing server
+export async function connectToOpenCode() {
+  return createOpencodeClient({
+    hostname: '127.0.0.1',
+    port: 4096,
+  });
+}
+```
+
+### Session Chat Flow with OpenCode
+```typescript
+// apps/api/src/routes/chat.ts
+import { Hono } from 'hono';
+import { getOpenCodeClient } from '../lib/opencode';
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.post('/sessions/:id/chat', async (c) => {
+  const sessionId = c.req.param('id');
+  const { content } = await c.req.json();
+
+  // Get DO stub to persist message and get OpenCode session ID
+  const doId = c.env.SESSION_DO.idFromName(sessionId);
+  const stub = c.env.SESSION_DO.get(doId);
+
+  const sessionMeta = await stub.getSessionMeta();
+  const opencodeSessionId = sessionMeta.opencodeSessionId;
+
+  // Send to OpenCode
+  const opencode = await getOpenCodeClient();
+
+  // Create streaming response
+  const stream = new ReadableStream({
+    async start(controller) {
+      // Subscribe to events
+      const events = opencode.event.subscribe();
+
+      // Send prompt
+      await opencode.session.prompt(opencodeSessionId, { content });
+
+      // Stream events to client
+      for await (const event of events) {
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
+        );
+
+        // Also send to DO for persistence and WebSocket broadcast
+        await stub.handleOpenCodeEvent(event);
+
+        if (event.type === 'session.idle') {
+          break;
+        }
+      }
+
+      controller.close();
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    }
+  });
+});
+
+export default app;
+```
+
+### Durable Object with SQLite and WebSocket
 ```typescript
 // Source: Cloudflare Durable Objects docs
 import { DurableObject } from 'cloudflare:workers';
 
 interface Env {
   SESSION_DO: DurableObjectNamespace<SessionDO>;
-  ANTHROPIC_API_KEY: string;
 }
 
 export class SessionDO extends DurableObject {
@@ -328,10 +456,8 @@ export class SessionDO extends DurableObject {
     super(ctx, env);
     this.sql = ctx.storage.sql;
 
-    // Initialize schema and restore connections on wake
     ctx.blockConcurrencyWhile(async () => {
       this.initSchema();
-      // Restore connection state from hibernation
       this.ctx.getWebSockets().forEach((ws) => {
         const attachment = ws.deserializeAttachment();
         if (attachment) this.connections.set(ws, attachment);
@@ -348,10 +474,21 @@ export class SessionDO extends DurableObject {
         parts TEXT,
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'pending',
+        mode TEXT DEFAULT 'build',
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER
+      );
       CREATE TABLE IF NOT EXISTS session_meta (
         key TEXT PRIMARY KEY,
         value TEXT
       );
+      CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at);
     `);
   }
 
@@ -362,7 +499,6 @@ export class SessionDO extends DurableObject {
       return this.handleWebSocket(request);
     }
 
-    // Handle other RPC-style calls
     return new Response('Not found', { status: 404 });
   }
 
@@ -371,7 +507,7 @@ export class SessionDO extends DurableObject {
     const [client, server] = Object.values(pair);
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ userId: 'user-id-from-auth' });
+    server.serializeAttachment({ userId: 'user-id-from-auth', joinedAt: Date.now() });
     this.connections.set(server, { userId: 'user-id-from-auth' });
 
     return new Response(null, { status: 101, webSocket: client });
@@ -379,13 +515,26 @@ export class SessionDO extends DurableObject {
 
   async webSocketMessage(ws: WebSocket, message: string) {
     const data = JSON.parse(message);
-    // Handle incoming messages, broadcast updates
-    this.broadcast({ type: 'update', data });
+    // Handle client messages (e.g., permission responses)
+    if (data.type === 'permission.response') {
+      // Forward to OpenCode via RPC to main worker
+    }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string) {
     this.connections.delete(ws);
-    ws.close(code, reason); // CRITICAL
+    ws.close(code, reason);
+  }
+
+  // Called by Worker when OpenCode emits events
+  async handleOpenCodeEvent(event: unknown) {
+    // Persist relevant parts
+    if (event.type === 'part' && event.part?.type === 'text') {
+      // Accumulate text parts into assistant message
+    }
+
+    // Broadcast to all connected clients
+    this.broadcast(event);
   }
 
   private broadcast(message: object) {
@@ -394,118 +543,133 @@ export class SessionDO extends DurableObject {
       try { ws.send(json); } catch {}
     });
   }
+
+  async getSessionMeta() {
+    const rows = this.sql.exec('SELECT key, value FROM session_meta').toArray();
+    return Object.fromEntries(rows.map(r => [r.key, r.value]));
+  }
 }
 ```
 
-### Chat API Route with AI SDK streamText
+### Client-Side Chat Interface
 ```typescript
-// Source: AI SDK Anthropic provider docs
-// apps/api/src/routes/chat.ts
-import { Hono } from 'hono';
-import { anthropic } from '@ai-sdk/anthropic';
-import { streamText, tool } from 'ai';
-import { z } from 'zod';
-
-const app = new Hono<{ Bindings: Env }>();
-
-app.post('/sessions/:id/chat', async (c) => {
-  const sessionId = c.req.param('id');
-  const { messages } = await c.req.json();
-
-  const result = streamText({
-    model: anthropic('claude-sonnet-4-20250514'),
-    messages,
-    abortSignal: c.req.raw.signal,
-    tools: {
-      createTask: tool({
-        description: 'Create a task for the agent to execute later',
-        inputSchema: z.object({
-          title: z.string().describe('Task title'),
-          description: z.string().describe('What needs to be done'),
-          mode: z.enum(['build', 'plan']).describe('Execution mode'),
-        }),
-        execute: async ({ title, description, mode }) => {
-          // Get DO stub and persist task
-          const id = c.env.SESSION_DO.idFromName(sessionId);
-          const stub = c.env.SESSION_DO.get(id);
-          return await stub.createTask({ title, description, mode });
-        },
-      }),
-    },
-    maxSteps: 10,
-    onFinish: async ({ text, finishReason, steps }) => {
-      // Persist assistant message to DO
-      const id = c.env.SESSION_DO.idFromName(sessionId);
-      const stub = c.env.SESSION_DO.get(id);
-      await stub.saveMessage({
-        role: 'assistant',
-        content: text,
-        steps: JSON.stringify(steps),
-      });
-    },
-  });
-
-  return result.toDataStreamResponse();
-});
-
-export default app;
-```
-
-### Client-Side Chat with useChat
-```typescript
-// Source: AI SDK useChat docs
 // apps/web/components/chat/chat-interface.tsx
 'use client';
 
-import { useChat } from 'ai/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
+import { createReconnectingWebSocket } from '@/lib/websocket';
 
-interface ChatInterfaceProps {
-  sessionId: string;
-  initialMessages?: Message[];
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  parts?: Part[];
 }
 
-export function ChatInterface({ sessionId, initialMessages }: ChatInterfaceProps) {
-  const [messageQueue, setMessageQueue] = useState<string[]>([]);
+interface Part {
+  type: 'text' | 'tool-call' | 'tool-result';
+  content?: string;
+  toolName?: string;
+  state?: 'pending' | 'running' | 'complete' | 'error';
+}
 
-  const {
-    messages,
-    sendMessage,
-    stop,
-    status,
-    setMessages,
-  } = useChat({
-    api: `${process.env.NEXT_PUBLIC_API_URL}/sessions/${sessionId}/chat`,
-    initialMessages,
-  });
+export function ChatInterface({ sessionId }: { sessionId: string }) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [messageQueue, setMessageQueue] = useState<string[]>([]);
+  const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket>>();
+
+  // Connect WebSocket for real-time updates
+  useEffect(() => {
+    wsRef.current = createReconnectingWebSocket({
+      url: `${process.env.NEXT_PUBLIC_API_URL}/sessions/${sessionId}/websocket`,
+      onMessage: (data) => {
+        // Handle OpenCode events broadcast from DO
+        if (data.type === 'part') {
+          updateStreamingMessage(data.part);
+        }
+        if (data.type === 'session.idle') {
+          setIsStreaming(false);
+          finalizeStreamingMessage();
+        }
+      },
+      onStatusChange: (status) => {
+        console.log('WebSocket status:', status);
+      }
+    });
+
+    return () => wsRef.current?.disconnect();
+  }, [sessionId]);
 
   // Process queued messages when streaming completes
   useEffect(() => {
-    if (status === 'ready' && messageQueue.length > 0) {
+    if (!isStreaming && messageQueue.length > 0) {
       const nextMessage = messageQueue[0];
       setMessageQueue((q) => q.slice(1));
-      sendMessage({ content: nextMessage });
+      sendMessage(nextMessage);
     }
-  }, [status, messageQueue, sendMessage]);
+  }, [isStreaming, messageQueue]);
 
-  const handleSend = (content: string) => {
-    if (status === 'streaming') {
-      // Queue message for later
+  const sendMessage = async (content: string) => {
+    setIsStreaming(true);
+
+    // Add user message optimistically
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Start streaming assistant message
+    const assistantMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      parts: [],
+    };
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    // Send to API (SSE response)
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/sessions/${sessionId}/chat`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      }
+    );
+
+    // Note: Real-time updates come via WebSocket, not this response
+    // SSE here is for graceful degradation if WebSocket disconnects
+  };
+
+  const handleSend = useCallback((content: string) => {
+    if (isStreaming) {
       setMessageQueue((q) => [...q, content]);
     } else {
-      sendMessage({ content });
+      sendMessage(content);
     }
-  };
+  }, [isStreaming]);
+
+  const handleStop = useCallback(async () => {
+    // Send stop command to API
+    await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/sessions/${sessionId}/stop`,
+      { method: 'POST' }
+    );
+    setIsStreaming(false);
+  }, [sessionId]);
 
   return (
     <div className="flex flex-col h-full">
       <MessageList messages={messages} />
       <ChatInput
         onSend={handleSend}
-        onStop={stop}
-        isStreaming={status === 'streaming'}
+        onStop={handleStop}
+        isStreaming={isStreaming}
         queueCount={messageQueue.length}
       />
     </div>
@@ -583,17 +747,17 @@ export function createReconnectingWebSocket(options: WebSocketOptions) {
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| AI SDK RSC streamUI | AI SDK UI useChat | AI SDK 5.0 (2025) | RSC streaming paused; useChat is recommended |
+| Custom LLM integration | OpenCode SDK | 2025 | Full agent runtime with Build/Plan modes |
+| AI SDK custom tools | OpenCode built-in tools | 2025 | File ops, shell, code editing battle-tested |
 | KV storage in DOs | SQLite storage backend | 2024 GA | Relational queries, better performance, 30-day PITR |
 | Standard WebSocket API | WebSocket Hibernation API | 2023 | 10-100x cost reduction for idle connections |
-| AnthropicStream helper | @ai-sdk/anthropic provider | AI SDK 3.1 | Unified API, tool streaming, proper types |
 | D1 for session data | SQLite in Durable Objects | 2024 | Zero-latency colocated storage |
 
 **Deprecated/outdated:**
-- AnthropicStream: Legacy helper, incompatible with AI SDK 3.1+ functions
-- AI SDK RSC for interactive chat: Development paused, use AI SDK UI instead
+- AI SDK for agent apps: OpenCode SDK provides complete runtime
 - `ws.accept()` in DOs: Prevents hibernation, use `ctx.acceptWebSocket()` instead
 - KV storage backend for new DOs: SQLite is now recommended for all new namespaces
+- Direct Anthropic API calls: Use OpenCode for agent features (Build/Plan modes, tool execution)
 
 ## Open Questions
 
@@ -619,32 +783,35 @@ Things that couldn't be fully resolved:
    - What's unclear: Whether mode is per-session or per-message
    - Recommendation: Store mode in session metadata; persist across messages
 
+5. **OpenCode server deployment**
+   - What we know: SDK needs OpenCode server running
+   - What's unclear: Best deployment pattern for production (sidecar? separate service?)
+   - Recommendation: Start with auto-start in development; plan separate service for production
+
 ## Sources
 
 ### Primary (HIGH confidence)
+- [OpenCode SDK Documentation](https://opencode.ai/docs/sdk/) - SDK API, session management, events
 - [Cloudflare Durable Objects WebSocket Hibernation](https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/) - Full hibernation pattern
 - [Cloudflare Durable Objects SQLite Storage API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/) - sql.exec, schema, transactions
 - [Cloudflare Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/) - Design patterns, anti-patterns
-- [AI SDK useChat Reference](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat) - Hook API, tool handling
-- [AI SDK Anthropic Provider](https://ai-sdk.dev/providers/ai-sdk-providers/anthropic) - @ai-sdk/anthropic setup
-- [AI SDK Chatbot Tool Usage](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-tool-usage) - Tool call streaming, part states
-- [AI SDK Stopping Streams](https://ai-sdk.dev/docs/advanced/stopping-streams) - abortSignal, stop() patterns
 - [Hono Durable Objects Example](https://hono.dev/examples/cloudflare-durable-objects) - Integration pattern
 
 ### Secondary (MEDIUM confidence)
-- [DZone: Build Real-Time Apps With Cloudflare, Hono, Durable Objects](https://dzone.com/articles/serverless-websocket-real-time-apps) - Architecture patterns
+- [OpenCode SDK AI Provider](https://ai-sdk.dev/providers/community-providers/opencode-sdk) - Confirms tool limitations, validates direct SDK approach
+- [opencode-vibe GitHub](https://github.com/joelhooks/opencode-vibe) - Next.js + OpenCode reference implementation
 - [WebSocket Reconnection Strategies](https://dev.to/hexshift/robust-websocket-reconnection-strategies-in-javascript-with-exponential-backoff-40n1) - Backoff with jitter
 
 ### Tertiary (LOW confidence)
-- Community patterns for message queuing during streaming (no authoritative source found; implemented based on useChat status API)
+- Community patterns for message queuing during streaming (implemented based on observed patterns)
 
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH - All recommendations from official docs
-- Architecture: HIGH - Cloudflare and AI SDK official patterns
+- Standard stack: HIGH - OpenCode SDK official docs, Cloudflare official docs
+- Architecture: HIGH - Cloudflare patterns, OpenCode patterns documented
 - Pitfalls: HIGH - Documented in official best practices guides
-- Message queuing: MEDIUM - Based on useChat API but no official guide
+- Message queuing: MEDIUM - Based on common patterns, no official guide
 
 **Research date:** 2026-02-01
 **Valid until:** 2026-03-01 (30 days - stable technologies)

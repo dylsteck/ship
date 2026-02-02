@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { StatusIndicator, AgentStatus } from './status-indicator'
 import { PRPanel } from '../git/pr-panel'
 import { ModelBadge } from '@/components/model/model-selector'
+import { DiffViewer } from '../diff/diff-viewer'
 
 interface Task {
   id: string
@@ -45,6 +46,9 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
   const [tasks, setTasks] = useState<Task[]>([])
   const [showStatusDetails, setShowStatusDetails] = useState(false)
   const [gitState, setGitState] = useState<GitState | null>(null)
+  const [diff, setDiff] = useState<string | null>(null)
+  const [showDiff, setShowDiff] = useState(false)
+  const [diffLoading, setDiffLoading] = useState(false)
 
   // Fetch tasks
   useEffect(() => {
@@ -85,6 +89,35 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
     const interval = setInterval(loadGitState, 10000)
     return () => clearInterval(interval)
   }, [sessionId])
+
+  // Fetch diff when branch exists (commits made)
+  useEffect(() => {
+    if (!gitState?.branchName) {
+      setDiff(null)
+      return
+    }
+
+    async function loadDiff() {
+      setDiffLoading(true)
+      try {
+        const res = await fetch(`${API_URL}/chat/${sessionId}/git/diff`)
+        if (res.ok) {
+          const diffText = await res.text()
+          setDiff(diffText || null)
+        } else if (res.status === 404) {
+          // Endpoint doesn't exist yet - that's okay, will show placeholder
+          setDiff(null)
+        }
+      } catch (err) {
+        console.error('Failed to load diff:', err)
+        setDiff(null)
+      } finally {
+        setDiffLoading(false)
+      }
+    }
+
+    loadDiff()
+  }, [sessionId, gitState?.branchName])
 
   // Handle Mark Ready for Review action
   const handleMarkPRReady = async () => {
@@ -147,6 +180,31 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
         isDraft={gitState?.pr?.draft}
         onMarkReady={handleMarkPRReady}
       />
+
+      {/* Git Diff Viewer */}
+      {gitState?.branchName && (
+        <div className="border-b dark:border-gray-800">
+          <button
+            onClick={() => setShowDiff(!showDiff)}
+            className="w-full px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          >
+            {showDiff ? 'Hide' : 'View'} Diff
+          </button>
+          {showDiff && (
+            <div className="p-4 max-h-96 overflow-y-auto">
+              {diffLoading ? (
+                <div className="text-xs text-gray-500 dark:text-gray-400">Loading diff...</div>
+              ) : diff ? (
+                <DiffViewer diff={diff} />
+              ) : (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Diff available after commit. API endpoint may need to be implemented.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Active Tasks */}
       {activeTasks.length > 0 && (

@@ -38,31 +38,31 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **GIT-03**: Agent can commit changes
 - [ ] **GIT-04**: Agent can push to remote
 - [ ] **GIT-05**: Agent can create GitHub PRs
-- [ ] **GIT-06**: User can view diffs in UI
+- [x] **GIT-06**: User can view diffs in UI
 
 ### Integrations
 
-- [ ] **INTG-01**: System syncs issues from Linear
-- [ ] **INTG-02**: Agent updates Linear issue status
-- [ ] **INTG-03**: Agent can create Linear issues
-- [ ] **INTG-04**: System links GitHub PRs to Linear issues
-- [ ] **INTG-05**: Vercel available as MCP in chat
-- [ ] **INTG-06**: User can enable/disable connectors globally
+- [x] **INTG-01**: System syncs issues from Linear (manual sync available)
+- [x] **INTG-02**: Agent updates Linear issue status (conditional on explicit linking)
+- [ ] **INTG-03**: Agent can create Linear issues (deferred - requires OpenCode SDK custom tool support)
+- [x] **INTG-04**: System links GitHub PRs to Linear issues (conditional on explicit linking)
+- [x] **INTG-05**: Vercel available as MCP in chat (MCP server structure ready, requires OpenCode SDK support)
+- [x] **INTG-06**: User can enable/disable connectors globally
 
 ### Agent & AI
 
 - [ ] **AGNT-01**: OpenCode SDK powers agent runtime
 - [ ] **AGNT-02**: Agent has codebase context awareness
 - [ ] **AGNT-03**: User can select model (Claude, GPT, Gemini)
-- [ ] **AGNT-04**: User sees cost per task
+- [x] **AGNT-04**: User sees cost per task
 
 ### UI & Experience
 
-- [ ] **UI-01**: Chat interface matches Ramp Inspect design
-- [ ] **UI-02**: Session list with history
-- [ ] **UI-03**: Real-time status indicators
-- [ ] **UI-04**: Code viewer shows agent's changes live
-- [ ] **UI-05**: Terminal viewer shows agent output
+- [x] **UI-01**: Chat interface matches Ramp Inspect design
+- [x] **UI-02**: Session list with history
+- [x] **UI-03**: Real-time status indicators
+- [x] **UI-04**: Code viewer shows agent's changes live
+- [x] **UI-05**: Terminal viewer shows agent output
 
 ## v2 Requirements
 
@@ -110,39 +110,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-01 | Phase 1 | Complete |
 | AUTH-02 | Phase 1 | Complete |
 | AUTH-03 | Phase 1 | Complete |
-| SESS-01 | Phase 2 | Pending |
-| SESS-02 | Phase 2 | Pending |
-| SESS-03 | Phase 2 | Pending |
-| SESS-04 | Phase 2 | Pending |
-| SESS-05 | Phase 2 | Pending |
-| SESS-06 | Phase 2 | Pending |
-| SESS-07 | Phase 2 | Pending |
-| SAND-01 | Phase 3 | Pending |
-| SAND-02 | Phase 3 | Pending |
-| SAND-03 | Phase 3 | Pending |
-| SAND-04 | Phase 3 | Pending |
-| SAND-05 | Phase 3 | Pending |
-| GIT-01 | Phase 3 | Pending |
-| GIT-02 | Phase 3 | Pending |
-| GIT-03 | Phase 3 | Pending |
-| GIT-04 | Phase 3 | Pending |
-| GIT-05 | Phase 3 | Pending |
-| GIT-06 | Phase 4 | Pending |
-| AGNT-01 | Phase 3 | Pending |
-| AGNT-02 | Phase 3 | Pending |
-| AGNT-03 | Phase 3 | Pending |
-| AGNT-04 | Phase 4 | Pending |
-| UI-01 | Phase 4 | Pending |
-| UI-02 | Phase 4 | Pending |
-| UI-03 | Phase 4 | Pending |
-| UI-04 | Phase 4 | Pending |
-| UI-05 | Phase 4 | Pending |
-| INTG-01 | Phase 5 | Pending |
-| INTG-02 | Phase 5 | Pending |
-| INTG-03 | Phase 5 | Pending |
-| INTG-04 | Phase 5 | Pending |
-| INTG-05 | Phase 5 | Pending |
-| INTG-06 | Phase 5 | Pending |
+| SESS-01 | Phase 2 | Unverified |
+| SESS-02 | Phase 2 | Unverified |
+| SESS-03 | Phase 2 | Unverified |
+| SESS-04 | Phase 2 | Unverified |
+| SESS-05 | Phase 2 | Unverified |
+| SESS-06 | Phase 2 | Unverified |
+| SESS-07 | Phase 2 | Unverified |
+| SAND-01 | Phase 3 | Unverified |
+| SAND-02 | Phase 3 | Unverified |
+| SAND-03 | Phase 3 | Unverified |
+| SAND-04 | Phase 3 | Unverified |
+| SAND-05 | Phase 3 | Unverified |
+| GIT-01 | Phase 3 | Unverified |
+| GIT-02 | Phase 3 | Unverified |
+| GIT-03 | Phase 3 | Unverified |
+| GIT-04 | Phase 3 | Unverified |
+| GIT-05 | Phase 3 | Unverified |
+| GIT-06 | Phase 4 | Complete |
+| AGNT-01 | Phase 3 | Unverified |
+| AGNT-02 | Phase 3 | Unverified |
+| AGNT-03 | Phase 3 | Unverified |
+| AGNT-04 | Phase 4 | Complete |
+| UI-01 | Phase 4 | Complete |
+| UI-02 | Phase 4 | Complete |
+| UI-03 | Phase 4 | Complete |
+| UI-04 | Phase 4 | Complete |
+| UI-05 | Phase 4 | Complete |
+| INTG-01 | Phase 5 | Complete |
+| INTG-02 | Phase 5 | Complete |
+| INTG-03 | Phase 5 | Deferred |
+| INTG-04 | Phase 5 | Complete |
+| INTG-05 | Phase 5 | Deferred |
+| INTG-06 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 36 total

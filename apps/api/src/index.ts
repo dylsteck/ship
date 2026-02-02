@@ -7,6 +7,10 @@ import chat from './routes/chat'
 import sandbox from './routes/sandbox'
 import git from './routes/git'
 import models from './routes/models'
+import accounts from './routes/accounts'
+import linear from './routes/linear'
+import connectors from './routes/connectors'
+import mcp from './routes/mcp'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -22,6 +26,10 @@ app.route('/chat', chat)
 app.route('/sandbox', sandbox)
 app.route('/git', git)
 app.route('/models', models)
+app.route('/accounts', accounts)
+app.route('/linear', linear)
+app.route('/connectors', connectors)
+app.route('/mcp', mcp)
 
 // Root endpoint
 app.get('/', (c) => {

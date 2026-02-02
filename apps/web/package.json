@@ -10,6 +10,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@git-diff-view/file": "^0.0.32",
+    "@git-diff-view/react": "^0.0.32",
+    "@monaco-editor/react": "^4.7.0",
     "@ship/types": "workspace:*",
     "@ship/ui": "workspace:*",
     "@xterm/addon-fit": "^0.11.0",
