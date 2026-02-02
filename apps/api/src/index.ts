@@ -26,3 +26,6 @@ app.get('/', (c) => {
 })
 
 export default app
+
+// Export Durable Objects for Cloudflare binding
+export { SessionDO } from './durable-objects/session'
