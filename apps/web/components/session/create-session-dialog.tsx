@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { ModelSelector } from '@/components/model/model-selector'
 
 interface CreateSessionDialogProps {
   isOpen: boolean
   onClose: () => void
-  onCreate: (data: { repoOwner: string; repoName: string }) => Promise<void>
+  onCreate: (data: { repoOwner: string; repoName: string; model?: string }) => Promise<void>
 }
 
 /**
@@ -19,6 +20,7 @@ interface CreateSessionDialogProps {
 export function CreateSessionDialog({ isOpen, onClose, onCreate }: CreateSessionDialogProps) {
   const [repoOwner, setRepoOwner] = useState('')
   const [repoName, setRepoName] = useState('')
+  const [selectedModel, setSelectedModel] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -33,10 +35,15 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate }: CreateSession
 
     startTransition(async () => {
       try {
-        await onCreate({ repoOwner: repoOwner.trim(), repoName: repoName.trim() })
+        await onCreate({
+          repoOwner: repoOwner.trim(),
+          repoName: repoName.trim(),
+          model: selectedModel || undefined,
+        })
         // Reset form on success
         setRepoOwner('')
         setRepoName('')
+        setSelectedModel('')
         onClose()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to create session')
@@ -48,6 +55,7 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate }: CreateSession
     if (!isPending) {
       setRepoOwner('')
       setRepoName('')
+      setSelectedModel('')
       setError(null)
       onClose()
     }
@@ -108,6 +116,26 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate }: CreateSession
               disabled={isPending}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
             />
+          </div>
+
+          <div>
+            <label
+              htmlFor="model-select"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              AI Model (optional)
+            </label>
+            <div className="mt-1">
+              <ModelSelector
+                value={selectedModel}
+                onChange={setSelectedModel}
+                disabled={isPending}
+                placeholder="Use default model"
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Leave blank to use your default model from settings
+            </p>
           </div>
 
           {error && (

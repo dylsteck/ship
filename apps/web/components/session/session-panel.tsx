@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { StatusIndicator, AgentStatus } from './status-indicator'
 import { PRPanel } from '../git/pr-panel'
+import { ModelBadge } from '@/components/model/model-selector'
 
 interface Task {
   id: string
@@ -17,6 +18,8 @@ interface SessionInfo {
   repoOwner: string
   repoName: string
   branch?: string
+  model?: string
+  modelName?: string
 }
 
 interface SessionPanelProps {
@@ -128,6 +131,14 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
           onToggleExpand={() => setShowStatusDetails(!showStatusDetails)}
         />
       </div>
+
+      {/* AI Model */}
+      {sessionInfo.model && (
+        <div className="p-4 border-b dark:border-gray-800">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">AI Model</h3>
+          <ModelBadge modelId={sessionInfo.model} modelName={sessionInfo.modelName} />
+        </div>
+      )}
 
       {/* Pull Request Panel */}
       <PRPanel

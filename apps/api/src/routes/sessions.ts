@@ -30,6 +30,7 @@ interface CreateSessionInput {
   userId: string
   repoOwner: string
   repoName: string
+  model?: string
 }
 
 const sessions = new Hono<{ Bindings: Env }>()
@@ -102,6 +103,11 @@ sessions.post('/', async (c) => {
     await doStub.setSessionMeta('repoOwner', input.repoOwner)
     await doStub.setSessionMeta('repoName', input.repoName)
     await doStub.setSessionMeta('createdAt', now.toString())
+
+    // Store model override if provided
+    if (input.model) {
+      await doStub.setSessionMeta('model', input.model)
+    }
 
     // Auto-provision E2B sandbox for this session
     let sandboxId: string | null = null
