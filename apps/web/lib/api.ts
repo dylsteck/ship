@@ -88,3 +88,65 @@ export async function deleteSession(id: string): Promise<void> {
     throw new Error('Failed to delete session')
   }
 }
+
+// Message types for chat - aligned with message-list.tsx
+export interface Message {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  parts?: string // JSON string of tool parts from API
+  createdAt: number
+  // Error message fields
+  type?: 'error'
+  errorCategory?: 'transient' | 'persistent' | 'user-action' | 'fatal'
+  retryable?: boolean
+}
+
+export interface MessagePart {
+  type: 'text' | 'tool-call' | 'tool-result'
+  content?: string
+  toolName?: string
+  toolInput?: unknown
+  toolOutput?: unknown
+  state?: 'pending' | 'running' | 'complete' | 'error'
+}
+
+/**
+ * Send a chat message and get streaming response
+ */
+export async function sendChatMessage(sessionId: string, content: string): Promise<Response> {
+  return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}
+
+/**
+ * Get chat messages with pagination
+ */
+export async function getChatMessages(
+  sessionId: string,
+  options?: { limit?: number; before?: string },
+): Promise<Message[]> {
+  const params = new URLSearchParams()
+  if (options?.limit) params.set('limit', options.limit.toString())
+  if (options?.before) params.set('before', options.before)
+
+  const res = await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/messages?${params}`, { cache: 'no-store' })
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch messages')
+  }
+
+  return res.json()
+}
+
+/**
+ * Stop chat streaming
+ */
+export async function stopChatStream(sessionId: string): Promise<void> {
+  await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/stop`, {
+    method: 'POST',
+  })
+}

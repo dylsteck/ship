@@ -12,9 +12,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 interface ChatInterfaceProps {
   sessionId: string
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void
+  onOpenVSCode?: () => void
+  onOpenTerminal?: () => void
 }
 
-export function ChatInterface({ sessionId, onStatusChange }: ChatInterfaceProps) {
+export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenTerminal }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
@@ -46,23 +48,43 @@ export function ChatInterface({ sessionId, onStatusChange }: ChatInterfaceProps)
       onMessage: (data: unknown) => {
         const event = data as {
           type: string
-          message?: Message
+          message?: Message | string
           messageId?: string
           parts?: string
+          category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
+          retryable?: boolean
         }
 
         if (event.type === 'message') {
           // New message from another client or server
+          const msg = event.message as Message
           setMessages((prev) => {
-            const exists = prev.some((m) => m.id === event.message?.id)
+            const exists = prev.some((m) => m.id === msg?.id)
             if (exists) return prev
-            return [...prev, event.message!]
+            return [...prev, msg]
           })
         }
 
         if (event.type === 'message-parts') {
           // Update streaming message parts
           setMessages((prev) => prev.map((m) => (m.id === event.messageId ? { ...m, parts: event.parts } : m)))
+        }
+
+        if (event.type === 'error') {
+          // Error event from agent execution
+          const errorMessage: Message = {
+            id: `error-${Date.now()}`,
+            role: 'system',
+            content: typeof event.message === 'string' ? event.message : 'An error occurred',
+            type: 'error',
+            errorCategory: event.category || 'persistent',
+            retryable: event.retryable || false,
+            createdAt: Math.floor(Date.now() / 1000),
+          }
+          setMessages((prev) => [...prev, errorMessage])
+
+          // Update status to error
+          onStatusChange?.('error')
         }
       },
       onStatusChange: setWsStatus,
@@ -205,6 +227,29 @@ export function ChatInterface({ sessionId, onStatusChange }: ChatInterfaceProps)
     }
   }, [sessionId, messages])
 
+  const handleRetryError = useCallback(
+    async (messageId: string) => {
+      // Find the error message to retry
+      const errorMsg = messages.find((m) => m.id === messageId)
+      if (!errorMsg) return
+
+      // Remove the error message
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+
+      // Call API to retry the failed operation
+      try {
+        await fetch(`${API_URL}/sessions/${sessionId}/retry`, {
+          method: 'POST',
+        })
+      } catch (err) {
+        console.error('Retry failed:', err)
+        // Re-add error message if retry fails
+        setMessages((prev) => [...prev, errorMsg])
+      }
+    },
+    [sessionId, messages],
+  )
+
   return (
     <div className="flex h-full flex-col bg-white dark:bg-gray-900">
       {/* Connection status indicator */}
@@ -214,7 +259,15 @@ export function ChatInterface({ sessionId, onStatusChange }: ChatInterfaceProps)
         </div>
       )}
 
-      <MessageList messages={messages} isStreaming={isStreaming} onLoadEarlier={handleLoadEarlier} hasMore={hasMore} />
+      <MessageList
+        messages={messages}
+        isStreaming={isStreaming}
+        onLoadEarlier={handleLoadEarlier}
+        hasMore={hasMore}
+        onRetryError={handleRetryError}
+        onOpenVSCode={onOpenVSCode}
+        onOpenTerminal={onOpenTerminal}
+      />
 
       <ChatInput onSend={handleSend} onStop={handleStop} isStreaming={isStreaming} queueCount={messageQueue.length} />
     </div>
