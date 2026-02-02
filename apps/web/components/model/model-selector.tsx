@@ -1,14 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { Select, SelectGroup, SelectItem, Badge, cn } from '@ship/ui'
+import { useModels, type ModelInfo } from '@/lib/api'
 
-export interface ModelInfo {
-  id: string
-  name: string
-  provider: string
-  description?: string
-}
+// Re-export type for backward compatibility
+export type { ModelInfo }
 
 interface ModelSelectorProps {
   value: string
@@ -18,8 +14,6 @@ interface ModelSelectorProps {
   placeholder?: string
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
-
 export function ModelSelector({
   value,
   onChange,
@@ -27,33 +21,13 @@ export function ModelSelector({
   availableModels: providedModels,
   placeholder = 'Select a model',
 }: ModelSelectorProps) {
-  const [models, setModels] = useState<ModelInfo[]>(providedModels || [])
-  const [loading, setLoading] = useState(!providedModels)
-  const [error, setError] = useState<string | null>(null)
+  // Use SWR hook if no models provided
+  const { models: fetchedModels, groupedByProvider, isLoading, isError } = useModels()
+  
+  // Use provided models or fetched models
+  const models = providedModels || fetchedModels
 
-  useEffect(() => {
-    if (providedModels) {
-      setModels(providedModels)
-      setLoading(false)
-      return
-    }
-
-    async function fetchModels() {
-      try {
-        setLoading(true)
-        const res = await fetch(`${API_URL}/models/available`)
-        if (!res.ok) throw new Error('Failed to fetch models')
-        setModels(await res.json())
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load')
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchModels()
-  }, [providedModels])
-
-  if (loading) {
+  if (isLoading && !providedModels) {
     return (
       <Select value="" onValueChange={() => {}} disabled>
         <SelectItem value="">Loading models...</SelectItem>
@@ -61,7 +35,7 @@ export function ModelSelector({
     )
   }
 
-  if (error) {
+  if (isError && !providedModels) {
     return (
       <Select value="" onValueChange={() => {}} disabled>
         <SelectItem value="">Error loading models</SelectItem>
@@ -77,11 +51,14 @@ export function ModelSelector({
     )
   }
 
-  const groupedModels = models.reduce<Record<string, ModelInfo[]>>((acc, model) => {
-    if (!acc[model.provider]) acc[model.provider] = []
-    acc[model.provider].push(model)
-    return acc
-  }, {})
+  // Use pre-grouped if from hook, otherwise group manually
+  const groupedModels = providedModels 
+    ? models.reduce<Record<string, ModelInfo[]>>((acc, model) => {
+        if (!acc[model.provider]) acc[model.provider] = []
+        acc[model.provider].push(model)
+        return acc
+      }, {})
+    : groupedByProvider
 
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>

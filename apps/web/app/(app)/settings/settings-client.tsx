@@ -1,64 +1,45 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ModelSelector, ModelBadge, type ModelInfo } from '@/components/model/model-selector'
+import { ModelSelector, ModelBadge } from '@/components/model/model-selector'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@ship/ui'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+import { useModels, useDefaultModel, useSetDefaultModel } from '@/lib/api'
 
 export function SettingsClient({ userId }: { userId: string }) {
-  const [defaultModel, setDefaultModel] = useState<string>('')
   const [selectedModel, setSelectedModel] = useState<string>('')
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
-  const [isPending, startTransition] = useTransition()
 
+  // Use SWR hooks
+  const { models: availableModels, isLoading: modelsLoading } = useModels()
+  const { defaultModelId, isLoading: defaultLoading, mutate: mutateDefault } = useDefaultModel(userId)
+  const { setDefaultModel: saveDefaultModel, isSetting } = useSetDefaultModel()
+
+  const loading = modelsLoading || defaultLoading
+
+  // Sync selected model with default model when loaded
   useEffect(() => {
-    async function loadSettings() {
-      try {
-        setLoading(true)
-        const [defaultRes, modelsRes] = await Promise.all([
-          fetch(`${API_URL}/models/default?userId=${userId}`),
-          fetch(`${API_URL}/models/available`)
-        ])
-        if (!defaultRes.ok || !modelsRes.ok) throw new Error('Failed to fetch settings')
-        const defaultData = await defaultRes.json()
-        setDefaultModel(defaultData.model)
-        setSelectedModel(defaultData.model)
-        setAvailableModels(await modelsRes.json())
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load settings')
-      } finally {
-        setLoading(false)
-      }
+    if (defaultModelId && !selectedModel) {
+      setSelectedModel(defaultModelId)
     }
-    loadSettings()
-  }, [userId])
+  }, [defaultModelId, selectedModel])
 
-  const handleSave = () => {
-    startTransition(async () => {
-      try {
-        setSaveSuccess(false); setError(null)
-        const res = await fetch(`${API_URL}/models/default`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, model: selectedModel }),
-        })
-        if (!res.ok) throw new Error('Failed to save')
-        setDefaultModel(selectedModel)
-        setSaveSuccess(true)
-        setTimeout(() => setSaveSuccess(false), 3000)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to save')
-      }
-    })
+  const handleSave = async () => {
+    try {
+      setSaveSuccess(false)
+      setError(null)
+      await saveDefaultModel({ userId, modelId: selectedModel })
+      mutateDefault() // Refresh default model
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    }
   }
 
-  const hasChanges = selectedModel !== defaultModel
+  const hasChanges = selectedModel !== (defaultModelId || '')
 
   if (loading) {
     return (
@@ -119,7 +100,7 @@ export function SettingsClient({ userId }: { userId: string }) {
           <CardContent className="space-y-3">
             <div>
               <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">Default Model</label>
-              <ModelSelector value={selectedModel} onChange={setSelectedModel} availableModels={availableModels} disabled={isPending} />
+              <ModelSelector value={selectedModel} onChange={setSelectedModel} availableModels={availableModels} disabled={isSetting} />
             </div>
             {selectedModel && (
               <div>
@@ -130,8 +111,8 @@ export function SettingsClient({ userId }: { userId: string }) {
             {error && <div className="rounded-md bg-destructive/10 px-3 py-2"><p className="text-[11px] text-destructive">{error}</p></div>}
             {saveSuccess && <div className="rounded-md bg-emerald-500/10 px-3 py-2"><p className="text-[11px] text-emerald-600">Saved!</p></div>}
             <div className="flex justify-end pt-1">
-              <Button size="sm" onClick={handleSave} disabled={!hasChanges || isPending}>
-                {isPending ? 'Saving...' : 'Save'}
+              <Button size="sm" onClick={handleSave} disabled={!hasChanges || isSetting}>
+                {isSetting ? 'Saving...' : 'Save'}
               </Button>
             </div>
           </CardContent>

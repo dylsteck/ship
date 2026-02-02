@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { Button, Input, Card, Badge, cn } from '@ship/ui'
 import { ModelSelector } from '@/components/model/model-selector'
+import { useFilteredGitHubRepos } from '@/lib/api'
 
 interface CreateSessionDialogProps {
   isOpen: boolean
@@ -11,50 +12,20 @@ interface CreateSessionDialogProps {
   userId: string
 }
 
-interface GitHubRepo {
-  id: number
-  name: string
-  fullName: string
-  owner: string
-  description: string | null
-  private: boolean
-  updatedAt: string
-  language: string | null
-  stars: number
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
-
 export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: CreateSessionDialogProps) {
   const [selectedRepo, setSelectedRepo] = useState<string>('')
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [repos, setRepos] = useState<GitHubRepo[]>([])
-  const [reposLoading, setReposLoading] = useState(false)
-  const [reposError, setReposError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
-  useEffect(() => {
-    if (isOpen && userId && repos.length === 0) fetchRepos()
-  }, [isOpen, userId])
-
-  const fetchRepos = async () => {
-    setReposLoading(true)
-    setReposError(null)
-    try {
-      const res = await fetch(`${API_URL}/accounts/github/repos/${userId}`)
-      if (!res.ok) {
-        setReposError(res.status === 404 ? 'GitHub account not connected. Please re-authenticate.' : 'Failed to fetch repos')
-        return
-      }
-      setRepos(await res.json())
-    } catch {
-      setReposError('Failed to load repositories')
-    } finally {
-      setReposLoading(false)
-    }
-  }
+  // Use SWR hook for repos - only fetch when dialog is open
+  const { repos: filteredRepos, allRepos, isLoading: reposLoading, isError, mutate } = useFilteredGitHubRepos(
+    isOpen ? userId : undefined,
+    searchQuery
+  )
+  
+  const reposError = isError ? 'Failed to load repositories' : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,10 +45,6 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
   const handleClose = () => {
     if (!isPending) { setSelectedRepo(''); setSelectedModel(''); setSearchQuery(''); setError(null); onClose() }
   }
-
-  const filteredRepos = repos.filter(repo => 
-    searchQuery === '' || repo.name.toLowerCase().includes(searchQuery.toLowerCase()) || repo.fullName.toLowerCase().includes(searchQuery.toLowerCase())
-  )
 
   if (!isOpen) return null
 
@@ -111,7 +78,7 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                 ) : reposError ? (
                   <div className="p-3 text-center">
                     <p className="text-[11px] text-destructive mb-1.5">{reposError}</p>
-                    <button type="button" onClick={fetchRepos} className="text-[11px] text-muted-foreground hover:text-foreground underline">Try again</button>
+                    <button type="button" onClick={() => mutate()} className="text-[11px] text-muted-foreground hover:text-foreground underline">Try again</button>
                   </div>
                 ) : filteredRepos.length === 0 ? (
                   <div className="p-3 text-center">
