@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { StatusIndicator, AgentStatus } from './status-indicator'
+import { PRPanel } from '../git/pr-panel'
 
 interface Task {
   id: string
@@ -25,11 +26,22 @@ interface SessionPanelProps {
   currentTool?: string
 }
 
+interface GitState {
+  branchName: string | null
+  pr: {
+    number: number
+    url: string
+    draft: boolean
+  } | null
+  repoUrl: string | null
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
 export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool }: SessionPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showStatusDetails, setShowStatusDetails] = useState(false)
+  const [gitState, setGitState] = useState<GitState | null>(null)
 
   // Fetch tasks
   useEffect(() => {
@@ -51,6 +63,44 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
       return () => clearInterval(interval)
     }
   }, [sessionId, agentStatus])
+
+  // Fetch git state (branch, PR info)
+  useEffect(() => {
+    async function loadGitState() {
+      try {
+        const res = await fetch(`${API_URL}/chat/${sessionId}/git/state`)
+        if (res.ok) {
+          setGitState(await res.json())
+        }
+      } catch (err) {
+        console.error('Failed to load git state:', err)
+      }
+    }
+    loadGitState()
+
+    // Poll every 10 seconds for PR updates
+    const interval = setInterval(loadGitState, 10000)
+    return () => clearInterval(interval)
+  }, [sessionId])
+
+  // Handle Mark Ready for Review action
+  const handleMarkPRReady = async () => {
+    try {
+      const res = await fetch(`${API_URL}/chat/${sessionId}/git/pr/ready`, {
+        method: 'POST',
+      })
+      if (res.ok) {
+        // Refresh git state immediately
+        const stateRes = await fetch(`${API_URL}/chat/${sessionId}/git/state`)
+        if (stateRes.ok) {
+          setGitState(await stateRes.json())
+        }
+      }
+    } catch (err) {
+      console.error('Failed to mark PR ready:', err)
+      throw err
+    }
+  }
 
   const activeTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'running')
   const completedTasks = tasks.filter((t) => t.status === 'complete')
@@ -78,6 +128,14 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
           onToggleExpand={() => setShowStatusDetails(!showStatusDetails)}
         />
       </div>
+
+      {/* Pull Request Panel */}
+      <PRPanel
+        prNumber={gitState?.pr?.number}
+        prUrl={gitState?.pr?.url}
+        isDraft={gitState?.pr?.draft}
+        onMarkReady={handleMarkPRReady}
+      />
 
       {/* Active Tasks */}
       {activeTasks.length > 0 && (
