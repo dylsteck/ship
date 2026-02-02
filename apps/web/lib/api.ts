@@ -96,8 +96,8 @@ export interface Message {
   content: string
   parts?: string // JSON string of tool parts from API
   createdAt: number
-  // Error message fields
-  type?: 'error'
+  // Message type fields
+  type?: 'error' | 'pr-notification'
   errorCategory?: 'transient' | 'persistent' | 'user-action' | 'fatal'
   retryable?: boolean
 }

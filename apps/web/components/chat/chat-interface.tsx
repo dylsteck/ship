@@ -57,6 +57,10 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
           parts?: string
           category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
           retryable?: boolean
+          prUrl?: string
+          prNumber?: number
+          status?: string
+          details?: string
         }
 
         if (event.type === 'message') {

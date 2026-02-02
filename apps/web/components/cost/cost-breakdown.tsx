@@ -1,6 +1,6 @@
 'use client'
 
-import { CostBreakdown } from '@/lib/cost-tracker'
+import type { CostBreakdown } from '@/lib/cost-tracker'
 
 interface CostBreakdownProps {
   breakdown?: CostBreakdown

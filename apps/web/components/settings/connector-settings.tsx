@@ -175,9 +175,9 @@ export function ConnectorSettings({ userId }: ConnectorSettingsProps) {
                   </span>
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => handleDisconnect(connector.name)}
                     disabled={isPending}
+                    className="text-xs px-2 py-1"
                   >
                     Disconnect
                   </Button>
