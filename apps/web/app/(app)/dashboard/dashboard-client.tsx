@@ -258,7 +258,7 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
           <main className="flex-1 flex flex-col items-center justify-center p-6 relative z-10">
             <div className="w-full max-w-[540px] space-y-6">
               {/* Input Card - ChatGPT style */}
-              <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+              <div className="rounded-3xl border border-border/60 bg-card shadow-sm overflow-hidden transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-foreground/10">
                 {/* Text input area */}
                 <div className="p-4">
                   <textarea
@@ -266,12 +266,12 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     rows={3}
-                    className="w-full min-h-[80px] resize-none bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+                    className="w-full min-h-[88px] resize-none bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none"
                   />
                 </div>
 
                 {/* Bottom bar with controls */}
-                <div className="px-3 pb-3 flex items-center justify-between">
+                <div className="px-3 py-2 flex items-center justify-between border-t border-border/60 bg-muted/20">
                   {/* Left side: Add button and repo selector */}
                   <div className="flex items-center gap-1">
                     <DropdownMenu>
