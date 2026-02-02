@@ -24,6 +24,24 @@ import {
   parseRepoUrl,
   type CreatePullRequestParams,
 } from './github'
+import {
+  executeWithRetry,
+  classifyError,
+  sanitizeError,
+  ErrorCategory,
+  type ErrorDetails,
+} from './error-handler'
+
+/**
+ * Error event callback
+ */
+export interface ErrorEvent {
+  error: Error
+  category: ErrorCategory
+  context: string
+  retryable: boolean
+  attempt: number
+}
 
 /**
  * Agent executor configuration
@@ -34,6 +52,7 @@ export interface AgentExecutorConfig {
   githubToken: string
   repoUrl: string
   gitUser: GitUser
+  onError?: (event: ErrorEvent) => void
 }
 
 /**
@@ -55,7 +74,7 @@ export interface AgentResponse {
 
 /**
  * AgentExecutor class
- * Manages agent execution with integrated Git workflow
+ * Manages agent execution with integrated Git workflow and error handling
  */
 export class AgentExecutor {
   private sessionDO: SessionDO
@@ -65,6 +84,8 @@ export class AgentExecutor {
   private gitUser: GitUser
   private sessionId: string
   private repoPath: string = '/home/user/repo'
+  private onError?: (event: ErrorEvent) => void
+  private isPaused: boolean = false
 
   constructor(config: AgentExecutorConfig) {
     this.sessionDO = config.sessionDO
@@ -72,10 +93,34 @@ export class AgentExecutor {
     this.githubClient = new GitHubClient(config.githubToken)
     this.repoUrl = config.repoUrl
     this.gitUser = config.gitUser
+    this.onError = config.onError
 
     // Extract session ID from SessionDO context
     // Note: We'll need to pass this explicitly in the config
     this.sessionId = crypto.randomUUID() // Placeholder - should be passed in config
+  }
+
+  /**
+   * Pause agent execution
+   * Called when persistent error occurs
+   */
+  pause(): void {
+    this.isPaused = true
+  }
+
+  /**
+   * Resume agent execution
+   * Called after user addresses persistent error
+   */
+  resume(): void {
+    this.isPaused = false
+  }
+
+  /**
+   * Check if agent is paused
+   */
+  get paused(): boolean {
+    return this.isPaused
   }
 
   /**
@@ -86,28 +131,42 @@ export class AgentExecutor {
    * @returns Execution context with branch info
    */
   async executeTask(taskDescription: string): Promise<ExecutionContext> {
-    try {
-      // Generate branch name from task + session
-      const branchName = generateBranchName(taskDescription, this.sessionId)
+    return executeWithRetry(
+      async () => {
+        // Generate branch name from task + session
+        const branchName = generateBranchName(taskDescription, this.sessionId)
 
-      // Create branch in sandbox
-      await createBranch(this.sandbox, branchName, this.repoPath)
+        // Create branch in sandbox
+        await createBranch(this.sandbox, branchName, this.repoPath)
 
-      // Store branch name in SessionDO
-      await this.sessionDO.setBranchName(branchName)
+        // Store branch name in SessionDO
+        await this.sessionDO.setBranchName(branchName)
 
-      // Store repo URL in SessionDO
-      await this.sessionDO.setRepoUrl(this.repoUrl)
+        // Store repo URL in SessionDO
+        await this.sessionDO.setRepoUrl(this.repoUrl)
 
-      return {
-        branchName,
-        repoPath: this.repoPath,
-        sessionId: this.sessionId,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      throw new Error(`Failed to setup task execution: ${message}`)
-    }
+        return {
+          branchName,
+          repoPath: this.repoPath,
+          sessionId: this.sessionId,
+        }
+      },
+      {
+        operationName: 'Create branch',
+        onError: (error, attempt) => {
+          const details = classifyError(error)
+          this.emitError(error, details.category, 'Create branch', attempt)
+
+          // Pause on persistent errors
+          if (details.category === ErrorCategory.Persistent || details.category === ErrorCategory.Fatal) {
+            this.pause()
+          }
+        },
+        onRetry: (attempt, delay) => {
+          console.log(`Retrying branch creation (attempt ${attempt}, delay ${delay}ms)`)
+        },
+      },
+    )
   }
 
   /**
@@ -122,8 +181,14 @@ export class AgentExecutor {
       return
     }
 
+    // Skip if paused
+    if (this.isPaused) {
+      console.log('Agent paused, skipping git workflow')
+      return
+    }
+
     try {
-      // Commit changes
+      // Commit changes with retry
       const commitHash = await this.commitChanges(response.summary)
 
       // Get branch name from SessionDO
@@ -132,19 +197,23 @@ export class AgentExecutor {
         throw new Error('No branch name set - call executeTask first')
       }
 
-      // Push to remote
-      await pushBranch(
-        this.sandbox,
-        branchName,
-        this.githubClient['octokit'].auth as string, // Access token from client
-        this.repoPath,
-      )
+      // Push to remote with retry
+      await this.pushWithRetry(branchName)
 
       console.log(`Committed and pushed: ${commitHash}`)
     } catch (error) {
       // Log error but don't fail agent execution
-      console.error('Git workflow error:', error)
-      // Error will be visible in chat as system message
+      const sanitized = sanitizeError(error)
+      console.error('Git workflow error:', sanitized)
+
+      const details = classifyError(error)
+      const err = error instanceof Error ? error : new Error(String(error))
+      this.emitError(err, details.category, 'Git workflow', 0)
+
+      // Pause on persistent errors
+      if (details.category === ErrorCategory.Persistent || details.category === ErrorCategory.Fatal) {
+        this.pause()
+      }
     }
   }
 
@@ -156,28 +225,69 @@ export class AgentExecutor {
    * @returns Commit hash
    */
   async commitChanges(message: string): Promise<string> {
-    try {
-      // Commit changes in sandbox
-      const commitHash = await commitChanges(
-        this.sandbox,
-        message,
-        this.gitUser,
-        this.repoPath,
-      )
+    return executeWithRetry(
+      async () => {
+        // Commit changes in sandbox
+        const commitHash = await commitChanges(this.sandbox, message, this.gitUser, this.repoPath)
 
-      // Check if this is the first commit
-      const isFirstCommit = await this.sessionDO.markFirstCommit()
+        // Check if this is the first commit
+        const isFirstCommit = await this.sessionDO.markFirstCommit()
 
-      // Auto-create PR on first commit
-      if (isFirstCommit) {
-        await this.createPullRequest(message)
-      }
+        // Auto-create PR on first commit
+        if (isFirstCommit) {
+          await this.createPullRequest(message)
+        }
 
-      return commitHash
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      throw new Error(`Failed to commit changes: ${message}`)
-    }
+        return commitHash
+      },
+      {
+        operationName: 'Commit changes',
+        onError: (error, attempt) => {
+          const details = classifyError(error)
+          this.emitError(error, details.category, 'Commit changes', attempt)
+
+          // Pause on persistent errors
+          if (details.category === ErrorCategory.Persistent || details.category === ErrorCategory.Fatal) {
+            this.pause()
+          }
+        },
+        onRetry: (attempt, delay) => {
+          console.log(`Retrying commit (attempt ${attempt}, delay ${delay}ms)`)
+        },
+      },
+    )
+  }
+
+  /**
+   * Push branch with retry logic
+   *
+   * @param branchName - Branch name to push
+   */
+  private async pushWithRetry(branchName: string): Promise<void> {
+    return executeWithRetry(
+      async () => {
+        // Get token from github client
+        const token = await this.githubClient['octokit'].auth()
+        const tokenString = typeof token === 'string' ? token : (token as { token: string }).token
+
+        await pushBranch(this.sandbox, branchName, tokenString, this.repoPath)
+      },
+      {
+        operationName: 'Push to remote',
+        onError: (error, attempt) => {
+          const details = classifyError(error)
+          this.emitError(error, details.category, 'Push to remote', attempt)
+
+          // Pause on persistent errors (e.g., permission denied)
+          if (details.category === ErrorCategory.Persistent || details.category === ErrorCategory.Fatal) {
+            this.pause()
+          }
+        },
+        onRetry: (attempt, delay) => {
+          console.log(`Retrying push (attempt ${attempt}, delay ${delay}ms)`)
+        },
+      },
+    )
   }
 
   /**
@@ -188,36 +298,51 @@ export class AgentExecutor {
    */
   private async createPullRequest(taskDescription: string): Promise<void> {
     try {
-      // Get branch name from SessionDO
-      const branchName = await this.sessionDO.getBranchName()
-      if (!branchName) {
-        throw new Error('No branch name set')
-      }
+      await executeWithRetry(
+        async () => {
+          // Get branch name from SessionDO
+          const branchName = await this.sessionDO.getBranchName()
+          if (!branchName) {
+            throw new Error('No branch name set')
+          }
 
-      // Parse repo owner/name from URL
-      const { owner, repo } = parseRepoUrl(this.repoUrl)
+          // Parse repo owner/name from URL
+          const { owner, repo } = parseRepoUrl(this.repoUrl)
 
-      // Create PR description
-      const prBody = this.generatePRDescription(taskDescription, branchName)
+          // Create PR description
+          const prBody = this.generatePRDescription(taskDescription, branchName)
 
-      // Create pull request
-      const pr = await this.githubClient.createPullRequest({
-        owner,
-        repo,
-        title: taskDescription,
-        body: prBody,
-        head: branchName,
-        base: 'main',
-        draft: true, // Always draft by default per CONTEXT.md
-      })
+          // Create pull request
+          const pr = await this.githubClient.createPullRequest({
+            owner,
+            repo,
+            title: taskDescription,
+            body: prBody,
+            head: branchName,
+            base: 'main',
+            draft: true, // Always draft by default per CONTEXT.md
+          })
 
-      // Store PR info in SessionDO
-      await this.sessionDO.setPullRequest(pr.number, pr.htmlUrl, pr.draft)
+          // Store PR info in SessionDO
+          await this.sessionDO.setPullRequest(pr.number, pr.htmlUrl, pr.draft)
 
-      console.log(`Created draft PR #${pr.number}: ${pr.htmlUrl}`)
+          console.log(`Created draft PR #${pr.number}: ${pr.htmlUrl}`)
+        },
+        {
+          operationName: 'Create PR',
+          onError: (error, attempt) => {
+            const details = classifyError(error)
+            this.emitError(error, details.category, 'Create PR', attempt)
+          },
+          onRetry: (attempt, delay) => {
+            console.log(`Retrying PR creation (attempt ${attempt}, delay ${delay}ms)`)
+          },
+        },
+      )
     } catch (error) {
       // Log error but don't fail - user can create PR manually
-      console.error('Failed to create PR:', error)
+      const sanitized = sanitizeError(error)
+      console.error('Failed to create PR:', sanitized)
     }
   }
 
@@ -242,26 +367,63 @@ This PR was created automatically by the Ship agent.`
    * Called when user clicks "Mark Ready for Review"
    */
   async markPRReady(): Promise<void> {
-    try {
-      // Get PR info from SessionDO
-      const pr = await this.sessionDO.getPullRequest()
-      if (!pr) {
-        throw new Error('No PR to mark ready')
-      }
+    return executeWithRetry(
+      async () => {
+        // Get PR info from SessionDO
+        const pr = await this.sessionDO.getPullRequest()
+        if (!pr) {
+          throw new Error('No PR to mark ready')
+        }
 
-      // Parse repo owner/name
-      const { owner, repo } = parseRepoUrl(this.repoUrl)
+        // Parse repo owner/name
+        const { owner, repo } = parseRepoUrl(this.repoUrl)
 
-      // Update PR to ready (draft: false)
-      await this.githubClient.markReadyForReview(pr.number, owner, repo)
+        // Update PR to ready (draft: false)
+        await this.githubClient.markReadyForReview(pr.number, owner, repo)
 
-      // Update SessionDO state
-      await this.sessionDO.markReadyForReview()
+        // Update SessionDO state
+        await this.sessionDO.markReadyForReview()
 
-      console.log(`Marked PR #${pr.number} as ready for review`)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      throw new Error(`Failed to mark PR ready: ${message}`)
+        console.log(`Marked PR #${pr.number} as ready for review`)
+      },
+      {
+        operationName: 'Mark PR ready',
+        onError: (error, attempt) => {
+          const details = classifyError(error)
+          this.emitError(error, details.category, 'Mark PR ready', attempt)
+
+          // Pause on persistent errors
+          if (details.category === ErrorCategory.Persistent || details.category === ErrorCategory.Fatal) {
+            this.pause()
+          }
+        },
+        onRetry: (attempt, delay) => {
+          console.log(`Retrying mark PR ready (attempt ${attempt}, delay ${delay}ms)`)
+        },
+      },
+    )
+  }
+
+  /**
+   * Emit error event to session
+   * Sanitizes error message and includes context
+   *
+   * @param error - Error object
+   * @param category - Error category
+   * @param context - Operation context
+   * @param attempt - Retry attempt number
+   */
+  private emitError(error: Error, category: ErrorCategory, context: string, attempt: number): void {
+    if (this.onError) {
+      const details = classifyError(error)
+
+      this.onError({
+        error: new Error(sanitizeError(error)), // Sanitize before emitting
+        category,
+        context,
+        retryable: details.retryable,
+        attempt,
+      })
     }
   }
 }
