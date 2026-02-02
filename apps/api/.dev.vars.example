@@ -2,9 +2,13 @@
 # Copy this file to .dev.vars and fill in actual values
 # .dev.vars is gitignored and used by wrangler dev
 
-# Anthropic API Key (for agent operations in Phase 3)
+# Anthropic API Key (for agent operations)
 # Get from: https://console.anthropic.com/settings/keys
 ANTHROPIC_API_KEY=sk-ant-...
+
+# E2B API Key (for sandbox provisioning)
+# Get from: https://e2b.dev/dashboard -> Settings -> API Keys
+E2B_API_KEY=e2b_...
 
 # Internal API Secret (for authentication between web and API services)
 # Generate with: openssl rand -hex 32
