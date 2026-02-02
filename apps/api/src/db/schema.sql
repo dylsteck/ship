@@ -38,5 +38,21 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON sessions(expires_at);
+
+-- Chat sessions table (distinct from auth sessions)
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  repo_owner TEXT NOT NULL,
+  repo_name TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  last_activity INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  archived_at INTEGER,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_activity ON chat_sessions(last_activity DESC);

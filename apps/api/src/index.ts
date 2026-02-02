@@ -2,11 +2,8 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import health from './routes/health'
 import users from './routes/users'
-
-// Define environment bindings
-interface Env {
-  DB: D1Database
-}
+import sessions from './routes/sessions'
+import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -16,6 +13,7 @@ app.use('/*', cors())
 // Routes
 app.route('/health', health)
 app.route('/users', users)
+app.route('/sessions', sessions)
 
 // Root endpoint
 app.get('/', (c) => {
