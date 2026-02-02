@@ -5,24 +5,24 @@
 See: .planning/PROJECT.md (updated 2026-02-01)
 
 **Core value:** Agent works autonomously in the background on real coding tasks while you do other things
-**Current focus:** Phase 2 - Stateful Core
+**Current focus:** Phase 3 - Execution Layer
 
 ## Current Position
 
-Phase: 2 of 5 (Stateful Core)
-Plan: 3 of 7 in current phase
+Phase: 3 of 5 (Execution Layer)
+Plan: 1 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 02-06-PLAN.md (OpenCode SDK Integration)
+Last activity: 2026-02-01 — Completed 03-01-PLAN.md (E2B Sandbox Provisioning)
 
-Progress: [████░░░░░░] 33%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 7
-- Average duration: 2.9 min
-- Total execution time: 0.34 hours
+- Total plans completed: 8
+- Average duration: 3.0 min
+- Total execution time: 0.59 hours
 
 **By Phase:**
 
@@ -30,11 +30,12 @@ Progress: [████░░░░░░] 33%
 | ---------------------------- | ----- | ------ | -------- |
 | 01-foundation-authentication | 5     | 13 min | 2.6 min  |
 | 02-stateful-core             | 2     | 9 min  | 4.5 min  |
+| 03-execution-layer           | 1     | 15 min | 15 min   |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-03 (2min), 01-04 (2min), 01-05 (2min), 02-01 (4min), 02-02 (5min)
-- Trend: Infrastructure plans taking longer as expected (4-5 min vs 2 min for UI)
+- Last 5 plans: 01-04 (2min), 01-05 (2min), 02-01 (4min), 02-02 (5min), 03-01 (15min)
+- Trend: Execution layer infra taking longer (15 min for E2B integration vs 4-5 min for stateful core)
 
 _Updated after each plan completion_
 
@@ -73,6 +74,9 @@ Recent decisions affecting current work:
 - Task creation: Tasks created from agent todo.updated events, not manual user creation
 - Event streaming: Worker streams to client via SSE, DO handles persistence and WebSocket broadcast
 - Environment detection: SDK wrapper detects Node.js vs Cloudflare Workers for client initialization
+- E2B sandboxes: betaCreate() with autoPause enabled, 5-minute idle timeout for cost control
+- Sandbox lifecycle: One sandbox per session, ID persists in session_meta table across hibernation
+- Sandbox provisioning: Auto-provision on session creation for seamless UX
 
 ### Pending Todos
 
@@ -85,7 +89,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-06-PLAN.md (OpenCode SDK Integration)
+Stopped at: Completed 03-01-PLAN.md (E2B Sandbox Provisioning)
 Resume file: None
 
 ## Phase 1 Summary
