@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 2 of 5 (Stateful Core)
-Plan: 2 of 7 in current phase
+Plan: 3 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 02-02-PLAN.md (Session CRUD API and UI)
+Last activity: 2026-02-01 — Completed 02-06-PLAN.md (OpenCode SDK Integration)
 
-Progress: [████░░░░░░] 29%
+Progress: [████░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -69,6 +69,10 @@ Recent decisions affecting current work:
 - DTO pattern: Map snake_case DB columns to camelCase API responses
 - Server/Client split: Page fetches data (Server), interactions handled by Client Component
 - Repo selection: Text inputs in Phase 2, GitHub repo selector in Phase 3
+- Agent runtime: OpenCode SDK provides complete agent runtime (Build/Plan modes, tool execution)
+- Task creation: Tasks created from agent todo.updated events, not manual user creation
+- Event streaming: Worker streams to client via SSE, DO handles persistence and WebSocket broadcast
+- Environment detection: SDK wrapper detects Node.js vs Cloudflare Workers for client initialization
 
 ### Pending Todos
 
@@ -81,7 +85,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 02-02-PLAN.md (Session CRUD API and UI)
+Stopped at: Completed 02-06-PLAN.md (OpenCode SDK Integration)
 Resume file: None
 
 ## Phase 1 Summary
