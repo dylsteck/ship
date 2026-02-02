@@ -2,6 +2,16 @@ name = "ship-api"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+# Durable Objects
+[durable_objects]
+bindings = [
+  { name = "SESSION_DO", class_name = "SessionDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionDO"]
+
 # D1 Database
 # Create database: wrangler d1 create ship-db
 # Copy the database_id from the output to replace "local" below
