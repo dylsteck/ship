@@ -8,12 +8,13 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.6.18",
-    "@ship/types": "workspace:*"
+    "@opencode-ai/sdk": "^1.1.48",
+    "@ship/types": "workspace:*",
+    "hono": "^4.6.18"
   },
   "devDependencies": {
-    "wrangler": "^3.99.1",
     "@cloudflare/workers-types": "^4.20250127.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^3.99.1"
   }
 }
