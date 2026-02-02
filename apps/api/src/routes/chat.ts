@@ -10,6 +10,7 @@ import {
   type Event,
   type Part,
 } from '../lib/opencode'
+import { executeWithRetry, classifyError, sanitizeError } from '../lib/error-handler'
 import type { Env } from '../env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -40,15 +41,15 @@ app.post('/:sessionId', async (c) => {
     }),
   )
 
-  // Get or create OpenCode session for this session
+  // Get session metadata including OpenCode session and model preference
   const metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
   const meta = (await metaRes.json()) as Record<string, string>
   let opencodeSessionId = meta.opencodeSessionId
+  const selectedModel = meta.selected_model // Per-session model preference
 
   if (!opencodeSessionId) {
     // Create new OpenCode session
-    // TODO: In Phase 3, this will use the actual repo path from sandbox
-    const projectPath = meta.repoPath || '/tmp/ship-session'
+    const projectPath = meta.repoPath || '/home/user/repo'
     const ocSession = await createOpenCodeSession(projectPath)
     opencodeSessionId = ocSession.id
 
@@ -62,11 +63,52 @@ app.post('/:sessionId', async (c) => {
     )
   }
 
+  // Detect if this is a task intent (starts with action verbs or contains task keywords)
+  const isTask = /^(build|create|add|fix|implement|refactor|update|write)/i.test(content.trim())
+
+  // If this is a task and agent executor is ready, start task workflow
+  if (isTask && meta.sandbox_id && meta.repo_url) {
+    try {
+      await stub.fetch(
+        new Request(`${doUrl}/task/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskDescription: content }),
+        }),
+      )
+    } catch (error) {
+      // Log but don't fail - continue with normal chat
+      console.error('Failed to start task workflow:', error)
+    }
+  }
+
   // Stream OpenCode events as SSE
   return streamSSE(c, async (stream) => {
     try {
-      // Send prompt to OpenCode
-      await promptOpenCode(opencodeSessionId!, content, { mode })
+      // Send prompt to OpenCode with retry wrapper
+      await executeWithRetry(
+        async () => {
+          await promptOpenCode(opencodeSessionId!, content, { mode, model: selectedModel })
+        },
+        {
+          operationName: 'Send prompt to OpenCode',
+          onError: async (error, attempt) => {
+            const details = classifyError(error)
+            const sanitized = sanitizeError(error)
+
+            // Emit error to SSE stream
+            await stream.writeSSE({
+              event: 'error',
+              data: JSON.stringify({
+                error: sanitized,
+                category: details.category,
+                retryable: details.retryable,
+                attempt,
+              }),
+            })
+          },
+        },
+      )
 
       // Subscribe to events and filter for this session
       const eventStream = await subscribeToEvents()
@@ -76,6 +118,7 @@ app.post('/:sessionId', async (c) => {
       let assistantContent = ''
       const parts: Part[] = []
       let currentMessageId: string | undefined
+      let hasChanges = false
 
       // Process events
       for await (const event of sessionEvents) {
@@ -110,12 +153,16 @@ app.post('/:sessionId', async (c) => {
               assistantContent += part.text
             }
 
-            // If this is a tool part, check if it creates a task
+            // If this is a tool part, track file changes for git commit
             if (part.type === 'tool') {
-              // Tool calls might indicate task creation
-              // The agent infers tasks from natural language per CONTEXT.md
-              // We track tool usage for the UI but task creation happens
-              // when agent explicitly creates todos
+              // File write/edit operations indicate changes to commit
+              if (
+                part.tool?.name?.includes('write') ||
+                part.tool?.name?.includes('edit') ||
+                part.tool?.name?.includes('create')
+              ) {
+                hasChanges = true
+              }
             }
             break
           }
@@ -154,14 +201,57 @@ app.post('/:sessionId', async (c) => {
           }
 
           case 'session.idle':
-            // Agent finished
+            // Agent finished - trigger git commit if there are changes
+            if (hasChanges) {
+              try {
+                // Trigger git commit and push via SessionDO
+                await stub.fetch(
+                  new Request(`${doUrl}/agent/response`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      summary: assistantContent.slice(0, 100) || content.slice(0, 100),
+                      hasChanges: true,
+                    }),
+                  }),
+                )
+
+                // Get PR info if it was created
+                const gitStateRes = await stub.fetch(new Request(`${doUrl}/git/state`))
+                const gitState = (await gitStateRes.json()) as {
+                  branchName: string | null
+                  pr: { number: number; url: string; draft: boolean } | null
+                }
+
+                // Include PR URL in stream if available
+                if (gitState.pr) {
+                  await stream.writeSSE({
+                    event: 'pr-created',
+                    data: JSON.stringify({
+                      prNumber: gitState.pr.number,
+                      prUrl: gitState.pr.url,
+                      draft: gitState.pr.draft,
+                    }),
+                  })
+                }
+              } catch (error) {
+                console.error('Git workflow error:', error)
+                // Don't fail the response - just log
+              }
+            }
             break
 
           case 'session.error': {
             const errorMsg = event.properties.error ? JSON.stringify(event.properties.error) : 'Unknown error'
+            const details = classifyError(new Error(errorMsg))
+
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({ error: errorMsg }),
+              data: JSON.stringify({
+                error: sanitizeError(new Error(errorMsg)),
+                category: details.category,
+                retryable: details.retryable,
+              }),
             })
             break
           }
@@ -194,9 +284,16 @@ app.post('/:sessionId', async (c) => {
       })
     } catch (error) {
       console.error('OpenCode error:', error)
+      const details = classifyError(error)
+      const sanitized = sanitizeError(error)
+
       await stream.writeSSE({
         event: 'error',
-        data: JSON.stringify({ error: 'Agent execution failed' }),
+        data: JSON.stringify({
+          error: sanitized,
+          category: details.category,
+          retryable: details.retryable,
+        }),
       })
     }
   })
@@ -252,6 +349,79 @@ app.get('/:sessionId/tasks', async (c) => {
   const response = await stub.fetch(new Request(`https://do/tasks?${params}`))
 
   return new Response(response.body, response)
+})
+
+// POST /chat/:sessionId/retry - Retry failed operation
+app.post('/:sessionId/retry', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  try {
+    // Resume agent executor if paused
+    const metaRes = await stub.fetch(new Request('https://do/meta'))
+    const meta = (await metaRes.json()) as Record<string, string>
+
+    if (meta.agent_paused === 'true') {
+      // Clear pause flag
+      await stub.fetch(
+        new Request('https://do/meta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent_paused: 'false' }),
+        }),
+      )
+    }
+
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to retry' }, 500)
+  }
+})
+
+// POST /chat/:sessionId/pause - Pause agent execution
+app.post('/:sessionId/pause', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  try {
+    await stub.fetch(
+      new Request('https://do/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_paused: 'true' }),
+      }),
+    )
+
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to pause' }, 500)
+  }
+})
+
+// POST /chat/:sessionId/resume - Resume agent execution
+app.post('/:sessionId/resume', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  try {
+    await stub.fetch(
+      new Request('https://do/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_paused: 'false' }),
+      }),
+    )
+
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to resume' }, 500)
+  }
 })
 
 export default app
