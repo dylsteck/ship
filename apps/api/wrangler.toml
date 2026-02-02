@@ -1,6 +1,7 @@
 name = "ship-api"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
 
 # Durable Objects
 [durable_objects]
@@ -18,7 +19,7 @@ new_sqlite_classes = ["SessionDO"]
 [[d1_databases]]
 binding = "DB"
 database_name = "ship-db"
-database_id = "local"  # Replace with actual database_id from wrangler d1 create
+database_id = "5f252459-a754-4506-b9be-4004a5751af5"  # Replace with actual database_id from wrangler d1 create
 
 # Environment Variables
 # Non-secret configuration
@@ -39,11 +40,17 @@ ENVIRONMENT = "development"
 [env.production]
 name = "ship-api-production"
 vars = { ENVIRONMENT = "production" }
+compatibility_flags = ["nodejs_compat"]
+
+[env.production.durable_objects]
+bindings = [
+  { name = "SESSION_DO", class_name = "SessionDO" }
+]
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "ship-db"
-database_id = "TBD"  # Replace with production database_id
+database_name = "ship-db-production"
+database_id = "86472e95-9841-4cec-85e9-655e3c7706b8"
 
 # Staging Environment
 [env.staging]

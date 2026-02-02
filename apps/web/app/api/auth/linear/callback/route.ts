@@ -57,6 +57,7 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     // Store Linear account via API
+    // Note: Linear access tokens don't expire, so expiresAt is set to null
     const apiResponse = await fetch(`${process.env.API_BASE_URL}/accounts/linear`, {
       method: 'POST',
       headers: {
@@ -67,9 +68,9 @@ export async function GET(request: Request): Promise<Response> {
         providerAccountId: linearUser.id,
         accessToken: tokens.accessToken(),
         refreshToken: tokens.refreshToken() || null,
-        expiresAt: tokens.expiresIn() ? Math.floor(Date.now() / 1000) + tokens.expiresIn()! : null,
+        expiresAt: null, // Linear tokens don't expire
         tokenType: tokens.tokenType() || 'Bearer',
-        scope: tokens.scope() || 'read write',
+        scope: tokens.scopes().join(' ') || 'read write',
       }),
     })
 
