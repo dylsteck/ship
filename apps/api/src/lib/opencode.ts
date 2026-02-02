@@ -161,6 +161,76 @@ export function cleanupOpenCode(): void {
 }
 
 /**
+ * Get available models from OpenCode providers
+ * Returns a flat list of all models across all configured providers
+ */
+export async function getAvailableModels(): Promise<Array<{ id: string; name: string; provider: string; description?: string }>> {
+  const client = await getOpenCodeClient()
+  const response = await client.config.providers()
+
+  if (response.error) {
+    throw new Error(`Failed to get providers: ${JSON.stringify(response.error)}`)
+  }
+
+  const data = response.data
+  if (!data || typeof data !== 'object' || !('providers' in data)) {
+    return []
+  }
+
+  const providersData = data as unknown as {
+    providers: Array<{
+      name: string
+      models?: { [key: string]: { name?: string; description?: string } }
+    }>
+  }
+
+  const models: Array<{ id: string; name: string; provider: string; description?: string }> = []
+
+  for (const provider of providersData.providers) {
+    if (provider.models && typeof provider.models === 'object') {
+      for (const [modelId, modelInfo] of Object.entries(provider.models)) {
+        models.push({
+          id: `${provider.name}/${modelId}`,
+          name: modelInfo.name || modelId,
+          provider: provider.name,
+          description: modelInfo.description,
+        })
+      }
+    }
+  }
+
+  return models
+}
+
+/**
+ * Validate if a model ID is available
+ */
+export async function validateModel(modelId: string): Promise<boolean> {
+  const models = await getAvailableModels()
+  return models.some((m) => m.id === modelId)
+}
+
+/**
+ * Switch model for an OpenCode session
+ * Updates the session's model configuration
+ *
+ * Note: OpenCode SDK may not support runtime model switching yet.
+ * Model should be set during session creation.
+ */
+export async function switchModel(_sessionId: string, newModel: string): Promise<void> {
+  // Validate model exists
+  const isValid = await validateModel(newModel)
+  if (!isValid) {
+    throw new Error(`Invalid model: ${newModel}`)
+  }
+
+  // Note: OpenCode SDK session.update() may not support 'model' parameter yet
+  // This is a placeholder for future functionality
+  // For now, we store model preference in SessionDO metadata
+  // and it will be used when creating new OpenCode sessions
+}
+
+/**
  * Filter events for a specific session
  */
 export async function* filterSessionEvents(
