@@ -5,6 +5,7 @@ import users from './routes/users'
 import sessions from './routes/sessions'
 import chat from './routes/chat'
 import sandbox from './routes/sandbox'
+import git from './routes/git'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -18,6 +19,7 @@ app.route('/users', users)
 app.route('/sessions', sessions)
 app.route('/chat', chat)
 app.route('/sandbox', sandbox)
+app.route('/git', git)
 
 // Root endpoint
 app.get('/', (c) => {
