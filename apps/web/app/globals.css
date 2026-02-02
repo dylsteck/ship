@@ -1,35 +1,63 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-brand-50: oklch(0.98 0.01 264);
-  --color-brand-100: oklch(0.95 0.02 264);
-  --color-brand-200: oklch(0.88 0.04 264);
-  --color-brand-300: oklch(0.79 0.06 264);
-  --color-brand-400: oklch(0.68 0.08 264);
-  --color-brand-500: oklch(0.56 0.10 264);
-  --color-brand-600: oklch(0.45 0.08 264);
-  --color-brand-700: oklch(0.35 0.06 264);
-  --color-brand-800: oklch(0.26 0.04 264);
-  --color-brand-900: oklch(0.18 0.02 264);
-  --color-brand-950: oklch(0.12 0.01 264);
+  /* Mira style - Compact, made for dense interfaces */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
 }
 
-/* Light mode (default) */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.18 0 0);
-  --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.45 0 0);
-  --border: oklch(0.90 0 0);
-  --ring: oklch(0.18 0 0);
+  /* Colors - Neutral base */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 9%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --accent: 0 0% 96%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 90%;
+  --input: 0 0% 90%;
+  --ring: 0 0% 9%;
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+  
+  /* Mira spacing - Compact */
+  --spacing-xs: 0.125rem;
+  --spacing-sm: 0.25rem;
+  --spacing-md: 0.5rem;
+  --spacing-lg: 0.75rem;
+  --spacing-xl: 1rem;
 }
 
-/* Dark mode */
-.dark {
-  --background: oklch(0.12 0 0);
-  --foreground: oklch(0.98 0 0);
-  --muted: oklch(0.18 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --border: oklch(0.26 0 0);
-  --ring: oklch(0.98 0 0);
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* Inter font for Mira style */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2') format('woff2');
 }

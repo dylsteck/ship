@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Select, SelectGroup, SelectItem } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 
 export interface ModelInfo {
   id: string
@@ -43,16 +45,13 @@ export function ModelSelector({
         setLoading(true)
         const res = await fetch(`${API_URL}/models/available`)
         if (!res.ok) throw new Error('Failed to fetch models')
-        const data = await res.json()
-        setModels(data)
+        setModels(await res.json())
       } catch (err) {
-        console.error('Error fetching models:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load models')
+        setError(err instanceof Error ? err.message : 'Failed to load')
       } finally {
         setLoading(false)
       }
     }
-
     fetchModels()
   }, [providedModels])
 
@@ -80,11 +79,8 @@ export function ModelSelector({
     )
   }
 
-  // Group models by provider
   const groupedModels = models.reduce<Record<string, ModelInfo[]>>((acc, model) => {
-    if (!acc[model.provider]) {
-      acc[model.provider] = []
-    }
+    if (!acc[model.provider]) acc[model.provider] = []
     acc[model.provider].push(model)
     return acc
   }, {})
@@ -95,9 +91,7 @@ export function ModelSelector({
       {Object.entries(groupedModels).map(([provider, providerModels]) => (
         <SelectGroup key={provider} label={provider}>
           {providerModels.map((model) => (
-            <SelectItem key={model.id} value={model.id}>
-              {model.name}
-            </SelectItem>
+            <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
           ))}
         </SelectGroup>
       ))}
@@ -105,25 +99,15 @@ export function ModelSelector({
   )
 }
 
-interface ModelBadgeProps {
-  modelId: string
-  modelName?: string
-  className?: string
-}
-
-export function ModelBadge({ modelId, modelName, className = '' }: ModelBadgeProps) {
-  // Extract provider from model ID (format: provider/model)
+export function ModelBadge({ modelId, modelName, className = '' }: { modelId: string; modelName?: string; className?: string }) {
   const provider = modelId.split('/')[0] || 'Unknown'
   const displayName = modelName || modelId.split('/')[1] || modelId
 
   return (
-    <div
-      className={`inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300 ${className}`}
-      title={modelId}
-    >
+    <Badge variant="secondary" className={cn('gap-1', className)}>
       <span className="font-semibold">{provider}</span>
-      <span className="opacity-50">/</span>
+      <span className="opacity-40">/</span>
       <span>{displayName}</span>
-    </div>
+    </Badge>
   )
 }

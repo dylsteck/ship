@@ -82,6 +82,21 @@ export async function GET(request: Request): Promise<Response> {
 
     const { userId, isNewUser } = await apiResponse.json()
 
+    // Store GitHub account with access token for repo access
+    await fetch(`${process.env.API_BASE_URL}/accounts/github`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        providerAccountId: githubUser.id.toString(),
+        accessToken: tokens.accessToken(),
+        tokenType: 'Bearer',
+        scope: 'repo,read:user,user:email',
+      }),
+    })
+
     // Create session
     await createSession(userId)
 

@@ -1,23 +1,49 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
-import { getAvailableModels, validateModel, switchModel } from '../lib/opencode'
+import { getAvailableModels, switchModel } from '../lib/opencode'
 
 const models = new Hono<{ Bindings: Env }>()
 
 // Default model if no preference set
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514'
 
+// Fallback static model list when OpenCode is unavailable
+const FALLBACK_MODELS = [
+  { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'Anthropic', description: 'Latest balanced Claude model' },
+  { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic', description: 'Most capable Claude model' },
+  { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', description: 'Fast and intelligent' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', description: 'Latest GPT-4 multimodal model' },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', description: 'Fast and affordable' },
+  { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google', description: 'Fast multimodal model' },
+  { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'Google', description: 'Advanced reasoning' },
+]
+
+/**
+ * Validate model ID against available models (with fallback)
+ */
+async function validateModelWithFallback(modelId: string): Promise<boolean> {
+  try {
+    const models = await getAvailableModels()
+    return models.some((m) => m.id === modelId)
+  } catch {
+    // Fall back to checking against static list
+    return FALLBACK_MODELS.some((m) => m.id === modelId)
+  }
+}
+
 /**
  * GET /models/available
  * List all available models from OpenCode providers
+ * Falls back to static list if OpenCode is unavailable
  */
 models.get('/available', async (c) => {
   try {
     const availableModels = await getAvailableModels()
     return c.json(availableModels)
   } catch (error) {
-    console.error('Error fetching available models:', error)
-    return c.json({ error: 'Failed to fetch available models' }, 500)
+    console.error('Error fetching models from OpenCode, using fallback:', error)
+    // Return fallback static list when OpenCode is unavailable
+    return c.json(FALLBACK_MODELS)
   }
 })
 
@@ -44,7 +70,7 @@ models.get('/default', async (c) => {
     const defaultModel = result?.value || DEFAULT_MODEL
 
     // Validate model exists
-    const isValid = await validateModel(defaultModel)
+    const isValid = await validateModelWithFallback(defaultModel)
     if (!isValid) {
       // Fall back to default if stored model is invalid
       return c.json({ model: DEFAULT_MODEL })
@@ -71,7 +97,7 @@ models.post('/default', async (c) => {
     }
 
     // Validate model exists
-    const isValid = await validateModel(model)
+    const isValid = await validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }
@@ -107,7 +133,7 @@ models.post('/sessions/:id', async (c) => {
     }
 
     // Validate model exists
-    const isValid = await validateModel(model)
+    const isValid = await validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }

@@ -95,6 +95,7 @@ export function DashboardSessions({ initialSessions, userId }: DashboardSessions
         isOpen={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}
         onCreate={handleCreate}
+        userId={userId}
       />
     </div>
   )

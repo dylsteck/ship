@@ -1,15 +1,19 @@
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
 export default function LoginPage() {
   return (
-    <div className="flex flex-col items-center space-y-8 px-4">
+    <div className="flex flex-col items-center space-y-6 px-4">
       {/* Ship Logo */}
       <div className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+        <div className="w-10 h-10 bg-foreground rounded-lg flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-background" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Ship
         </h1>
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
           Agent that works autonomously in the background
         </p>
       </div>
@@ -17,9 +21,9 @@ export default function LoginPage() {
       {/* Sign in Button */}
       <div className="w-full">
         <a href="/api/auth/github">
-          <Button className="w-full" variant="primary">
+          <Button className="w-full">
             <svg
-              className="mr-2 h-5 w-5"
+              className="mr-2 h-4 w-4"
               fill="currentColor"
               viewBox="0 0 24 24"
               aria-hidden="true"
@@ -36,7 +40,7 @@ export default function LoginPage() {
       </div>
 
       {/* Footer */}
-      <p className="text-xs text-gray-500 dark:text-gray-500">
+      <p className="text-[11px] text-muted-foreground">
         By signing in, you agree to our Terms of Service and Privacy Policy.
       </p>
     </div>

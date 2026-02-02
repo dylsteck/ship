@@ -1,17 +1,15 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { ModelSelector, ModelBadge, type ModelInfo } from '@/components/model/model-selector'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
-interface SettingsClientProps {
-  userId: string
-}
-
-export function SettingsClient({ userId }: SettingsClientProps) {
+export function SettingsClient({ userId }: { userId: string }) {
   const [defaultModel, setDefaultModel] = useState<string>('')
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
@@ -20,57 +18,43 @@ export function SettingsClient({ userId }: SettingsClientProps) {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  // Fetch default model and available models
   useEffect(() => {
     async function loadSettings() {
       try {
         setLoading(true)
-
-        // Fetch default model
-        const defaultRes = await fetch(`${API_URL}/models/default?userId=${userId}`)
-        if (!defaultRes.ok) throw new Error('Failed to fetch default model')
+        const [defaultRes, modelsRes] = await Promise.all([
+          fetch(`${API_URL}/models/default?userId=${userId}`),
+          fetch(`${API_URL}/models/available`)
+        ])
+        if (!defaultRes.ok || !modelsRes.ok) throw new Error('Failed to fetch settings')
         const defaultData = await defaultRes.json()
         setDefaultModel(defaultData.model)
         setSelectedModel(defaultData.model)
-
-        // Fetch available models
-        const modelsRes = await fetch(`${API_URL}/models/available`)
-        if (!modelsRes.ok) throw new Error('Failed to fetch available models')
-        const modelsData = await modelsRes.json()
-        setAvailableModels(modelsData)
+        setAvailableModels(await modelsRes.json())
       } catch (err) {
-        console.error('Error loading settings:', err)
         setError(err instanceof Error ? err.message : 'Failed to load settings')
       } finally {
         setLoading(false)
       }
     }
-
     loadSettings()
   }, [userId])
 
   const handleSave = () => {
     startTransition(async () => {
       try {
-        setSaveSuccess(false)
-        setError(null)
-
+        setSaveSuccess(false); setError(null)
         const res = await fetch(`${API_URL}/models/default`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, model: selectedModel }),
         })
-
-        if (!res.ok) throw new Error('Failed to save default model')
-
+        if (!res.ok) throw new Error('Failed to save')
         setDefaultModel(selectedModel)
         setSaveSuccess(true)
-
-        // Clear success message after 3 seconds
         setTimeout(() => setSaveSuccess(false), 3000)
       } catch (err) {
-        console.error('Error saving settings:', err)
-        setError(err instanceof Error ? err.message : 'Failed to save settings')
+        setError(err instanceof Error ? err.message : 'Failed to save')
       }
     })
   }
@@ -79,88 +63,90 @@ export function SettingsClient({ userId }: SettingsClientProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-gray-500">Loading settings...</div>
+      <div className="min-h-screen bg-muted/30">
+        <header className="h-11 border-b border-border bg-background">
+          <div className="h-full flex items-center px-4">
+            <Link href="/dashboard" className="flex items-center gap-2">
+              <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
+                <svg className="w-3 h-3 text-background" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+              </div>
+              <span className="text-[13px] font-semibold text-foreground">Ship</span>
+            </Link>
+          </div>
+        </header>
+        <div className="flex items-center justify-center py-24">
+          <div className="w-4 h-4 border-2 border-muted border-t-foreground rounded-full animate-spin"></div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Manage your preferences and default configurations
-          </p>
-        </div>
-
-        <div className="rounded-lg bg-white p-6 shadow dark:bg-gray-800">
-          <div className="border-b pb-4 dark:border-gray-700">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">AI Model</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Choose your default AI model for agent tasks. You can override this when creating a session.
-            </p>
-          </div>
-
-          <div className="mt-6 space-y-4">
-            <div>
-              <label
-                htmlFor="model-select"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-              >
-                Default Model
-              </label>
-              <ModelSelector
-                value={selectedModel}
-                onChange={setSelectedModel}
-                availableModels={availableModels}
-                disabled={isPending}
-              />
+    <div className="min-h-screen bg-muted/30">
+      <header className="h-11 border-b border-border bg-background">
+        <div className="h-full flex items-center justify-between px-4">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
+              <svg className="w-3 h-3 text-background" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
             </div>
+            <span className="text-[13px] font-semibold text-foreground">Ship</span>
+          </Link>
+          <a href="/api/auth/logout" className="text-[12px] text-muted-foreground hover:text-foreground transition-colors">
+            Logout
+          </a>
+        </div>
+      </header>
 
+      <div className="mx-auto max-w-xl px-4 py-6">
+        <Link href="/dashboard" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-4">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Dashboard
+        </Link>
+
+        <h1 className="text-lg font-semibold text-foreground mb-1">Settings</h1>
+        <p className="text-[12px] text-muted-foreground mb-5">Manage your preferences</p>
+
+        <Card className="mb-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">AI Model</CardTitle>
+            <CardDescription className="text-[11px]">Choose your default model</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">Default Model</label>
+              <ModelSelector value={selectedModel} onChange={setSelectedModel} availableModels={availableModels} disabled={isPending} />
+            </div>
             {selectedModel && (
               <div>
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Current selection:</div>
-                <ModelBadge
-                  modelId={selectedModel}
-                  modelName={availableModels.find((m) => m.id === selectedModel)?.name}
-                />
+                <p className="text-[11px] text-muted-foreground mb-1">Current:</p>
+                <ModelBadge modelId={selectedModel} modelName={availableModels.find((m) => m.id === selectedModel)?.name} />
               </div>
             )}
-
-            {error && (
-              <div className="rounded-md bg-red-50 p-4 dark:bg-red-900/20">
-                <p className="text-sm text-red-800 dark:text-red-400">{error}</p>
-              </div>
-            )}
-
-            {saveSuccess && (
-              <div className="rounded-md bg-green-50 p-4 dark:bg-green-900/20">
-                <p className="text-sm text-green-800 dark:text-green-400">Settings saved successfully!</p>
-              </div>
-            )}
-
-            <div className="flex justify-end pt-4">
-              <Button onClick={handleSave} disabled={!hasChanges || isPending}>
-                {isPending ? 'Saving...' : 'Save Changes'}
+            {error && <div className="rounded-md bg-destructive/10 px-3 py-2"><p className="text-[11px] text-destructive">{error}</p></div>}
+            {saveSuccess && <div className="rounded-md bg-emerald-500/10 px-3 py-2"><p className="text-[11px] text-emerald-600">Saved!</p></div>}
+            <div className="flex justify-end pt-1">
+              <Button size="sm" onClick={handleSave} disabled={!hasChanges || isPending}>
+                {isPending ? 'Saving...' : 'Save'}
               </Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="mt-8 rounded-lg bg-white p-6 shadow dark:bg-gray-800">
-          <div className="border-b pb-4 dark:border-gray-700">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Integrations</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Connect and manage your external service integrations
-            </p>
-          </div>
-
-          <div className="mt-6">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px]">Integrations</CardTitle>
+            <CardDescription className="text-[11px]">Connect external services</CardDescription>
+          </CardHeader>
+          <CardContent>
             <ConnectorSettings userId={userId} />
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
