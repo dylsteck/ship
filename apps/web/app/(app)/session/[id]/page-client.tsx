@@ -22,6 +22,7 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
     repoOwner: '',
     repoName: '',
     branch: undefined as string | undefined,
+    model: undefined as string | undefined,
   })
 
   // Sandbox state
@@ -29,6 +30,9 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
   const [sandboxStatus, setSandboxStatus] = useState<'provisioning' | 'ready' | 'error' | 'none'>('none')
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+
+  // WebSocket connection state
+  const [wsConnected, setWsConnected] = useState(false)
 
   // Fetch session info and sandbox status
   useEffect(() => {
@@ -41,6 +45,7 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
             repoOwner: data.repoOwner,
             repoName: data.repoName,
             branch: data.branch,
+            model: data.model, // Selected model for display
           })
         }
       } catch (err) {
@@ -78,9 +83,70 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
     return () => clearInterval(interval)
   }, [sessionId, sandboxStatus])
 
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    const ws = new WebSocket(`${API_URL.replace('http', 'ws')}/sessions/${sessionId}/websocket`)
+
+    ws.onopen = () => {
+      setWsConnected(true)
+    }
+
+    ws.onclose = () => {
+      setWsConnected(false)
+      // Auto-reconnect after 3 seconds
+      setTimeout(() => {
+        // Will trigger useEffect again
+      }, 3000)
+    }
+
+    ws.onerror = () => {
+      setWsConnected(false)
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        // Handle agent status updates
+        if (data.type === 'agent-status') {
+          setAgentStatus(data.status as AgentStatus)
+          setCurrentTool(data.details)
+        }
+      } catch (err) {
+        console.error('WebSocket message error:', err)
+      }
+    }
+
+    return () => {
+      ws.close()
+    }
+  }, [sessionId])
+
   const handleStatusChange = (status: AgentStatus, tool?: string) => {
     setAgentStatus(status)
     setCurrentTool(tool)
+  }
+
+  const handleRetryOperation = async () => {
+    try {
+      await fetch(`${API_URL}/chat/${sessionId}/retry`, {
+        method: 'POST',
+      })
+    } catch (err) {
+      console.error('Failed to retry operation:', err)
+    }
+  }
+
+  const handleOpenVSCode = () => {
+    if (sandboxId && sandboxStatus === 'ready') {
+      setVscodeOpen(true)
+    }
+  }
+
+  const handleOpenTerminal = () => {
+    if (sandboxId && sandboxStatus === 'ready') {
+      setTerminalOpen(true)
+    }
   }
 
   return (
@@ -94,11 +160,18 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
           >
             ← Back
           </Link>
-          <h1 className="font-semibold dark:text-white">
-            {sessionInfo.repoOwner && sessionInfo.repoName
-              ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
-              : 'Session'}
-          </h1>
+          <div>
+            <h1 className="font-semibold dark:text-white">
+              {sessionInfo.repoOwner && sessionInfo.repoName
+                ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
+                : 'Session'}
+            </h1>
+            {sessionInfo.model && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Model: {sessionInfo.model}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Sandbox Toolbar */}
@@ -114,7 +187,38 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Chat Interface */}
         <div className="flex-1 overflow-hidden">
-          <ChatInterface sessionId={sessionId} onStatusChange={handleStatusChange} />
+          {sandboxStatus === 'provisioning' && (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <div className="mb-4 text-lg font-medium dark:text-white">
+                  Provisioning sandbox...
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  This usually takes 10-15 seconds
+                </div>
+              </div>
+            </div>
+          )}
+          {sandboxStatus === 'error' && (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <div className="mb-4 text-lg font-medium text-red-600 dark:text-red-400">
+                  Failed to provision sandbox
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Please refresh the page to try again
+                </div>
+              </div>
+            </div>
+          )}
+          {(sandboxStatus === 'ready' || sandboxStatus === 'none') && (
+            <ChatInterface
+              sessionId={sessionId}
+              onStatusChange={handleStatusChange}
+              onOpenVSCode={handleOpenVSCode}
+              onOpenTerminal={handleOpenTerminal}
+            />
+          )}
         </div>
 
         {/* Side Panel */}

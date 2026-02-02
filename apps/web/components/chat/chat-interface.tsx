@@ -86,6 +86,23 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
           // Update status to error
           onStatusChange?.('error')
         }
+
+        if (event.type === 'pr-created') {
+          // PR created notification
+          const prMessage: Message = {
+            id: `pr-${Date.now()}`,
+            role: 'system',
+            content: `Draft PR created: ${event.prUrl}`,
+            type: 'pr-notification',
+            createdAt: Math.floor(Date.now() / 1000),
+          }
+          setMessages((prev) => [...prev, prMessage])
+        }
+
+        if (event.type === 'agent-status') {
+          // Agent status update
+          onStatusChange?.(event.status as AgentStatus, event.details)
+        }
       },
       onStatusChange: setWsStatus,
     })
@@ -182,6 +199,33 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
                     status = 'testing'
                   }
                   onStatusChange?.(status, data.toolName)
+                }
+
+                if (data.error) {
+                  // Error from SSE stream
+                  const errorMessage: Message = {
+                    id: `error-${Date.now()}`,
+                    role: 'system',
+                    content: data.error,
+                    type: 'error',
+                    errorCategory: data.category || 'persistent',
+                    retryable: data.retryable || false,
+                    createdAt: Math.floor(Date.now() / 1000),
+                  }
+                  setMessages((prev) => [...prev, errorMessage])
+                  onStatusChange?.('error')
+                }
+
+                if (data.prUrl) {
+                  // PR created notification
+                  const prMessage: Message = {
+                    id: `pr-${Date.now()}`,
+                    role: 'system',
+                    content: `Draft PR created: ${data.prUrl}`,
+                    type: 'pr-notification',
+                    createdAt: Math.floor(Date.now() / 1000),
+                  }
+                  setMessages((prev) => [...prev, prMessage])
                 }
               } catch {
                 // Ignore parse errors
