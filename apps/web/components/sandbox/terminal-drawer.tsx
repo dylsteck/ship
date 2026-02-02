@@ -8,7 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalDrawerProps {
-  sandboxId: string
+  sandboxId: string | null
   isOpen: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -20,7 +20,7 @@ export function TerminalDrawer({ sandboxId, isOpen, onOpenChange }: TerminalDraw
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
 
   useEffect(() => {
-    if (!isOpen || !terminalRef.current) return
+    if (!isOpen || !terminalRef.current || !sandboxId) return
 
     // Initialize terminal
     const terminal = new Terminal({

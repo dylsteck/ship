@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 
 interface VSCodeDrawerProps {
-  sandboxId: string
+  sandboxId: string | null
   isOpen: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -12,6 +12,9 @@ interface VSCodeDrawerProps {
 export function VSCodeDrawer({ sandboxId, isOpen, onOpenChange }: VSCodeDrawerProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
+
+  // Don't render if no sandbox ID
+  if (!sandboxId) return null
 
   const iframeUrl = `https://${sandboxId}.e2b.dev:8080`
 
