@@ -56,3 +56,16 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_activity ON chat_sessions(last_activity DESC);
+
+-- User preferences table for settings
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (user_id, key),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
