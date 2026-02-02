@@ -213,4 +213,30 @@ sessions.delete('/:id', async (c) => {
   }
 })
 
+/**
+ * GET /sessions/:id/websocket
+ * WebSocket upgrade endpoint - forwards to SessionDO
+ */
+sessions.get('/:id/websocket', async (c) => {
+  const sessionId = c.req.param('id')
+
+  // Get DO stub and forward the WebSocket upgrade request
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  // Forward the WebSocket upgrade request to DO
+  return stub.fetch(c.req.raw)
+})
+
+/**
+ * ALL /sessions/:id/do/*
+ * Forward requests to DO for future RPC methods
+ */
+sessions.all('/:id/do/*', async (c) => {
+  const sessionId = c.req.param('id')
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+  return stub.fetch(c.req.raw)
+})
+
 export default sessions
