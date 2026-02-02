@@ -77,7 +77,7 @@ sessions.get('/', async (c) => {
 
 /**
  * POST /sessions
- * Create new session
+ * Create new session with automatic sandbox provisioning
  * Body: { userId, repoOwner, repoName }
  */
 sessions.post('/', async (c) => {
@@ -103,6 +103,24 @@ sessions.post('/', async (c) => {
     await doStub.setSessionMeta('repoName', input.repoName)
     await doStub.setSessionMeta('createdAt', now.toString())
 
+    // Auto-provision E2B sandbox for this session
+    let sandboxId: string | null = null
+    try {
+      const sandboxResponse = await doStub.fetch(`http://do/sandbox/provision`, {
+        method: 'POST',
+      })
+
+      if (sandboxResponse.ok) {
+        const sandboxInfo = (await sandboxResponse.json()) as { id: string; status: string }
+        sandboxId = sandboxInfo.id
+      } else {
+        console.error('Failed to provision sandbox during session creation')
+      }
+    } catch (sandboxError) {
+      console.error('Error provisioning sandbox:', sandboxError)
+      // Continue session creation even if sandbox provisioning fails
+    }
+
     // Store session record in D1
     await c.env.DB.prepare(
       `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at)
@@ -111,8 +129,8 @@ sessions.post('/', async (c) => {
       .bind(sessionId, input.userId, input.repoOwner, input.repoName, now, now)
       .run()
 
-    // Return session object
-    const session: SessionDTO = {
+    // Return session object with sandbox ID
+    const session: SessionDTO & { sandboxId?: string | null } = {
       id: sessionId,
       userId: input.userId,
       repoOwner: input.repoOwner,
@@ -121,6 +139,7 @@ sessions.post('/', async (c) => {
       lastActivity: now,
       createdAt: now,
       archivedAt: null,
+      sandboxId,
     }
 
     return c.json(session, 201)
@@ -210,6 +229,35 @@ sessions.delete('/:id', async (c) => {
   } catch (error) {
     console.error('Error deleting session:', error)
     return c.json({ error: 'Failed to delete session' }, 500)
+  }
+})
+
+/**
+ * GET /sessions/:id/sandbox
+ * Get sandbox info for a session
+ */
+sessions.get('/:id/sandbox', async (c) => {
+  try {
+    const sessionId = c.req.param('id')
+
+    // Get DO stub
+    const doId = c.env.SESSION_DO.idFromName(sessionId)
+    const doStub = c.env.SESSION_DO.get(doId)
+
+    // Get sandbox status via DO RPC
+    const response = await doStub.fetch(`http://do/sandbox/status`, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      return c.json({ error: 'Failed to get sandbox status' }, 500)
+    }
+
+    const status = await response.json()
+    return c.json(status)
+  } catch (error) {
+    console.error('Error fetching session sandbox:', error)
+    return c.json({ error: 'Failed to fetch session sandbox' }, 500)
   }
 })
 

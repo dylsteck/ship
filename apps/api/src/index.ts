@@ -3,6 +3,8 @@ import { cors } from 'hono/cors'
 import health from './routes/health'
 import users from './routes/users'
 import sessions from './routes/sessions'
+import chat from './routes/chat'
+import sandbox from './routes/sandbox'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -14,9 +16,16 @@ app.use('/*', cors())
 app.route('/health', health)
 app.route('/users', users)
 app.route('/sessions', sessions)
+app.route('/chat', chat)
+app.route('/sandbox', sandbox)
 
 // Root endpoint
 app.get('/', (c) => {
+  // Check for E2B_API_KEY on startup
+  if (!c.env.E2B_API_KEY) {
+    console.warn('Warning: E2B_API_KEY environment variable not set. Sandbox provisioning will fail.')
+  }
+
   return c.json({
     name: 'Ship API',
     version: '2.0.0',
