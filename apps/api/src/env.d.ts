@@ -20,4 +20,5 @@ export interface Env {
   // Secrets (set via wrangler secret put or .dev.vars locally)
   ANTHROPIC_API_KEY: string;
   API_SECRET: string;
+  E2B_API_KEY: string;
 }

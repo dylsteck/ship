@@ -15,6 +15,7 @@
 
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.d'
+import { SandboxManager, type SandboxInfo } from '../lib/e2b'
 
 /**
  * Connection state attached to each WebSocket
@@ -83,6 +84,7 @@ interface SessionMetaRow extends Record<string, SqlStorageValue> {
 
 export class SessionDO extends DurableObject<Env> {
   private sql: SqlStorage
+  private sandboxManager: SandboxManager | null = null
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -101,7 +103,7 @@ export class SessionDO extends DurableObject<Env> {
    * Tables:
    * - messages: Chat history with optional tool parts
    * - tasks: Tasks inferred from chat
-   * - session_meta: Key-value metadata storage
+   * - session_meta: Key-value metadata storage (includes sandbox_id, sandbox_status)
    */
   private initSchema(): void {
     this.sql.exec(`
@@ -126,6 +128,7 @@ export class SessionDO extends DurableObject<Env> {
       );
 
       -- Session metadata key-value store
+      -- Used for sandbox_id, sandbox_status, and other metadata
       CREATE TABLE IF NOT EXISTS session_meta (
         key TEXT PRIMARY KEY,
         value TEXT
@@ -365,6 +368,108 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
+   * Provision a new E2B sandbox for this session
+   * Stores sandboxId in session_meta for persistence across hibernation
+   *
+   * @returns SandboxInfo with sandbox ID and status
+   */
+  async provisionSandbox(): Promise<SandboxInfo> {
+    // Get E2B API key from environment
+    const apiKey = this.env.E2B_API_KEY
+    if (!apiKey) {
+      throw new Error('E2B_API_KEY not configured')
+    }
+
+    // Get session ID from context
+    const sessionId = this.ctx.id.toString()
+
+    // Create sandbox manager if not exists
+    if (!this.sandboxManager) {
+      this.sandboxManager = new SandboxManager(apiKey, sessionId)
+    }
+
+    // Provision new sandbox
+    const info = await this.sandboxManager.provision()
+
+    // Store sandbox ID and status in session_meta
+    await this.setSessionMeta('sandbox_id', info.id)
+    await this.setSessionMeta('sandbox_status', info.status)
+
+    return info
+  }
+
+  /**
+   * Get current sandbox ID (if provisioned)
+   * Returns null if no sandbox has been provisioned
+   */
+  async getSandbox(): Promise<string | null> {
+    const meta = await this.getSessionMeta()
+    return meta['sandbox_id'] || null
+  }
+
+  /**
+   * Resume existing sandbox after hibernation
+   * Reconnects to the stored sandbox ID
+   *
+   * @returns SandboxInfo with current status
+   */
+  async resumeSandbox(): Promise<SandboxInfo> {
+    const sandboxId = await this.getSandbox()
+    if (!sandboxId) {
+      throw new Error('No sandbox to resume')
+    }
+
+    // Get E2B API key from environment
+    const apiKey = this.env.E2B_API_KEY
+    if (!apiKey) {
+      throw new Error('E2B_API_KEY not configured')
+    }
+
+    // Get session ID from context
+    const sessionId = this.ctx.id.toString()
+
+    // Create sandbox manager if not exists
+    if (!this.sandboxManager) {
+      this.sandboxManager = new SandboxManager(apiKey, sessionId)
+    }
+
+    // Resume the sandbox
+    const info = await this.sandboxManager.resume(sandboxId)
+
+    // Update status in session_meta
+    await this.setSessionMeta('sandbox_status', info.status)
+
+    return info
+  }
+
+  /**
+   * Pause the sandbox to control costs
+   * Uses E2B betaPause() for explicit idle handling
+   */
+  async pauseSandbox(): Promise<void> {
+    if (!this.sandboxManager) {
+      throw new Error('No sandbox manager initialized')
+    }
+
+    await this.sandboxManager.pause()
+
+    // Update status in session_meta
+    await this.setSessionMeta('sandbox_status', 'paused')
+  }
+
+  /**
+   * Get sandbox status
+   * Returns current status from session_meta
+   */
+  async getSandboxStatus(): Promise<{ sandboxId: string | null; status: string | null }> {
+    const meta = await this.getSessionMeta()
+    return {
+      sandboxId: meta['sandbox_id'] || null,
+      status: meta['sandbox_status'] || null,
+    }
+  }
+
+  /**
    * Handle HTTP fetch requests to this Durable Object
    * Supports WebSocket upgrades and basic HTTP endpoints
    */
@@ -441,6 +546,51 @@ export class SessionDO extends DurableObject<Env> {
       const body = (await request.json()) as object
       this.broadcast(body)
       return Response.json({ success: true })
+    }
+
+    // RPC: Provision sandbox
+    if (url.pathname.endsWith('/sandbox/provision') && request.method === 'POST') {
+      try {
+        const info = await this.provisionSandbox()
+        return Response.json(info)
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to provision sandbox' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Get sandbox status
+    if (url.pathname.endsWith('/sandbox/status') && request.method === 'GET') {
+      const status = await this.getSandboxStatus()
+      return Response.json(status)
+    }
+
+    // RPC: Pause sandbox
+    if (url.pathname.endsWith('/sandbox/pause') && request.method === 'POST') {
+      try {
+        await this.pauseSandbox()
+        return Response.json({ success: true })
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to pause sandbox' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Resume sandbox
+    if (url.pathname.endsWith('/sandbox/resume') && request.method === 'POST') {
+      try {
+        const info = await this.resumeSandbox()
+        return Response.json(info)
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to resume sandbox' },
+          { status: 500 },
+        )
+      }
     }
 
     return new Response('Not found', { status: 404 })
