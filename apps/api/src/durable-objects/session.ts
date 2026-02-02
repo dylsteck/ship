@@ -16,6 +16,8 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.d'
 import { SandboxManager, type SandboxInfo } from '../lib/e2b'
+import { createAgentExecutor, type AgentExecutor, type ErrorEvent } from '../lib/agent-executor'
+import type { Sandbox } from '@e2b/code-interpreter'
 
 /**
  * Connection state attached to each WebSocket
@@ -85,6 +87,7 @@ interface SessionMetaRow extends Record<string, SqlStorageValue> {
 export class SessionDO extends DurableObject<Env> {
   private sql: SqlStorage
   private sandboxManager: SandboxManager | null = null
+  private agentExecutor: AgentExecutor | null = null
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -560,6 +563,91 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
+   * Initialize agent executor with all dependencies
+   * Creates AgentExecutor with sandbox, GitHub token, and git user info
+   *
+   * @param sandbox - E2B sandbox instance
+   * @param githubToken - GitHub personal access token
+   * @param gitUser - Git user info for commit attribution
+   * @returns AgentExecutor instance
+   */
+  async initializeAgentExecutor(sandbox: Sandbox, githubToken: string, gitUser: { name: string; email: string }): Promise<AgentExecutor> {
+    const repoUrl = await this.getRepoUrl()
+    if (!repoUrl) {
+      throw new Error('Repository URL not set')
+    }
+
+    const sessionId = this.ctx.id.toString()
+
+    this.agentExecutor = createAgentExecutor({
+      sessionDO: this,
+      sandbox,
+      githubToken,
+      repoUrl,
+      gitUser,
+      sessionId,
+      onError: (event: ErrorEvent) => {
+        // Emit error to WebSocket clients
+        this.broadcast({
+          type: 'error',
+          message: event.error.message,
+          category: event.category,
+          context: event.context,
+          retryable: event.retryable,
+          attempt: event.attempt,
+        })
+      },
+      onStatus: (status: string, details?: string) => {
+        // Emit status updates to WebSocket clients
+        this.broadcast({
+          type: 'agent-status',
+          status,
+          details,
+        })
+      },
+    })
+
+    return this.agentExecutor
+  }
+
+  /**
+   * Start a task with agent execution and Git workflow
+   * Generates branch name, creates branch in sandbox, starts agent
+   *
+   * @param taskDescription - Task description from user
+   * @returns Execution context with branch info
+   */
+  async startTask(taskDescription: string): Promise<{ branchName: string; repoPath: string; sessionId: string }> {
+    if (!this.agentExecutor) {
+      throw new Error('Agent executor not initialized - call initializeAgentExecutor first')
+    }
+
+    return await this.agentExecutor.executeTask(taskDescription)
+  }
+
+  /**
+   * Handle agent response - triggers git commit and push
+   * Called after each agent response completes
+   *
+   * @param response - Agent response with summary
+   */
+  async handleAgentResponse(response: { summary: string; hasChanges: boolean }): Promise<void> {
+    if (!this.agentExecutor) {
+      throw new Error('Agent executor not initialized')
+    }
+
+    await this.agentExecutor.onAgentResponse(response)
+  }
+
+  /**
+   * Get agent executor instance
+   * @returns AgentExecutor or null if not initialized
+   */
+  getAgentExecutor(): AgentExecutor | null {
+    return this.agentExecutor
+  }
+
+  /**
    * Handle HTTP fetch requests to this Durable Object
    * Supports WebSocket upgrades and basic HTTP endpoints
    */
@@ -704,6 +792,34 @@ export class SessionDO extends DurableObject<Env> {
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : 'Failed to mark PR ready' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Start task with agent execution
+    if (url.pathname.endsWith('/task/start') && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { taskDescription: string }
+        const context = await this.startTask(body.taskDescription)
+        return Response.json(context)
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to start task' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Handle agent response (commit + push)
+    if (url.pathname.endsWith('/agent/response') && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { summary: string; hasChanges: boolean }
+        await this.handleAgentResponse(body)
+        return Response.json({ success: true })
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to handle agent response' },
           { status: 500 },
         )
       }

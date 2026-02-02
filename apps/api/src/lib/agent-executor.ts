@@ -52,7 +52,9 @@ export interface AgentExecutorConfig {
   githubToken: string
   repoUrl: string
   gitUser: GitUser
+  sessionId?: string
   onError?: (event: ErrorEvent) => void
+  onStatus?: (status: string, details?: string) => void
 }
 
 /**
@@ -85,6 +87,7 @@ export class AgentExecutor {
   private sessionId: string
   private repoPath: string = '/home/user/repo'
   private onError?: (event: ErrorEvent) => void
+  private onStatus?: (status: string, details?: string) => void
   private isPaused: boolean = false
 
   constructor(config: AgentExecutorConfig) {
@@ -94,10 +97,10 @@ export class AgentExecutor {
     this.repoUrl = config.repoUrl
     this.gitUser = config.gitUser
     this.onError = config.onError
+    this.onStatus = config.onStatus
 
-    // Extract session ID from SessionDO context
-    // Note: We'll need to pass this explicitly in the config
-    this.sessionId = crypto.randomUUID() // Placeholder - should be passed in config
+    // Use provided session ID or generate one
+    this.sessionId = config.sessionId || crypto.randomUUID()
   }
 
   /**
@@ -424,6 +427,19 @@ This PR was created automatically by the Ship agent.`
         retryable: details.retryable,
         attempt,
       })
+    }
+  }
+
+  /**
+   * Emit status update to session
+   * Used to notify clients of agent state changes
+   *
+   * @param status - Status message
+   * @param details - Optional details
+   */
+  emitStatus(status: string, details?: string): void {
+    if (this.onStatus) {
+      this.onStatus(status, details)
     }
   }
 }
