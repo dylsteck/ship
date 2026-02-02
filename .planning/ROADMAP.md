@@ -80,11 +80,17 @@ Plans:
 5. Agent handles errors during task execution and recovers gracefully without manual intervention
 6. Agent understands codebase context and makes relevant changes across multiple files
 7. User can select which AI model (Claude, GPT, Gemini) to use for tasks
-   **Plans**: TBD
+   **Plans**: 7 plans in 4 waves
 
 Plans:
 
-- [ ] TBD (to be planned)
+- [ ] 03-01-PLAN.md — E2B Sandbox provisioning and SessionDO lifecycle integration
+- [ ] 03-02-PLAN.md — VS Code and Terminal access with inline drawer UI
+- [ ] 03-03-PLAN.md — Git workflow utilities (clone, branch, commit, push)
+- [ ] 03-04-PLAN.md — GitHub PR automation and PR panel in side panel
+- [ ] 03-05-PLAN.md — AI model selection with global preference and session override
+- [ ] 03-06-PLAN.md — Error handling with classification and automatic recovery
+- [ ] 03-07-PLAN.md — End-to-end integration and complete verification checkpoint
 
 ### Phase 4: Real-Time UI & Visibility
 
