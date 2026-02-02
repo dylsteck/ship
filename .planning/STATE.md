@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 ## Current Position
 
 Phase: 3 of 5 (Execution Layer)
-Plan: 1 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-01 — Completed 03-01-PLAN.md (E2B Sandbox Provisioning)
+Last activity: 2026-02-01 — Completed 03-03-PLAN.md (Git Workflow Infrastructure)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
-- Average duration: 3.0 min
-- Total execution time: 0.59 hours
+- Total plans completed: 9
+- Average duration: 4.1 min
+- Total execution time: 0.86 hours
 
 **By Phase:**
 
@@ -30,12 +30,12 @@ Progress: [████░░░░░░] 40%
 | ---------------------------- | ----- | ------ | -------- |
 | 01-foundation-authentication | 5     | 13 min | 2.6 min  |
 | 02-stateful-core             | 2     | 9 min  | 4.5 min  |
-| 03-execution-layer           | 1     | 15 min | 15 min   |
+| 03-execution-layer           | 2     | 28 min | 14 min   |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-04 (2min), 01-05 (2min), 02-01 (4min), 02-02 (5min), 03-01 (15min)
-- Trend: Execution layer infra taking longer (15 min for E2B integration vs 4-5 min for stateful core)
+- Last 5 plans: 01-05 (2min), 02-01 (4min), 02-02 (5min), 03-01 (15min), 03-03 (13min)
+- Trend: Execution layer plans averaging 14 min (infrastructure-heavy with external SDK integration)
 
 _Updated after each plan completion_
 
@@ -77,6 +77,10 @@ Recent decisions affecting current work:
 - E2B sandboxes: betaCreate() with autoPause enabled, 5-minute idle timeout for cost control
 - Sandbox lifecycle: One sandbox per session, ID persists in session_meta table across hibernation
 - Sandbox provisioning: Auto-provision on session creation for seamless UX
+- Git workflow: User's GitHub token for all operations, never stored in sandbox
+- Branch naming: ship-{slug}-{timestamp}-{sessionId} format for uniqueness
+- Pull requests: Draft by default, user marks ready for review
+- Git attribution: All commits use user's name/email from GitHub
 
 ### Pending Todos
 
@@ -89,7 +93,7 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-01
-Stopped at: Completed 03-01-PLAN.md (E2B Sandbox Provisioning)
+Stopped at: Completed 03-03-PLAN.md (Git Workflow Infrastructure)
 Resume file: None
 
 ## Phase 1 Summary
