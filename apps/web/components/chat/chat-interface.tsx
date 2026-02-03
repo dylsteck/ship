@@ -16,9 +16,18 @@ interface ChatInterfaceProps {
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void
   onOpenVSCode?: () => void
   onOpenTerminal?: () => void
+  initialPrompt?: string | null
+  initialMode?: 'build' | 'agent' | 'plan'
 }
 
-export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenTerminal }: ChatInterfaceProps) {
+export function ChatInterface({
+  sessionId,
+  onStatusChange,
+  onOpenVSCode,
+  onOpenTerminal,
+  initialPrompt,
+  initialMode = 'build',
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
@@ -26,6 +35,7 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
   const [hasMore, setHasMore] = useState(false)
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
+  const initialPromptSentRef = useRef(false)
   const costEventsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([])
   const messageCostsRef = useRef<Map<string, CostBreakdown>>(new Map())
 
@@ -128,7 +138,7 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
   }, [isStreaming, messageQueue])
 
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, modeOverride?: 'build' | 'agent' | 'plan') => {
       if (isStreaming) {
         // Queue message per CONTEXT.md: "message queuing available"
         setMessageQueue((q) => [...q, content])
@@ -160,7 +170,7 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
       setMessages((prev) => [...prev, assistantMessage])
 
       try {
-        const response = await sendChatMessage(sessionId, content)
+        const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
 
         if (!response.body) {
           throw new Error('No response body')
@@ -279,8 +289,14 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
         onStatusChange?.('error')
       }
     },
-    [sessionId, isStreaming],
+    [sessionId, isStreaming, initialMode],
   )
+
+  useEffect(() => {
+    if (!initialPrompt || initialPromptSentRef.current) return
+    initialPromptSentRef.current = true
+    handleSend(initialPrompt, initialMode)
+  }, [initialPrompt, initialMode, handleSend])
 
   const handleStop = useCallback(async () => {
     try {
@@ -355,7 +371,7 @@ export function ChatInterface({ sessionId, onStatusChange, onOpenVSCode, onOpenT
         onOpenTerminal={onOpenTerminal}
       />
 
-      <ChatInput onSend={handleSend} onStop={handleStop} isStreaming={isStreaming} queueCount={messageQueue.length} />
+      <ChatInput onSend={(content) => handleSend(content)} onStop={handleStop} isStreaming={isStreaming} queueCount={messageQueue.length} />
     </div>
   )
 }

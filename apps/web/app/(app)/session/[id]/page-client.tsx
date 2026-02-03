@@ -8,6 +8,7 @@ import { SandboxToolbar } from '@/components/sandbox/sandbox-toolbar'
 import { VSCodeDrawer } from '@/components/sandbox/vscode-drawer'
 import { TerminalDrawer } from '@/components/sandbox/terminal-drawer'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
@@ -16,6 +17,9 @@ interface SessionPageClientProps {
 }
 
 export function SessionPageClient({ sessionId }: SessionPageClientProps) {
+  const searchParams = useSearchParams()
+  const [initialPrompt, setInitialPrompt] = useState<string | null>(null)
+  const [initialMode, setInitialMode] = useState<'build' | 'agent' | 'plan'>('build')
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
   const [currentTool, setCurrentTool] = useState<string>()
   const [sessionInfo, setSessionInfo] = useState({
@@ -53,13 +57,32 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
       }
     }
 
+    function normalizeSandboxStatus(
+      status: string | null | undefined,
+    ): 'provisioning' | 'ready' | 'error' | 'none' {
+      switch (status) {
+        case 'active':
+          return 'ready'
+        case 'paused':
+        case 'terminated':
+          return 'none'
+        case 'error':
+        case 'provisioning':
+        case 'ready':
+        case 'none':
+          return status
+        default:
+          return 'none'
+      }
+    }
+
     async function loadSandbox() {
       try {
         const res = await fetch(`${API_URL}/sessions/${sessionId}/sandbox`)
         if (res.ok) {
           const data = await res.json()
           setSandboxId(data.sandboxId || null)
-          setSandboxStatus(data.status || 'none')
+          setSandboxStatus(normalizeSandboxStatus(data.status))
         } else if (res.status === 404) {
           // No sandbox yet - this is normal for new sessions
           setSandboxStatus('none')
@@ -82,6 +105,23 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
 
     return () => clearInterval(interval)
   }, [sessionId, sandboxStatus])
+
+  // Pull initial prompt from sessionStorage (set on dashboard create)
+  useEffect(() => {
+    if (!sessionId) return
+    try {
+      const stored = sessionStorage.getItem(`pendingPrompt:${sessionId}`)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as { content?: string; mode?: 'build' | 'agent' | 'plan' }
+      if (parsed.content) {
+        setInitialPrompt(parsed.content)
+        setInitialMode(parsed.mode || 'build')
+      }
+      sessionStorage.removeItem(`pendingPrompt:${sessionId}`)
+    } catch {
+      // Ignore parse errors
+    }
+  }, [sessionId])
 
   // WebSocket connection for real-time updates
   useEffect(() => {
@@ -217,6 +257,8 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
               onStatusChange={handleStatusChange}
               onOpenVSCode={handleOpenVSCode}
               onOpenTerminal={handleOpenTerminal}
+              initialPrompt={initialPrompt ?? searchParams.get('prompt')}
+              initialMode={(searchParams.get('mode') as 'build' | 'agent' | 'plan' | null) ?? initialMode}
             />
           )}
         </div>

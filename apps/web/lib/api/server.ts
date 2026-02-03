@@ -117,11 +117,15 @@ export interface MessagePart {
 /**
  * Send a chat message and get streaming response
  */
-export async function sendChatMessage(sessionId: string, content: string): Promise<Response> {
+export async function sendChatMessage(
+  sessionId: string,
+  content: string,
+  mode?: 'build' | 'agent' | 'plan',
+): Promise<Response> {
   return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, mode }),
   })
 }
 

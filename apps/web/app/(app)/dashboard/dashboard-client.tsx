@@ -54,7 +54,19 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
         model: data.model || selectedModel?.id || 'anthropic/claude-sonnet-4',
       })
       if (newSession) {
+        try {
+          const payload = {
+            content: prompt.trim(),
+            mode,
+          }
+          if (payload.content) {
+            sessionStorage.setItem(`pendingPrompt:${newSession.id}`, JSON.stringify(payload))
+          }
+        } catch {
+          // Ignore storage errors
+        }
         router.push(`/session/${newSession.id}`)
+        setPrompt('')
       }
     } catch (error) {
       console.error('Failed to create session:', error)
