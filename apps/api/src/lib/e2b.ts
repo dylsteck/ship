@@ -269,6 +269,47 @@ export class SandboxManager {
   }
 }
 
+async function resolveSandboxHome(sandbox: Sandbox, sandboxId?: string): Promise<string> {
+  try {
+    const homeResult = await sandbox.commands.run('echo $HOME')
+    const homeDir = homeResult.stdout.trim()
+    if (homeDir) {
+      return homeDir
+    }
+  } catch (error) {
+    console.warn(
+      `[opencode${sandboxId ? `:${sandboxId}` : ''}] Failed to resolve $HOME, falling back to /home/user`,
+      error,
+    )
+  }
+
+  return '/home/user'
+}
+
+async function checkOpenCodeServer(sandbox: Sandbox, port: number): Promise<{ ok: boolean; code: string }> {
+  try {
+    const healthResult = await sandbox.commands.run(
+      `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/health`,
+    )
+    const healthCode = healthResult.stdout.trim()
+    if (healthCode === '200') {
+      return { ok: true, code: healthCode }
+    }
+
+    const rootResult = await sandbox.commands.run(
+      `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/`,
+    )
+    const rootCode = rootResult.stdout.trim()
+    if (rootCode && rootCode !== '000') {
+      return { ok: true, code: rootCode }
+    }
+
+    return { ok: false, code: rootCode || healthCode || '000' }
+  } catch {
+    return { ok: false, code: '000' }
+  }
+}
+
 /**
  * Start OpenCode server in sandbox and return public URL
  * Installs OpenCode if not present, then starts the server
@@ -284,22 +325,39 @@ export async function startOpenCodeServer(
   anthropicKey: string,
 ): Promise<{ url: string; process: unknown }> {
   const sandbox = await Sandbox.connect(sandboxId, { apiKey })
+  const homeDir = await resolveSandboxHome(sandbox, sandboxId)
+
+  const existingServer = await checkOpenCodeServer(sandbox, 4096)
+  if (existingServer.ok) {
+    const host = sandbox.getHost(4096)
+    const url = `https://${host}`
+    console.log(
+      `[opencode:${sandboxId}] Existing server detected (status ${existingServer.code}). Using ${url}`,
+    )
+    return { url, process: null }
+  }
 
   console.log(`[opencode:${sandboxId}] Checking if OpenCode is installed...`)
 
   // Check if opencode binary exists
-  const whichResult = await sandbox.commands.run('which opencode || echo "NOT_FOUND"')
+  const whichResult = await sandbox.commands.run(
+    `PATH="${homeDir}/.opencode/bin:$PATH" which opencode || echo "NOT_FOUND"`,
+  )
   console.log(`[opencode:${sandboxId}] which opencode: ${whichResult.stdout.trim()}`)
 
   if (whichResult.stdout.includes('NOT_FOUND')) {
     console.log(`[opencode:${sandboxId}] OpenCode not found, checking .opencode directory...`)
 
     // Check if .opencode exists (installation directory)
-    const checkDirResult = await sandbox.commands.run('ls -la ~/.opencode 2>&1 || echo "DIR_NOT_FOUND"')
+    const checkDirResult = await sandbox.commands.run(
+      `ls -la "${homeDir}/.opencode" 2>&1 || echo "DIR_NOT_FOUND"`,
+    )
     console.log(`[opencode:${sandboxId}] .opencode directory: ${checkDirResult.stdout.slice(0, 200)}`)
 
     // Try to find the binary in common locations
-    const findResult = await sandbox.commands.run('find /home -name "opencode" -type f 2>/dev/null | head -5')
+    const findResult = await sandbox.commands.run(
+      `find "${homeDir}" -name "opencode" -type f 2>/dev/null | head -5`,
+    )
     console.log(`[opencode:${sandboxId}] find result: ${findResult.stdout}`)
 
     // Install OpenCode if not found
@@ -318,37 +376,25 @@ export async function startOpenCodeServer(
 
   // Get the actual path to opencode binary (check multiple locations)
   let opencodePath = ''
-  const possiblePaths = [
-    '$HOME/.opencode/bin/opencode',
-    '/home/user/.opencode/bin/opencode',
-    '~/.opencode/bin/opencode',
-    'opencode', // fallback to PATH
-  ]
-
-  for (const testPath of possiblePaths) {
-    try {
-      const testResult = await sandbox.commands.run(`ls -la ${testPath} 2>/dev/null || echo "NOT_FOUND"`)
-      if (!testResult.stdout.includes('NOT_FOUND') && !testResult.stdout.includes('No such file')) {
-        opencodePath =
-          testPath.startsWith('$') || testPath.startsWith('~') ? testPath.replace(/^\$HOME|^~/, '/home/user') : testPath
-        console.log(`[opencode:${sandboxId}] Found opencode at: ${opencodePath}`)
-        break
-      }
-    } catch {
-      // Try next path
+  try {
+    const resolvedWhich = await sandbox.commands.run(
+      `PATH="${homeDir}/.opencode/bin:$PATH" which opencode || echo "NOT_FOUND"`,
+    )
+    if (!resolvedWhich.stdout.includes('NOT_FOUND')) {
+      opencodePath = resolvedWhich.stdout.trim().split('\n')[0]
+      console.log(`[opencode:${sandboxId}] Found opencode via PATH: ${opencodePath}`)
     }
+  } catch {
+    // Fallback to explicit path checks
   }
 
   if (!opencodePath) {
-    // Last resort: try which command
-    try {
-      const whichResult = await sandbox.commands.run('which opencode || echo "NOT_FOUND"')
-      if (!whichResult.stdout.includes('NOT_FOUND')) {
-        opencodePath = whichResult.stdout.trim()
-        console.log(`[opencode:${sandboxId}] Found opencode via which: ${opencodePath}`)
-      }
-    } catch {
-      // Will fail below
+    const pathResult = await sandbox.commands.run(
+      `ls -la "${homeDir}/.opencode/bin/opencode" 2>/dev/null || echo "NOT_FOUND"`,
+    )
+    if (!pathResult.stdout.includes('NOT_FOUND') && !pathResult.stdout.includes('No such file')) {
+      opencodePath = `${homeDir}/.opencode/bin/opencode`
+      console.log(`[opencode:${sandboxId}] Found opencode at: ${opencodePath}`)
     }
   }
 
@@ -361,8 +407,26 @@ export async function startOpenCodeServer(
 
   // Start the server as background process with full output capture
   // Use full path to binary and explicit environment
-  // Note: opencode uses --hostname (not --host) and needs explicit port
-  const serverCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="/home/user/.opencode/bin:$PATH" && cd /home/user && ${opencodePath} serve --port 4096 --hostname 0.0.0.0 2>&1`
+  // Determine correct host flag (varies by CLI version)
+  let hostFlag = '--hostname'
+  try {
+    const helpResult = await sandbox.commands.run(`${opencodePath} serve --help`)
+    const helpText = helpResult.stdout || ''
+    const hasHost = /(^|\s)--host(\s|,|$)/.test(helpText)
+    const hasHostname = /(^|\s)--hostname(\s|,|$)/.test(helpText)
+    if (hasHost) {
+      hostFlag = '--host'
+    } else if (hasHostname) {
+      hostFlag = '--hostname'
+    } else {
+      hostFlag = ''
+    }
+  } catch {
+    // Keep default host flag
+  }
+
+  const hostArg = hostFlag ? `${hostFlag} 0.0.0.0` : ''
+  const serverCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="${homeDir}/.opencode/bin:$PATH" && cd "${homeDir}" && ${opencodePath} serve --port 4096${hostArg ? ` ${hostArg}` : ''} 2>&1`
   console.log(`[opencode:${sandboxId}] Running: ${serverCmd.replace(anthropicKey, '[REDACTED]')}`)
 
   const proc = await sandbox.commands.run(serverCmd, {
@@ -377,8 +441,8 @@ export async function startOpenCodeServer(
 
   console.log(`[opencode:${sandboxId}] Server process started`)
 
-  // Wait for server to be ready (poll faster - check every 200ms for 10 seconds max)
-  await waitForOpenCodeServer(sandbox, 4096, 50, sandboxId, 200)
+  // Wait for server to be ready (poll every 500ms for up to 30 seconds)
+  await waitForOpenCodeServer(sandbox, 4096, 60, sandboxId, 500)
   console.log(`[opencode:${sandboxId}] Server is ready`)
 
   // Get public URL for the OpenCode server
@@ -408,17 +472,12 @@ async function waitForOpenCodeServer(
   console.log(`${logPrefix} Waiting for server on port ${port}...`)
 
   for (let i = 0; i < maxAttempts; i++) {
-    try {
-      // Fast health check
-      const result = await sandbox.commands.run(
-        `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/health`,
+    const check = await checkOpenCodeServer(sandbox, port)
+    if (check.ok) {
+      console.log(
+        `${logPrefix} Server responded with ${check.code} in ${((i * pollIntervalMs) / 1000).toFixed(1)}s`,
       )
-      if (result.stdout.trim() === '200') {
-        console.log(`${logPrefix} Health check passed in ${((i * pollIntervalMs) / 1000).toFixed(1)}s`)
-        return
-      }
-    } catch {
-      // Ignore errors, keep trying
+      return
     }
 
     // Log progress every ~2 seconds

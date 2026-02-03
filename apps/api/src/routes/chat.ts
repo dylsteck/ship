@@ -307,9 +307,109 @@ app.post('/:sessionId', async (c) => {
         }
       }
 
+      // If we already have a URL, make sure the server is actually reachable
+      if (currentSandboxId && currentOpencodeUrl) {
+        try {
+          const { Sandbox } = await import('../lib/e2b')
+          const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+          const healthCheck = await sandbox.commands.run(
+            'curl -s -o /dev/null -w "%{http_code}" http://localhost:4096/health',
+          )
+          let healthCode = healthCheck.stdout.trim()
+          let serverHealthy = healthCode === '200'
+
+          if (!serverHealthy) {
+            const rootCheck = await sandbox.commands.run(
+              'curl -s -o /dev/null -w "%{http_code}" http://localhost:4096/',
+            )
+            const rootCode = rootCheck.stdout.trim()
+            if (rootCode && rootCode !== '000') {
+              serverHealthy = true
+              healthCode = rootCode
+            }
+          }
+
+          if (!serverHealthy) {
+            console.warn(
+              `[chat:${sessionId}] OpenCode server not responding (status ${healthCode}). Restarting...`,
+            )
+            await stream.writeSSE({
+              event: 'status',
+              data: JSON.stringify({
+                type: 'status',
+                status: 'starting-opencode',
+                message: 'Restarting OpenCode server...',
+              }),
+            })
+
+            const { url } = await startOpenCodeServer(
+              c.env.E2B_API_KEY,
+              currentSandboxId,
+              c.env.ANTHROPIC_API_KEY,
+            )
+
+            currentOpencodeUrl = url
+            currentOpencodeSessionId = undefined
+
+            await stub.fetch(
+              new Request(`${doUrl}/meta`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opencode_url: url, opencodeSessionId: '' }),
+              }),
+            )
+
+            await stub.fetch(
+              new Request(`${doUrl}/broadcast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'opencode-started',
+                  url,
+                }),
+              }),
+            )
+          } else {
+            console.log(`[chat:${sessionId}] OpenCode server healthy (status ${healthCode})`)
+          }
+        } catch (healthError) {
+          console.error(`[chat:${sessionId}] OpenCode health check failed:`, healthError)
+        }
+      }
+
       // Re-fetch meta to get latest repo info before OpenCode session creation
       let latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
       let latestMeta = (await latestMetaRes.json()) as Record<string, string>
+
+      // Verify existing OpenCode session (stale sessions are common after restarts)
+      if (currentOpencodeSessionId && currentOpencodeUrl) {
+        try {
+          const { getOpenCodeClient } = await import('../lib/opencode')
+          const verifyClient = await getOpenCodeClient(currentOpencodeUrl)
+          const sessionCheck = await verifyClient.session.get({ path: { id: currentOpencodeSessionId } })
+          if (sessionCheck.error) {
+            console.warn(`[chat:${sessionId}] Stored OpenCode session is invalid, recreating...`)
+            currentOpencodeSessionId = undefined
+            await stub.fetch(
+              new Request(`${doUrl}/meta`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opencodeSessionId: '' }),
+              }),
+            )
+          }
+        } catch (verifyError) {
+          console.warn(`[chat:${sessionId}] Failed to verify OpenCode session, recreating...`, verifyError)
+          currentOpencodeSessionId = undefined
+          await stub.fetch(
+            new Request(`${doUrl}/meta`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ opencodeSessionId: '' }),
+            }),
+          )
+        }
+      }
 
       if (!currentOpencodeSessionId) {
         // Create new OpenCode session
@@ -323,10 +423,27 @@ app.post('/:sessionId', async (c) => {
         
         const repoPath = '/home/user/repo'
         let repoExists = false
+
+        const repoOwner = latestMeta.repoOwner || latestMeta.repo_owner
+        const repoName = latestMeta.repoName || latestMeta.repo_name
+        const userId = latestMeta.userId || latestMeta.user_id
+
+        if (!repoOwner || !repoName) {
+          console.error(`[chat:${sessionId}] Missing repository metadata; cannot clone repo`)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Repository metadata missing. Please refresh and try again.',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
+          return
+        }
         
         // ALWAYS check if repo exists and clone if needed
-        if (latestMeta.repo_owner && latestMeta.repo_name && currentSandboxId) {
-          console.error(`[chat:${sessionId}] Checking repo status: owner=${latestMeta.repo_owner}, name=${latestMeta.repo_name}`)
+        if (repoOwner && repoName && currentSandboxId) {
+          console.error(`[chat:${sessionId}] Checking repo status: owner=${repoOwner}, name=${repoName}`)
           
           // Check if repo directory exists in sandbox
           try {
@@ -351,23 +468,26 @@ app.post('/:sessionId', async (c) => {
               data: JSON.stringify({
                 type: 'status',
                 status: 'cloning',
-                message: `Cloning repository ${latestMeta.repo_owner}/${latestMeta.repo_name}...`,
+                message: `Cloning repository ${repoOwner}/${repoName}...`,
               }),
             })
             
             try {
               // Get GitHub token
+              if (!userId) {
+                throw new Error('User ID not found for session')
+              }
               const accountRes = await c.env.DB.prepare(
                 'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
               )
-                .bind(latestMeta.user_id, 'github')
+                .bind(userId, 'github')
                 .first<{ access_token: string }>()
 
               if (!accountRes?.access_token) {
                 throw new Error('No GitHub token found')
               }
 
-              const repoUrl = `https://github.com/${latestMeta.repo_owner}/${latestMeta.repo_name}.git`
+              const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`
               const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
 
               // Connect to sandbox and clone repo
@@ -457,7 +577,7 @@ app.post('/:sessionId', async (c) => {
         console.log(`[chat:${sessionId}] Repo cloned: ${!!latestMeta.repo_url}`)
         console.log(`[chat:${sessionId}] Repo exists in sandbox: ${repoExists}`)
 
-        if (!repoExists && latestMeta.repo_owner && latestMeta.repo_name) {
+        if (!repoExists && repoOwner && repoName) {
           console.error(`[chat:${sessionId}] ✗ CRITICAL: Repo should exist but doesn't! Cannot create OpenCode session.`)
           await stream.writeSSE({
             event: 'error',
@@ -580,11 +700,25 @@ app.post('/:sessionId', async (c) => {
       try {
         const { Sandbox } = await import('../lib/e2b')
         const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
-        const healthCheck = await sandbox.commands.run('curl -s -o /dev/null -w "%{http_code}" http://localhost:4096/health')
-        if (healthCheck.stdout.trim() !== '200') {
-          throw new Error(`OpenCode server health check failed: ${healthCheck.stdout.trim()}`)
+        const healthCheck = await sandbox.commands.run(
+          'curl -s -o /dev/null -w "%{http_code}" http://localhost:4096/health',
+        )
+        let healthCode = healthCheck.stdout.trim()
+        let serverHealthy = healthCode === '200'
+        if (!serverHealthy) {
+          const rootCheck = await sandbox.commands.run(
+            'curl -s -o /dev/null -w "%{http_code}" http://localhost:4096/',
+          )
+          const rootCode = rootCheck.stdout.trim()
+          if (rootCode && rootCode !== '000') {
+            serverHealthy = true
+            healthCode = rootCode
+          }
         }
-        console.log(`[chat:${sessionId}] OpenCode server health check passed`)
+        if (!serverHealthy) {
+          throw new Error(`OpenCode server health check failed: ${healthCode}`)
+        }
+        console.log(`[chat:${sessionId}] OpenCode server health check passed (${healthCode})`)
       } catch (healthError) {
         console.error(`[chat:${sessionId}] OpenCode health check failed:`, healthError)
         await stream.writeSSE({
