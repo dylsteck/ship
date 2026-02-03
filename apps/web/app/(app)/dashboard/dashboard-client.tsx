@@ -459,7 +459,61 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
 
                 if (data.type === 'done' || data.type === 'session.idle') {
                   setIsStreaming(false)
+                  setThinkingStatus('')
+                  setThinkingParts([])
                   streamingMessageRef.current = null
+                }
+
+                // Handle heartbeat events - show waiting status
+                if (data.type === 'heartbeat') {
+                  const waitTime = data.timeSinceLastEvent || 0
+                  setThinkingStatus(`Waiting for agent... (${waitTime}s)`)
+                }
+
+                // Handle raw SSE event wrapper (server sends event inside 'event' field)
+                if (data.event && typeof data.event === 'object') {
+                  const innerEvent = data.event
+                  // Process the inner event if it has tool parts
+                  if (innerEvent.type === 'message.part.updated') {
+                    const part = innerEvent.properties?.part
+                    if (part?.type === 'tool') {
+                      const toolName = typeof part.tool === 'string' ? part.tool : part.tool?.name
+                      const toolTitle = part.state?.title || ''
+                      const toolStatus = part.state?.status
+
+                      if (toolName && part.callID) {
+                        const toolPart: ToolPart = {
+                          type: 'tool',
+                          callID: part.callID,
+                          tool: toolName,
+                          state: {
+                            title: toolTitle,
+                            status: toolStatus as 'pending' | 'running' | 'complete' | 'error' | undefined,
+                          },
+                        }
+                        setThinkingParts((prev) => {
+                          const existing = prev.findIndex((p) => p.callID === toolPart.callID)
+                          if (existing >= 0) {
+                            return prev.map((p, i) => (i === existing ? toolPart : p))
+                          }
+                          return [...prev, toolPart]
+                        })
+                      }
+
+                      if (toolName) {
+                        const name = toolName.toLowerCase()
+                        if (name.includes('read') || name.includes('glob') || name.includes('grep')) {
+                          setThinkingStatus(`Reading: ${toolTitle.slice(0, 40) || 'files...'}`)
+                        } else if (name.includes('write') || name.includes('edit')) {
+                          setThinkingStatus(`Writing: ${toolTitle.slice(0, 40) || 'code...'}`)
+                        } else if (name.includes('bash') || name.includes('run') || name.includes('shell')) {
+                          setThinkingStatus(`Running: ${toolTitle.slice(0, 40) || 'command...'}`)
+                        } else {
+                          setThinkingStatus(`${toolName}: ${toolTitle.slice(0, 30)}`)
+                        }
+                      }
+                    }
+                  }
                 }
 
                 if (data.type === 'tool-call' && data.toolName) {

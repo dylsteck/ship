@@ -183,10 +183,38 @@ export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncItera
 
   const eventStream = await client.global.event()
   console.log(`[opencode] Got event stream, type: ${typeof eventStream}, has stream: ${'stream' in eventStream}`)
+  
+  // Log the structure of the eventStream for debugging
+  if (eventStream && typeof eventStream === 'object') {
+    console.log(`[opencode] Event stream keys: ${Object.keys(eventStream).join(', ')}`)
+  }
 
   // The SDK returns a ServerSentEventsResult with a .stream property
   // The stream is an AsyncGenerator that yields events
-  return eventStream.stream as AsyncIterable<Event>
+  const stream = eventStream.stream as AsyncIterable<Event>
+  
+  // Wrap the stream to ensure events are properly typed
+  async function* eventWrapper(): AsyncGenerator<Event> {
+    for await (const rawEvent of stream) {
+      // If event is a raw object without proper type, try to parse it
+      const event = rawEvent as Event & { data?: string }
+      
+      // Some SSE libraries return { data: "json string" } - parse if needed
+      if (event.data && typeof event.data === 'string' && !event.type) {
+        try {
+          const parsed = JSON.parse(event.data) as Event
+          yield parsed
+          continue
+        } catch {
+          // Not JSON, yield as-is
+        }
+      }
+      
+      yield event
+    }
+  }
+  
+  return eventWrapper()
 }
 
 /**
@@ -323,6 +351,11 @@ export async function* filterSessionEvents(
     for await (const event of eventStream) {
       lastEventTime = Date.now()
       count++
+
+      // Debug: Log raw event structure for first few events
+      if (count <= 3) {
+        console.log(`[opencode] Raw event #${count}:`, JSON.stringify(event).slice(0, 500))
+      }
 
       // Check if event belongs to this session
       const eventSessionId = getEventSessionId(event)
