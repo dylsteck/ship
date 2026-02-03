@@ -214,22 +214,35 @@ export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncItera
   
   // Wrap the stream to ensure events are properly typed
   async function* eventWrapper(): AsyncGenerator<Event> {
-    for await (const rawEvent of stream) {
-      // If event is a raw object without proper type, try to parse it
-      const event = rawEvent as Event & { data?: string }
-      
-      // Some SSE libraries return { data: "json string" } - parse if needed
-      if (event.data && typeof event.data === 'string' && !event.type) {
-        try {
-          const parsed = JSON.parse(event.data) as Event
-          yield parsed
-          continue
-        } catch {
-          // Not JSON, yield as-is
+    try {
+      console.log(`[opencode] Starting to iterate event stream...`)
+      let iterCount = 0
+      for await (const rawEvent of stream) {
+        iterCount++
+        if (iterCount <= 3) {
+          console.log(`[opencode] Raw event from stream #${iterCount}:`, typeof rawEvent, rawEvent ? Object.keys(rawEvent as object) : 'null')
         }
+        
+        // If event is a raw object without proper type, try to parse it
+        const event = rawEvent as Event & { data?: string }
+        
+        // Some SSE libraries return { data: "json string" } - parse if needed
+        if (event.data && typeof event.data === 'string' && !event.type) {
+          try {
+            const parsed = JSON.parse(event.data) as Event
+            yield parsed
+            continue
+          } catch {
+            // Not JSON, yield as-is
+          }
+        }
+        
+        yield event
       }
-      
-      yield event
+      console.log(`[opencode] Event stream iteration ended after ${iterCount} events`)
+    } catch (streamError) {
+      console.error(`[opencode] Error iterating event stream:`, streamError)
+      throw streamError
     }
   }
   
@@ -366,8 +379,16 @@ export async function* filterSessionEvents(
     console.error(`[opencode] Event stream timeout after ${timeoutMs / 1000}s for session ${sessionId.slice(0, 8)}`)
   }, timeoutMs)
 
+  // Add a timeout to detect if NO events are coming at all
+  const noEventsTimeout = setTimeout(() => {
+    if (count === 0) {
+      console.error(`[opencode] WARNING: No events received after 5s for session ${sessionId.slice(0, 8)}. Event stream may be broken.`)
+    }
+  }, 5000)
+
   try {
     for await (const event of eventStream) {
+      clearTimeout(noEventsTimeout) // Clear timeout once we get first event
       lastEventTime = Date.now()
       count++
 
@@ -386,12 +407,23 @@ export async function* filterSessionEvents(
       }
 
       // If event has a session ID and it doesn't match, skip it
-      // If event has no session ID, include it (global events)
-      if (eventSessionId && eventSessionId !== sessionId) {
-        if (count <= 5) {
-          console.log(`[opencode] Skipping event #${count} - session mismatch: ${eventSessionId.slice(0, 8)} !== ${sessionId.slice(0, 8)}`)
+      // If event has no session ID, include it (global events like server.connected)
+      if (eventSessionId) {
+        if (eventSessionId !== sessionId) {
+          if (count <= 10) {
+            console.log(`[opencode] Skipping event #${count} - session mismatch: ${eventSessionId.slice(0, 8)} !== ${sessionId.slice(0, 8)}, type=${event.type}`)
+          }
+          continue
+        } else {
+          if (count <= 5) {
+            console.log(`[opencode] Event #${count} matches session ${sessionId.slice(0, 8)}, type=${event.type}`)
+          }
         }
-        continue
+      } else {
+        // Events without session ID (like server.connected) - include them
+        if (count <= 5) {
+          console.log(`[opencode] Event #${count} has no session ID (global event), including it, type=${event.type}`)
+        }
       }
 
       yield event
@@ -404,6 +436,7 @@ export async function* filterSessionEvents(
     }
   } finally {
     clearTimeout(timeout)
+    clearTimeout(noEventsTimeout)
   }
 
   console.log(`[opencode] Event stream ended after ${count} events`)

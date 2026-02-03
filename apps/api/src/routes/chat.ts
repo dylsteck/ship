@@ -489,43 +489,6 @@ app.post('/:sessionId', async (c) => {
         return
       }
 
-      console.log(`[chat:${sessionId}] SSE stream connected, sending prompt to OpenCode...`)
-      await stream.writeSSE({
-        event: 'status',
-        data: JSON.stringify({
-          type: 'status',
-          status: 'sending-prompt',
-          message: 'Sending prompt to agent...',
-        }),
-      })
-      const promptStartTime = Date.now()
-      // Send prompt to OpenCode with retry wrapper
-      await executeWithRetry(
-        async () => {
-          await promptOpenCode(currentOpencodeSessionId!, content, { mode, model: selectedModel }, currentOpencodeUrl!)
-        },
-        {
-          operationName: 'Send prompt to OpenCode',
-          onError: async (error, attempt) => {
-            const details = classifyError(error)
-            const sanitized = sanitizeError(error)
-
-            // Emit error to SSE stream
-            await stream.writeSSE({
-              event: 'error',
-              data: JSON.stringify({
-                error: sanitized,
-                category: details.category,
-                retryable: details.retryable,
-                attempt,
-              }),
-            })
-          },
-        },
-      )
-
-      console.log(`[chat:${sessionId}] Prompt sent (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s), subscribing to events...`)
-      
       // Verify OpenCode server is still healthy before subscribing
       if (!currentSandboxId) {
         await stream.writeSSE({
@@ -560,12 +523,81 @@ app.post('/:sessionId', async (c) => {
         return
       }
 
-      // Subscribe to events and filter for this session
+      // Subscribe to events BEFORE sending prompt so we don't miss any events
       console.log(`[chat:${sessionId}] Subscribing to events from ${currentOpencodeUrl} for session ${currentOpencodeSessionId}`)
-      const eventStream = await subscribeToEvents(currentOpencodeUrl)
-      console.log(`[chat:${sessionId}] Got event stream, filtering for session ${currentOpencodeSessionId}`)
+      let eventStream: AsyncIterable<Event>
+      try {
+        eventStream = await subscribeToEvents(currentOpencodeUrl)
+        console.log(`[chat:${sessionId}] Got event stream, filtering for session ${currentOpencodeSessionId}`)
+      } catch (streamError) {
+        console.error(`[chat:${sessionId}] Failed to subscribe to events:`, streamError)
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'Failed to subscribe to agent events. Please try again.',
+            details: streamError instanceof Error ? streamError.message : 'Unknown error',
+            category: 'persistent',
+            retryable: true,
+          }),
+        })
+        return
+      }
+      
       const sessionEvents = filterSessionEvents(eventStream, currentOpencodeSessionId!)
-      console.log(`[chat:${sessionId}] Event subscription started, waiting for events...`)
+      console.log(`[chat:${sessionId}] Event subscription started, ready to receive events`)
+
+      console.log(`[chat:${sessionId}] Sending prompt to OpenCode...`)
+      await stream.writeSSE({
+        event: 'status',
+        data: JSON.stringify({
+          type: 'status',
+          status: 'sending-prompt',
+          message: 'Sending prompt to agent...',
+        }),
+      })
+      const promptStartTime = Date.now()
+      
+      // Send prompt to OpenCode with retry wrapper
+      try {
+        await executeWithRetry(
+          async () => {
+            await promptOpenCode(currentOpencodeSessionId!, content, { mode, model: selectedModel }, currentOpencodeUrl!)
+          },
+          {
+            operationName: 'Send prompt to OpenCode',
+            onError: async (error, attempt) => {
+              const details = classifyError(error)
+              const sanitized = sanitizeError(error)
+
+              // Emit error to SSE stream
+              await stream.writeSSE({
+                event: 'error',
+                data: JSON.stringify({
+                  error: sanitized,
+                  category: details.category,
+                  retryable: details.retryable,
+                  attempt,
+                }),
+              })
+            },
+          },
+        )
+        console.log(`[chat:${sessionId}] Prompt sent successfully (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s)`)
+      } catch (promptError) {
+        console.error(`[chat:${sessionId}] Failed to send prompt:`, promptError)
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'Failed to send prompt to agent',
+            details: promptError instanceof Error ? promptError.message : 'Unknown error',
+            category: 'persistent',
+            retryable: true,
+          }),
+        })
+        return
+      }
+      
+      console.log(`[chat:${sessionId}] Waiting for events from OpenCode...`)
       
       await stream.writeSSE({
         event: 'status',
@@ -618,13 +650,20 @@ app.post('/:sessionId', async (c) => {
 
         // Process events
         console.log(`[chat:${sessionId}] Starting event loop, waiting for events from OpenCode...`)
+        console.log(`[chat:${sessionId}] Session ID: ${currentOpencodeSessionId}, URL: ${currentOpencodeUrl}`)
+        
         for await (const event of sessionEvents) {
           clearTimeout(eventTimeout) // Reset timeout on each event
           lastEventTime = Date.now()
-        eventCount++
-        if (eventCount <= 10 || eventCount % 50 === 0) {
-          console.log(`[chat:${sessionId}] Event #${eventCount}: type=${event.type}`)
-        }
+          eventCount++
+          
+          // Always log first 20 events, then every 10th event
+          if (eventCount <= 20 || eventCount % 10 === 0) {
+            console.log(`[chat:${sessionId}] Event #${eventCount}: type=${event.type}, hasProperties=${!!event.properties}`)
+            if (eventCount <= 5) {
+              console.log(`[chat:${sessionId}] Event #${eventCount} full structure:`, JSON.stringify(event).slice(0, 500))
+            }
+          }
 
         // Stream event to client
         await stream.writeSSE({
