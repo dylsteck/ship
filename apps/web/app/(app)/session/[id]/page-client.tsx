@@ -236,13 +236,13 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           // Try multiple possible URL field names
           const url = data.url || data.opencodeUrl || data.serverUrl || (data as any).opencode_url
           console.log('[page-client] Extracted URL:', url, 'from fields:', { url: data.url, opencodeUrl: data.opencodeUrl, serverUrl: data.serverUrl })
-          if (url) {
+          if (url && typeof url === 'string') {
             console.log('[page-client] Setting opencodeUrl state to:', url)
-            setOpencodeUrl(url)
-            // Force a re-render check
-            setTimeout(() => {
-              console.log('[page-client] opencodeUrl state after 100ms:', opencodeUrl)
-            }, 100)
+            // Use functional update to ensure we're setting the latest value
+            setOpencodeUrl((prev) => {
+              console.log('[page-client] setOpencodeUrl called, prev:', prev, 'new:', url)
+              return url
+            })
           } else {
             console.warn('[page-client] opencode-started event missing url field. Full data:', JSON.stringify(data))
           }
