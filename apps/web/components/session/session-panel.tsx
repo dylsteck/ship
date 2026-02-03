@@ -53,6 +53,13 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
   const [showDiff, setShowDiff] = useState(false)
   const [diffLoading, setDiffLoading] = useState(false)
 
+  // Debug: Log when opencodeUrl changes
+  useEffect(() => {
+    if (opencodeUrl) {
+      console.log('[SessionPanel] opencodeUrl received:', opencodeUrl)
+    }
+  }, [opencodeUrl])
+
   // Fetch tasks
   useEffect(() => {
     async function loadTasks() {
@@ -209,7 +216,7 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
       )}
 
       {/* OpenCode Server URL */}
-      {opencodeUrl && (
+      {opencodeUrl ? (
         <div className="p-4 border-b dark:border-gray-800">
           <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">OpenCode Server</h3>
           <a
@@ -234,7 +241,7 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
             </a>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Pull Request Panel */}
       <PRPanel

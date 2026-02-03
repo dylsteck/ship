@@ -184,6 +184,10 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
+        // Debug: Log all WebSocket messages
+        if (data.type === 'opencode-started' || data.type === 'sandbox-status' || data.type === 'opencode-event') {
+          console.log('[page-client] WebSocket message:', data.type, data)
+        }
 
         // Handle agent status updates
         if (data.type === 'agent-status') {
@@ -220,9 +224,15 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
         // Handle OpenCode server started
         if (data.type === 'opencode-started') {
+          console.log('[page-client] Received opencode-started event:', data)
           setSandboxProgress('OpenCode server started')
-          if (data.url) {
-            setOpencodeUrl(data.url)
+          // Try multiple possible URL field names
+          const url = data.url || data.opencodeUrl || data.serverUrl
+          if (url) {
+            console.log('[page-client] Setting opencodeUrl to:', url)
+            setOpencodeUrl(url)
+          } else {
+            console.warn('[page-client] opencode-started event missing url field. Full data:', JSON.stringify(data))
           }
           // Clear progress message after 2 seconds
           setTimeout(() => setSandboxProgress(null), 2000)
