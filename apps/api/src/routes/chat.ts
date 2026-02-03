@@ -122,6 +122,68 @@ app.post('/:sessionId', async (c) => {
     }
   }
 
+  // Clone repository if we have repo info but no repo_url yet
+  if (sandboxId && meta.repo_owner && meta.repo_name && !meta.repo_url) {
+    try {
+      console.log(`[chat:${sessionId}] Repository not cloned yet, cloning now...`)
+
+      // Get GitHub token from accounts
+      const accountRes = await c.env.DB.prepare(
+        'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
+      )
+        .bind(meta.user_id, 'github')
+        .first<{ access_token: string }>()
+
+      if (!accountRes?.access_token) {
+        console.error(`[chat:${sessionId}] No GitHub token found for user`)
+      } else {
+        const repoUrl = `https://github.com/${meta.repo_owner}/${meta.repo_name}.git`
+        const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
+
+        // Connect to sandbox and clone repo
+        const { Sandbox } = await import('../lib/e2b')
+        const sandbox = await Sandbox.connect(sandboxId, { apiKey: c.env.E2B_API_KEY })
+
+        // Clone the repository
+        const repoPath = '/home/user/repo'
+        const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
+
+        console.log(`[chat:${sessionId}] Cloning ${repoUrl}...`)
+        const cloneResult = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
+
+        if (cloneResult.exitCode !== 0) {
+          throw new Error(`Git clone failed: ${cloneResult.stderr}`)
+        }
+
+        // Configure git user
+        await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
+        await sandbox.commands.run(`cd ${repoPath} && git config user.email "agent@ship.dylansteck.com"`)
+
+        // Create and checkout branch
+        await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
+
+        // Store repo info in session meta
+        await stub.fetch(
+          new Request(`${doUrl}/meta`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repo_url: repoUrl,
+              current_branch: branchName,
+              repo_path: repoPath,
+            }),
+          }),
+        )
+
+        console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created`)
+      }
+    } catch (error) {
+      console.error(`[chat:${sessionId}] Failed to clone repository:`, error)
+      // Don't fail the chat - just log the error and continue
+      // The agent can still work without a cloned repo
+    }
+  }
+
   if (!opencodeSessionId) {
     // Create new OpenCode session
     const projectPath = meta.repoPath || '/home/user/repo'
