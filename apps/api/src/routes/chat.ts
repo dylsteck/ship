@@ -445,7 +445,7 @@ app.post('/:sessionId', async (c) => {
             new Request(`${doUrl}/meta`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ opencodeSessionId }),
+              body: JSON.stringify({ opencodeSessionId: currentOpencodeSessionId }),
             }),
           )
         } catch (sessionError) {
@@ -527,6 +527,18 @@ app.post('/:sessionId', async (c) => {
       console.log(`[chat:${sessionId}] Prompt sent (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s), subscribing to events...`)
       
       // Verify OpenCode server is still healthy before subscribing
+      if (!currentSandboxId) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'Sandbox not available for health check',
+            category: 'persistent',
+            retryable: true,
+          }),
+        })
+        return
+      }
+
       try {
         const { Sandbox } = await import('../lib/e2b')
         const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
