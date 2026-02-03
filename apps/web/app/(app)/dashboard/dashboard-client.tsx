@@ -289,14 +289,18 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       return [...prev, part]
                     })
                     const toolName = part.tool?.toLowerCase() || ''
+                    const toolTitle = part.state?.title || ''
+
                     if (toolName.includes('read') || toolName.includes('glob') || toolName.includes('grep')) {
-                      setThinkingStatus('Exploring codebase')
+                      setThinkingStatus(`Reading: ${toolTitle.slice(0, 40) || 'files...'}`)
                     } else if (toolName.includes('write') || toolName.includes('edit')) {
-                      setThinkingStatus('Writing code')
+                      setThinkingStatus(`Writing: ${toolTitle.slice(0, 40) || 'code...'}`)
                     } else if (toolName.includes('bash') || toolName.includes('run')) {
-                      setThinkingStatus('Running commands')
+                      setThinkingStatus(`Running: ${toolTitle.slice(0, 40) || 'command...'}`)
                     } else if (toolName.includes('task') || toolName.includes('agent')) {
-                      setThinkingStatus('Delegating to agent')
+                      setThinkingStatus(`Creating task...`)
+                    } else {
+                      setThinkingStatus(`${toolName}: ${toolTitle.slice(0, 30)}`)
                     }
                   }
 
@@ -315,6 +319,29 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       m.id === streamingMessageRef.current ? { ...m, content: data.content, id: data.id || m.id } : m,
                     ),
                   )
+                }
+
+                // Handle session status events for real-time updates
+                if (data.type === 'session.status') {
+                  const status = data.properties?.status
+                  if (status) {
+                    setThinkingStatus(status)
+                  }
+                }
+
+                // Handle todo updates (tasks created by agent)
+                if (data.type === 'todo.updated') {
+                  const todoTitle = data.properties?.todo?.title || 'New task'
+                  setThinkingStatus(`Task: ${todoTitle.slice(0, 40)}`)
+                }
+
+                // Handle file watcher updates (files changed)
+                if (data.type === 'file-watcher.updated') {
+                  const event = data.properties?.event
+                  const path = data.properties?.path
+                  if (event && path) {
+                    setThinkingStatus(`${event}: ${path.split('/').pop()}`)
+                  }
                 }
 
                 if (data.type === 'done' || data.type === 'session.idle') {
