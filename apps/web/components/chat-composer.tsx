@@ -58,6 +58,12 @@ export function ChatComposer({
           placeholder="Ask or build anything"
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              onSubmit()
+            }
+          }}
           rows={3}
           className="w-full min-h-[88px] resize-none bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none"
         />

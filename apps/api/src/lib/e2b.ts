@@ -133,6 +133,22 @@ export async function pauseSandbox(apiKey: string, sandboxId: string): Promise<v
 }
 
 /**
+ * Terminate a sandbox permanently
+ * Used when deleting a session to ensure sandbox is cleaned up
+ *
+ * @param apiKey - E2B API key
+ * @param sandboxId - The sandbox ID to terminate
+ */
+export async function terminateSandbox(apiKey: string, sandboxId: string): Promise<void> {
+  try {
+    await Sandbox.kill(sandboxId, { apiKey })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown E2B error'
+    throw new E2BError(`Failed to terminate sandbox: ${message}`, 'TERMINATE_FAILED', sandboxId)
+  }
+}
+
+/**
  * Get sandbox status without modifying state
  * Used for health checks and monitoring
  *
@@ -219,6 +235,18 @@ export class SandboxManager {
     }
 
     await pauseSandbox(this.apiKey, this._sandboxId)
+  }
+
+  /**
+   * Terminate the current sandbox
+   */
+  async terminate(): Promise<void> {
+    if (!this._sandboxId) {
+      throw new E2BError('No sandbox to terminate', 'NO_SANDBOX')
+    }
+
+    await terminateSandbox(this.apiKey, this._sandboxId)
+    this._sandboxId = null
   }
 
   /**

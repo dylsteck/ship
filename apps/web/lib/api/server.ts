@@ -5,7 +5,10 @@
  * from Server Components and Server Actions.
  */
 
-const API_URL = process.env.API_BASE_URL || 'http://localhost:8787'
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.API_BASE_URL ||
+  'http://localhost:8787'
 
 // Session types matching API response
 export interface ChatSession {

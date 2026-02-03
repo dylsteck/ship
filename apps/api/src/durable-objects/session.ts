@@ -462,6 +462,33 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
+   * Terminate the sandbox and clear metadata
+   */
+  async terminateSandbox(): Promise<void> {
+    const sandboxId = await this.getSandbox()
+    if (!sandboxId) {
+      return
+    }
+
+    const apiKey = this.env.E2B_API_KEY
+    if (!apiKey) {
+      throw new Error('E2B_API_KEY not configured')
+    }
+
+    const sessionId = this.ctx.id.toString()
+
+    if (!this.sandboxManager) {
+      this.sandboxManager = new SandboxManager(apiKey, sessionId)
+    }
+
+    this.sandboxManager.setSandboxId(sandboxId)
+    await this.sandboxManager.terminate()
+
+    await this.setSessionMeta('sandbox_status', 'terminated')
+    await this.setSessionMeta('sandbox_id', '')
+  }
+
+  /**
    * Get sandbox status
    * Returns current status from session_meta
    */
@@ -800,6 +827,19 @@ export class SessionDO extends DurableObject<Env> {
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : 'Failed to resume sandbox' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Terminate sandbox
+    if (url.pathname.endsWith('/sandbox/terminate') && request.method === 'POST') {
+      try {
+        await this.terminateSandbox()
+        return Response.json({ success: true })
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to terminate sandbox' },
           { status: 500 },
         )
       }

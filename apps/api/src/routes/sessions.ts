@@ -220,6 +220,15 @@ sessions.delete('/:id', async (c) => {
       return c.json({ error: 'Session not found' }, 404)
     }
 
+    // Best-effort sandbox termination
+    try {
+      const doId = c.env.SESSION_DO.idFromName(id)
+      const doStub = c.env.SESSION_DO.get(doId)
+      await doStub.fetch('http://do/sandbox/terminate', { method: 'POST' })
+    } catch (error) {
+      console.warn('Failed to terminate sandbox for session:', id, error)
+    }
+
     // Soft delete in D1 (mark as deleted)
     const now = Math.floor(Date.now() / 1000)
     await c.env.DB.prepare(

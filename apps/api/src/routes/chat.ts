@@ -351,6 +351,31 @@ app.get('/:sessionId/tasks', async (c) => {
   return new Response(response.body, response)
 })
 
+// GET /chat/:sessionId/git/state - Get git state (branch, PR info)
+app.get('/:sessionId/git/state', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  const response = await stub.fetch(new Request('https://do/git/state'))
+  return new Response(response.body, response)
+})
+
+// POST /chat/:sessionId/git/pr/ready - Mark PR ready for review
+app.post('/:sessionId/git/pr/ready', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  const response = await stub.fetch(
+    new Request('https://do/git/pr/ready', { method: 'POST' }),
+  )
+
+  return new Response(response.body, response)
+})
+
 // POST /chat/:sessionId/retry - Retry failed operation
 app.post('/:sessionId/retry', async (c) => {
   const sessionId = c.req.param('sessionId')
