@@ -361,7 +361,8 @@ export async function startOpenCodeServer(
 
   // Start the server as background process with full output capture
   // Use full path to binary and explicit environment
-  const serverCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="/home/user/.opencode/bin:$PATH" && cd /home/user && ${opencodePath} serve --port 4096 --host 0.0.0.0 2>&1`
+  // Note: opencode uses --hostname (not --host) and needs explicit port
+  const serverCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="/home/user/.opencode/bin:$PATH" && cd /home/user && ${opencodePath} serve --port 4096 --hostname 0.0.0.0 2>&1`
   console.log(`[opencode:${sandboxId}] Running: ${serverCmd.replace(anthropicKey, '[REDACTED]')}`)
 
   const proc = await sandbox.commands.run(serverCmd, {

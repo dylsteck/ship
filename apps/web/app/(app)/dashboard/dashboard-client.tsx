@@ -127,9 +127,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         }
 
         if (event.type === 'message-parts') {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === event.messageId ? { ...m, parts: event.parts } : m))
-          )
+          setMessages((prev) => prev.map((m) => (m.id === event.messageId ? { ...m, parts: event.parts } : m)))
         }
 
         if (event.type === 'error') {
@@ -215,6 +213,34 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
       try {
         const response = await sendChatMessage(targetSessionId, content, modeOverride ?? mode)
 
+        // Check for non-OK responses (500, etc.) before trying to read stream
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('Chat request failed:', errorData)
+
+          // Add error message to chat
+          const errorMessage: Message = {
+            id: `error-${Date.now()}`,
+            role: 'system',
+            content: errorData.error || errorData.details || 'Failed to start agent',
+            type: 'error',
+            errorCategory: 'persistent',
+            retryable: false,
+            createdAt: Math.floor(Date.now() / 1000),
+          }
+          setMessages((prev) => {
+            // Remove the empty assistant placeholder and add error
+            const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
+            return [...filtered, errorMessage]
+          })
+
+          // Clear streaming state and status
+          setIsStreaming(false)
+          setThinkingStatus('') // Clear "Starting" status
+          streamingMessageRef.current = null
+          return
+        }
+
         if (!response.body) {
           throw new Error('No response body')
         }
@@ -249,10 +275,8 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
 
                     setMessages((prev) =>
                       prev.map((m) =>
-                        m.id === streamingMessageRef.current
-                          ? { ...m, content: assistantTextRef.current }
-                          : m
-                      )
+                        m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
+                      ),
                     )
                   }
 
@@ -288,10 +312,8 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                 if (data.type === 'assistant') {
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === streamingMessageRef.current
-                        ? { ...m, content: data.content, id: data.id || m.id }
-                        : m
-                    )
+                      m.id === streamingMessageRef.current ? { ...m, content: data.content, id: data.id || m.id } : m,
+                    ),
                   )
                 }
 
@@ -348,10 +370,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
       } catch (err) {
         console.error('Chat error:', err)
         setIsStreaming(false)
+        setThinkingStatus('') // Clear "Starting" status on error
         streamingMessageRef.current = null
       }
     },
-    [activeSessionId, isStreaming, mode]
+    [activeSessionId, isStreaming, mode],
   )
 
   // Handle stopping the stream
@@ -447,9 +470,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
 
   const humansPrompting = 1
   const sidebarDefaultOpen = !!activeSessionId
-  const canSubmit = activeSessionId
-    ? prompt.trim() && !isStreaming
-    : selectedRepo && prompt.trim() && !isCreating
+  const canSubmit = activeSessionId ? prompt.trim() && !isStreaming : selectedRepo && prompt.trim() && !isCreating
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
@@ -495,7 +516,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
               <div
                 className={cn(
                   'flex-1 overflow-y-auto',
-                  activeSessionId ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'
+                  activeSessionId ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden',
                 )}
               >
                 {activeSessionId && (
@@ -521,7 +542,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                           key={message.id}
                           className={cn(
                             'flex animate-in fade-in-0 slide-in-from-bottom-2 duration-300',
-                            message.role === 'user' ? 'justify-end' : 'justify-start'
+                            message.role === 'user' ? 'justify-end' : 'justify-start',
                           )}
                         >
                           <div
@@ -531,12 +552,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                 ? 'bg-foreground text-background'
                                 : message.role === 'system'
                                   ? 'bg-muted/50 text-muted-foreground text-sm'
-                                  : 'bg-muted/30'
+                                  : 'bg-muted/30',
                             )}
                           >
-                            <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
-                              {message.content}
-                            </p>
+                            <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
                           </div>
                         </div>
                       )
@@ -567,13 +586,13 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
                   activeSessionId
                     ? 'mt-auto pb-4 px-6' // Bottom position
-                    : 'absolute inset-0 flex items-center justify-center px-6' // Center position
+                    : 'absolute inset-0 flex items-center justify-center px-6', // Center position
                 )}
               >
                 <div
                   className={cn(
                     'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
-                    activeSessionId ? 'max-w-3xl mx-auto' : 'max-w-[540px]'
+                    activeSessionId ? 'max-w-3xl mx-auto' : 'max-w-[540px]',
                   )}
                 >
                   {/* The actual composer card */}
@@ -588,7 +607,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                         rows={activeSessionId ? 2 : 3}
                         className={cn(
                           'w-full resize-none bg-transparent text-[15px] placeholder:text-muted-foreground/60 focus:outline-none transition-all duration-300',
-                          activeSessionId ? 'min-h-[56px]' : 'min-h-[88px]'
+                          activeSessionId ? 'min-h-[56px]' : 'min-h-[88px]',
                         )}
                       />
 
@@ -622,13 +641,19 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                       <span className="max-w-[150px] truncate text-sm">
                                         {selectedRepo ? selectedRepo.fullName : 'Select repo'}
                                       </span>
-                                      <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
+                                      <HugeiconsIcon
+                                        icon={ArrowDown01Icon}
+                                        strokeWidth={2}
+                                        className="text-muted-foreground size-3.5"
+                                      />
                                     </Button>
                                   }
                                 />
                                 <DropdownMenuContent align="start" className="w-[280px] max-h-[300px] overflow-y-auto">
                                   {reposLoading ? (
-                                    <div className="p-3 text-center text-sm text-muted-foreground">Loading repos...</div>
+                                    <div className="p-3 text-center text-sm text-muted-foreground">
+                                      Loading repos...
+                                    </div>
                                   ) : repos.length === 0 ? (
                                     <div className="p-3 text-center text-sm text-muted-foreground">No repos found</div>
                                   ) : (
@@ -637,7 +662,9 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                         <DropdownMenuItem key={repo.id} onClick={() => setSelectedRepo(repo)}>
                                           <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
                                           <span className="truncate flex-1">{repo.fullName}</span>
-                                          {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
+                                          {repo.private && (
+                                            <span className="text-[10px] text-muted-foreground">private</span>
+                                          )}
                                         </DropdownMenuItem>
                                       ))}
                                     </DropdownMenuGroup>
@@ -648,9 +675,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                           )}
 
                           {activeSessionId && messageQueue.length > 0 && (
-                            <span className="text-[11px] text-muted-foreground ml-2">
-                              {messageQueue.length} queued
-                            </span>
+                            <span className="text-[11px] text-muted-foreground ml-2">{messageQueue.length} queued</span>
                           )}
                         </div>
 
@@ -675,7 +700,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                 'rounded-full transition-all',
                                 canSubmit
                                   ? 'bg-foreground text-background hover:bg-foreground/90'
-                                  : 'bg-muted text-muted-foreground'
+                                  : 'bg-muted text-muted-foreground',
                               )}
                             >
                               {isCreating ? (
@@ -695,9 +720,16 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             render={
-                              <Button variant="ghost" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground">
+                              <Button
+                                variant="ghost"
+                                className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                              >
                                 {modelsLoading ? 'Loading...' : selectedModel?.name || 'Select model'}
-                                <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3" />
+                                <HugeiconsIcon
+                                  icon={ArrowDown01Icon}
+                                  strokeWidth={2}
+                                  className="text-muted-foreground size-3"
+                                />
                               </Button>
                             }
                           />
@@ -731,7 +763,9 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                             onClick={() => setMode('build')}
                             className={cn(
                               'transition-colors cursor-pointer',
-                              mode === 'build' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'
+                              mode === 'build'
+                                ? 'text-foreground font-medium'
+                                : 'text-muted-foreground hover:text-foreground',
                             )}
                           >
                             build
@@ -740,7 +774,9 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                             onClick={() => setMode('plan')}
                             className={cn(
                               'transition-colors cursor-pointer',
-                              mode === 'plan' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'
+                              mode === 'plan'
+                                ? 'text-foreground font-medium'
+                                : 'text-muted-foreground hover:text-foreground',
                             )}
                           >
                             plan
@@ -757,7 +793,9 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       <div className="text-center">
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 text-sm text-muted-foreground">
                           <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span>{humansPrompting} {humansPrompting === 1 ? 'human' : 'humans'} prompting</span>
+                          <span>
+                            {humansPrompting} {humansPrompting === 1 ? 'human' : 'humans'} prompting
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -793,11 +831,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                 )}
 
                 <div>
-                  <h3 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                    Mode
-                  </h3>
+                  <h3 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Mode</h3>
                   <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted text-xs">
-                    <span className={cn('w-1.5 h-1.5 rounded-full', mode === 'build' ? 'bg-emerald-500' : 'bg-blue-500')} />
+                    <span
+                      className={cn('w-1.5 h-1.5 rounded-full', mode === 'build' ? 'bg-emerald-500' : 'bg-blue-500')}
+                    />
                     <span className="capitalize">{mode}</span>
                   </div>
                 </div>
