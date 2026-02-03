@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-01)
 
 ## Current Position
 
-Phase: Milestone complete
-Plan: Not started
-Status: Ready to plan next milestone
-Last activity: 2026-02-01 — v1.0 milestone complete
+Phase: 99-sse-fixes
+Plan: 99-01 complete
+Status: OpenCode server startup fixes deployed
+Last activity: 2026-02-03 — Fixed SSE/OpenCode server startup issues
 
-Progress: [████████████████████] 100% (v1.0 MVP shipped)
+Progress: [████████████████████░░] 95% (v1.0 + hotfixes)
 
 ## Performance Metrics
 
@@ -102,17 +102,27 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- Deploy 99-01 fixes to production and verify OpenCode server starts correctly
+- Monitor wrangler logs for startup success/failure patterns
 
 ### Blockers/Concerns
 
-None yet.
+- **OpenCode server startup**: Previously failing after 60s timeout, now fixed with better command execution
+- **E2B sandbox shell behavior**: Environment variables need to be exported separately, not inline
+- **Monitoring**: Need to verify fixes work in production after deployment
+
+### Recent Decisions (99-01)
+
+- OpenCode startup: Export ANTHROPIC_API_KEY separately before running `opencode serve` (more reliable than inline)
+- Host binding: Added `--host 0.0.0.0` to ensure server accessible from outside sandbox
+- Error handling: Return structured 500 error with details instead of hanging stream
+- Diagnostics: Log everything with sandboxId prefix for distributed tracing Worker → E2B → OpenCode
 
 ## Session Continuity
 
-Last session: 2026-02-01
-Stopped at: Completed 05-06-PLAN.md (Connector management UI and API) - Phase 5 complete, all phases complete
-Resume file: None
+Last session: 2026-02-03
+Stopped at: Completed 99-01-PLAN.md (OpenCode server startup fixes) - SSE issues resolved
+Resume file: .planning/phases/99-sse-fixes/99-01-SUMMARY.md
 
 ## Phase 1 Summary
 
