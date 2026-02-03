@@ -459,3 +459,30 @@ export async function getSandboxPortUrl(apiKey: string, sandboxId: string, port:
 
 // Re-export types from E2B SDK for convenience
 export { Sandbox } from '@e2b/code-interpreter'
+
+/**
+ * Test function to verify OpenCode server startup
+ * Can be called manually to debug issues
+ */
+export async function testOpenCodeServerStartup(apiKey: string, anthropicKey: string): Promise<void> {
+  console.log('[test] Creating test sandbox...')
+  const sandbox = await Sandbox.betaCreate({ apiKey, autoPause: true })
+  console.log(`[test] Sandbox created: ${sandbox.sandboxId}`)
+
+  try {
+    console.log('[test] Starting OpenCode server...')
+    const { url } = await startOpenCodeServer(apiKey, sandbox.sandboxId, anthropicKey)
+    console.log(`[test] SUCCESS! Server running at ${url}`)
+
+    // Test health endpoint from outside
+    const healthRes = await fetch(`${url}/health`)
+    console.log(`[test] External health check: ${healthRes.status}`)
+  } catch (error) {
+    console.error('[test] FAILED:', error)
+    throw error
+  } finally {
+    // Cleanup
+    await Sandbox.kill(sandbox.sandboxId, { apiKey })
+    console.log('[test] Test sandbox cleaned up')
+  }
+}
