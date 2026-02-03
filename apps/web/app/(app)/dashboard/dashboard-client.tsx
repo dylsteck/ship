@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   useGitHubRepos,
@@ -12,175 +12,16 @@ import {
   type User,
 } from '@/lib/api'
 import { CreateSessionDialog } from '@/components/session/create-session-dialog'
-import {
-  Card,
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-  DropdownMenuGroup,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-  cn,
-} from '@ship/ui'
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon, Mic01Icon, AttachmentIcon, ArrowUp02Icon, GithubIcon, PlusSignIcon, Tick02Icon } from '@hugeicons/core-free-icons'
+import { ChatComposer } from '@/components/chat-composer'
+import { DashboardStats } from '@/components/dashboard-stats'
+import { DashboardBackground } from '@/components/dashboard-background'
 
 interface DashboardClientProps {
   sessions: ChatSession[]
   userId: string
   user: User
-}
-
-function AreaChart({ color = 'var(--chart-1)' }: { color?: string }) {
-  const points = useMemo(() => {
-    const data = [30, 35, 32, 40, 38, 45, 42, 50, 48, 55, 60, 65]
-    return data.map((y, i) => `${(i / 11) * 100},${100 - y}`).join(' ')
-  }, [])
-  
-  return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-      <defs>
-        <linearGradient id={`gradient-chart`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <polygon points={`0,100 ${points} 100,100`} fill="url(#gradient-chart)" />
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  )
-}
-
-function StatsCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card className="p-4 relative overflow-hidden">
-      <p className="text-xs text-muted-foreground font-medium mb-1">{label}</p>
-      <p className="text-2xl font-semibold text-foreground tabular-nums">
-        {value.toLocaleString()}
-      </p>
-      <div className="absolute bottom-0 left-0 right-0 h-12 opacity-80">
-        <AreaChart />
-      </div>
-    </Card>
-  )
-}
-
-// Halftone dot pattern background component
-function HalftoneBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Top-left corner pattern */}
-      <svg className="absolute -top-20 -left-20 w-[600px] h-[600px] opacity-[0.15]" viewBox="0 0 400 400">
-        <defs>
-          <radialGradient id="fadeTopLeft" cx="0%" cy="0%" r="100%">
-            <stop offset="0%" stopColor="rgb(59, 130, 246)" stopOpacity="1" />
-            <stop offset="60%" stopColor="rgb(59, 130, 246)" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="rgb(59, 130, 246)" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        {Array.from({ length: 30 }).map((_, row) =>
-          Array.from({ length: 30 }).map((_, col) => {
-            const distance = Math.sqrt(row * row + col * col)
-            const maxDistance = Math.sqrt(30 * 30 + 30 * 30)
-            const size = Math.max(1, 4 - (distance / maxDistance) * 3.5)
-            const opacity = Math.max(0, 1 - (distance / maxDistance) * 1.2)
-            return (
-              <circle
-                key={`tl-${row}-${col}`}
-                cx={col * 14 + 7}
-                cy={row * 14 + 7}
-                r={size}
-                fill="rgb(59, 130, 246)"
-                opacity={opacity}
-              />
-            )
-          })
-        )}
-      </svg>
-      
-      {/* Top-right corner pattern */}
-      <svg className="absolute -top-20 -right-20 w-[600px] h-[600px] opacity-[0.12]" viewBox="0 0 400 400">
-        {Array.from({ length: 30 }).map((_, row) =>
-          Array.from({ length: 30 }).map((_, col) => {
-            const distance = Math.sqrt(row * row + (29 - col) * (29 - col))
-            const maxDistance = Math.sqrt(30 * 30 + 30 * 30)
-            const size = Math.max(1, 4 - (distance / maxDistance) * 3.5)
-            const opacity = Math.max(0, 1 - (distance / maxDistance) * 1.2)
-            return (
-              <circle
-                key={`tr-${row}-${col}`}
-                cx={col * 14 + 7}
-                cy={row * 14 + 7}
-                r={size}
-                fill="rgb(59, 130, 246)"
-                opacity={opacity}
-              />
-            )
-          })
-        )}
-      </svg>
-      
-      {/* Bottom-left corner pattern */}
-      <svg className="absolute -bottom-20 -left-20 w-[500px] h-[500px] opacity-[0.08]" viewBox="0 0 400 400">
-        {Array.from({ length: 25 }).map((_, row) =>
-          Array.from({ length: 25 }).map((_, col) => {
-            const distance = Math.sqrt((24 - row) * (24 - row) + col * col)
-            const maxDistance = Math.sqrt(25 * 25 + 25 * 25)
-            const size = Math.max(1, 3.5 - (distance / maxDistance) * 3)
-            const opacity = Math.max(0, 1 - (distance / maxDistance) * 1.3)
-            return (
-              <circle
-                key={`bl-${row}-${col}`}
-                cx={col * 16 + 8}
-                cy={row * 16 + 8}
-                r={size}
-                fill="rgb(100, 116, 139)"
-                opacity={opacity}
-              />
-            )
-          })
-        )}
-      </svg>
-      
-      {/* Bottom-right corner pattern */}
-      <svg className="absolute -bottom-20 -right-20 w-[500px] h-[500px] opacity-[0.06]" viewBox="0 0 400 400">
-        {Array.from({ length: 25 }).map((_, row) =>
-          Array.from({ length: 25 }).map((_, col) => {
-            const distance = Math.sqrt((24 - row) * (24 - row) + (24 - col) * (24 - col))
-            const maxDistance = Math.sqrt(25 * 25 + 25 * 25)
-            const size = Math.max(1, 3.5 - (distance / maxDistance) * 3)
-            const opacity = Math.max(0, 1 - (distance / maxDistance) * 1.3)
-            return (
-              <circle
-                key={`br-${row}-${col}`}
-                cx={col * 16 + 8}
-                cy={row * 16 + 8}
-                r={size}
-                fill="rgb(100, 116, 139)"
-                opacity={opacity}
-              />
-            )
-          })
-        )}
-      </svg>
-    </div>
-  )
 }
 
 export function DashboardClient({ sessions, userId, user }: DashboardClientProps) {
@@ -247,180 +88,35 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
       />
       <SidebarInset>
         <div className="flex h-screen flex-col relative">
-          <HalftoneBackground />
+          <DashboardBackground />
           
           {/* Header with sidebar trigger */}
           <header className="flex items-center gap-2 p-3 relative z-10">
-            <SidebarTrigger />
+            <SidebarTrigger className="cursor-pointer" />
           </header>
 
           {/* Main content */}
           <main className="flex-1 flex flex-col items-center justify-center p-6 relative z-10">
             <div className="w-full max-w-[540px] space-y-6">
-              {/* Input Card - ChatGPT style */}
-              <div className="rounded-3xl border border-border/60 bg-card shadow-sm overflow-hidden transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-foreground/10">
-                {/* Text input area */}
-                <div className="p-4">
-                  <textarea
-                    placeholder="Ask or build anything"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={3}
-                    className="w-full min-h-[88px] resize-none bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none"
-                  />
-                </div>
-
-                {/* Bottom bar with controls */}
-                <div className="px-3 py-2 flex items-center justify-between border-t border-border/60 bg-muted/20">
-                  {/* Left side: Add button and repo selector */}
-                  <div className="flex items-center gap-1">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button variant="ghost" size="icon-sm" className="rounded-full">
-                            <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} />
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="start" className="w-[220px]">
-                        <DropdownMenuItem>
-                          <HugeiconsIcon icon={AttachmentIcon} strokeWidth={2} />
-                          Add files
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button variant="ghost" className="h-8 px-3 rounded-full gap-1.5">
-                            <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
-                            <span className="max-w-[150px] truncate text-sm">
-                              {selectedRepo ? selectedRepo.fullName : 'Select repo'}
-                            </span>
-                            <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="start" className="w-[280px] max-h-[300px] overflow-y-auto">
-                        {reposLoading ? (
-                          <div className="p-3 text-center text-sm text-muted-foreground">
-                            Loading repos...
-                          </div>
-                        ) : repos.length === 0 ? (
-                          <div className="p-3 text-center text-sm text-muted-foreground">
-                            No repos found
-                          </div>
-                        ) : (
-                          <DropdownMenuGroup>
-                            {repos.slice(0, 20).map((repo) => (
-                              <DropdownMenuItem
-                                key={repo.id}
-                                onClick={() => setSelectedRepo(repo)}
-                              >
-                                <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
-                                <span className="truncate flex-1">{repo.fullName}</span>
-                                {repo.private && (
-                                  <span className="text-[10px] text-muted-foreground">private</span>
-                                )}
-                                {selectedRepo?.id === repo.id && (
-                                  <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="text-foreground" />
-                                )}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuGroup>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Right side: Mic and Send */}
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon-sm" className="rounded-full">
-                      <HugeiconsIcon icon={Mic01Icon} strokeWidth={2} />
-                    </Button>
-                    <Button 
-                      onClick={handleSubmit}
-                      disabled={!selectedRepo || !prompt.trim() || isCreating}
-                      size="icon-sm"
-                      className={cn(
-                        "rounded-full",
-                        selectedRepo && prompt.trim() && !isCreating
-                          ? "bg-foreground text-background hover:bg-foreground/90" 
-                          : "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {isCreating ? (
-                        <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <HugeiconsIcon icon={ArrowUp02Icon} strokeWidth={2} />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Model selector below input */}
-              <div className="flex items-center justify-between">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground">
-                        {modelsLoading ? 'Loading...' : (selectedModel?.name || 'Select model')}
-                        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="start" className="w-[240px]">
-                    {Object.entries(groupedByProvider).map(([provider, providerModels], idx) => (
-                      <DropdownMenuGroup key={provider}>
-                        {idx > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuLabel className="text-xs text-muted-foreground capitalize font-normal">
-                          {provider}
-                        </DropdownMenuLabel>
-                        <DropdownMenuRadioGroup value={selectedModel?.id || ''} onValueChange={(value) => {
-                          const model = providerModels.find(m => m.id === value)
-                          if (model) setSelectedModel(model)
-                        }}>
-                          {providerModels.map((model) => (
-                            <DropdownMenuRadioItem key={model.id} value={model.id}>
-                              {model.name}
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuGroup>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <div className="flex items-center gap-3 text-sm">
-                  <button
-                    onClick={() => setMode('build')}
-                    className={cn(
-                      "transition-colors",
-                      mode === 'build' ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    build
-                  </button>
-                  <button
-                    onClick={() => setMode('agent')}
-                    className={cn(
-                      "transition-colors",
-                      mode === 'agent' ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    agent
-                  </button>
-                </div>
-              </div>
+              <ChatComposer
+                prompt={prompt}
+                onPromptChange={setPrompt}
+                selectedRepo={selectedRepo}
+                onRepoSelect={setSelectedRepo}
+                repos={repos}
+                reposLoading={reposLoading}
+                selectedModel={selectedModel}
+                onModelSelect={setSelectedModel}
+                modelsLoading={modelsLoading}
+                groupedByProvider={groupedByProvider}
+                mode={mode}
+                onModeChange={setMode}
+                onSubmit={handleSubmit}
+                isCreating={isCreating}
+              />
 
               {/* Stats cards */}
-              <div className="grid grid-cols-3 gap-4">
-                <StatsCard label="Sessions past week" value={stats.sessionsPastWeek} />
-                <StatsCard label="Messages past week" value={stats.messagesPastWeek} />
-                <StatsCard label="Active repos" value={stats.activeRepos} />
-              </div>
+              <DashboardStats stats={stats} />
             </div>
           </main>
 

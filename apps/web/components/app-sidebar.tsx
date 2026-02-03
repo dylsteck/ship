@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon, Search01Icon, GithubIcon } from '@hugeicons/core-free-icons'
+import { Refresh01Icon, Search01Icon, GithubIcon, Settings01Icon, Logout01Icon } from '@hugeicons/core-free-icons'
 import type { ChatSession } from '@/lib/api'
 import {
   Sidebar,
@@ -18,6 +18,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@ship/ui'
 
 interface User {
@@ -56,7 +60,7 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange }: AppS
   const inactiveSessions = filtered.filter(s => s.lastActivity <= oneWeekAgo)
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="offcanvas">
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center justify-between px-2 py-1">
           <div className="flex items-center gap-2">
@@ -71,13 +75,44 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange }: AppS
             <Button variant="ghost" size="icon" className="size-7" onClick={() => router.refresh()}>
               <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-3.5" />
             </Button>
-            {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.username} width={24} height={24} className="w-6 h-6 rounded-full" />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
-                {user.username[0].toUpperCase()}
-              </div>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    className="w-6 h-6 rounded-full overflow-hidden bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground cursor-pointer"
+                    aria-label="Open user menu"
+                  >
+                    {user.avatarUrl ? (
+                      <img src={user.avatarUrl} alt={user.username} width={24} height={24} className="w-6 h-6 object-cover" />
+                    ) : (
+                      <span>{user.username[0].toUpperCase()}</span>
+                    )}
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    router.push('/settings')
+                  }}
+                  className="cursor-pointer"
+                >
+                  <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    window.location.href = '/api/auth/logout'
+                  }}
+                  className="cursor-pointer"
+                >
+                  <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </SidebarHeader>
