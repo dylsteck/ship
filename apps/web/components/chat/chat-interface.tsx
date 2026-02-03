@@ -238,7 +238,7 @@ export function ChatInterface({
                 // Handle status events for progress updates
                 if (data.type === 'status') {
                   const statusMessage = data.message || 'Processing...'
-                  onStatusChange?.('planning', statusMessage)
+                  
                   // Update streaming label to show progress
                   if (data.status === 'provisioning') {
                     onStatusChange?.('planning', `Provisioning sandbox... ${statusMessage}`)
@@ -248,6 +248,20 @@ export function ChatInterface({
                     onStatusChange?.('planning', statusMessage)
                   } else if (data.status === 'repo-ready') {
                     onStatusChange?.('planning', statusMessage)
+                  } else if (data.status === 'tool-call') {
+                    // Show tool call in real-time
+                    const toolLabel = data.toolTitle || data.toolName || 'Using tool'
+                    onStatusChange?.('coding', toolLabel)
+                    setThinkingStatus(`🔧 ${toolLabel}`)
+                  } else if (data.status === 'agent-thinking') {
+                    onStatusChange?.('planning', 'Agent is thinking...')
+                    setThinkingStatus('💭 Thinking...')
+                  } else if (data.status === 'agent-active') {
+                    onStatusChange?.('planning', 'Agent is active')
+                    setThinkingStatus('⚡ Processing...')
+                  } else {
+                    onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus(statusMessage)
                   }
                   continue
                 }
@@ -255,6 +269,13 @@ export function ChatInterface({
                 if (data.type === 'message.part.updated') {
                   const part = data.properties?.part
                   const delta = data.properties?.delta
+                  
+                  console.log('[chat-interface] Received message.part.updated:', {
+                    partType: part?.type,
+                    toolName: part?.type === 'tool' ? (typeof part.tool === 'string' ? part.tool : part.tool?.name) : undefined,
+                    hasText: !!part?.text,
+                    hasDelta: !!delta,
+                  })
                   
                   if (part?.type === 'text') {
                     if (typeof delta === 'string') {
@@ -268,22 +289,35 @@ export function ChatInterface({
                         m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
                       ),
                     )
+                    
+                    // Update status to show agent is writing
+                    onStatusChange?.('coding', 'Writing response...')
+                    setThinkingStatus('✍️ Writing...')
                   } else if (part?.type === 'tool') {
                     // Extract tool information
                     const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
                     const callID = part.callID || part.id || `tool-${Date.now()}-${Math.random()}`
                     
+                    console.log('[chat-interface] Tool part:', { toolName, callID, status: part.state?.status })
+                    
                     if (toolName) {
-                      // Update status
+                      // Update status with tool name
                       let status: AgentStatus = 'coding'
+                      let statusLabel = toolName
+                      
                       if (toolName.includes('read') || toolName.includes('search') || toolName.includes('glob') || toolName.includes('grep')) {
                         status = 'planning'
+                        statusLabel = `🔍 ${toolName}`
                       } else if (toolName.includes('write') || toolName.includes('edit')) {
                         status = 'coding'
+                        statusLabel = `✏️ ${toolName}`
                       } else if (toolName.includes('run') || toolName.includes('exec') || toolName.includes('bash')) {
                         status = 'executing'
+                        statusLabel = `⚡ ${toolName}`
                       }
+                      
                       onStatusChange?.(status, toolName)
+                      setThinkingStatus(statusLabel)
                       
                       // Add to thinking parts for display
                       const toolPart: ToolPart = {
@@ -317,6 +351,7 @@ export function ChatInterface({
                         return prev ? `${prev}\n\n${reasoningText}` : reasoningText
                       })
                       onStatusChange?.('planning', 'Reasoning...')
+                      setThinkingStatus('💭 Reasoning...')
                     }
                   }
                 }
@@ -329,10 +364,28 @@ export function ChatInterface({
                     let agentStatus: AgentStatus = 'planning'
                     if (status.includes('running') || status.includes('executing')) {
                       agentStatus = 'executing'
+                      setThinkingStatus('⚡ Executing...')
                     } else if (status.includes('thinking') || status.includes('planning')) {
                       agentStatus = 'planning'
+                      setThinkingStatus('💭 Thinking...')
                     }
                     onStatusChange?.(agentStatus, status)
+                  }
+                }
+                
+                // Handle ALL other event types for visibility - show them in real-time
+                if (!['status', 'message.part.updated', 'session.status', 'done', 'error', 'heartbeat'].includes(data.type)) {
+                  console.log('[chat-interface] 📡 Event received:', data.type, data)
+                  
+                  // Show event type as status for visibility
+                  const eventLabel = data.type.replace(/\./g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                  setThinkingStatus(`📡 ${eventLabel}`)
+                  
+                  // Update agent status based on event type
+                  if (data.type.includes('tool') || data.type.includes('command')) {
+                    onStatusChange?.('coding', eventLabel)
+                  } else if (data.type.includes('thinking') || data.type.includes('reasoning')) {
+                    onStatusChange?.('planning', eventLabel)
                   }
                 }
 
@@ -342,8 +395,27 @@ export function ChatInterface({
                   const path = data.properties?.path
                   if (event && path) {
                     const fileName = path.split('/').pop() || path
-                    onStatusChange?.('coding', `${event}: ${fileName}`)
+                    const statusLabel = `${event}: ${fileName}`
+                    onStatusChange?.('coding', statusLabel)
+                    setThinkingStatus(`📝 ${statusLabel}`)
                   }
+                }
+                
+                // Handle todo updates (agent creating tasks)
+                if (data.type === 'todo.updated') {
+                  const todos = data.properties?.todos || []
+                  if (todos.length > 0) {
+                    const todoTitle = todos[0]?.content || 'New task'
+                    setThinkingStatus(`📋 Task: ${todoTitle.slice(0, 40)}`)
+                    onStatusChange?.('planning', `Creating task: ${todoTitle.slice(0, 30)}`)
+                  }
+                }
+                
+                // Handle command execution
+                if (data.type === 'command.executed') {
+                  const command = data.properties?.command || 'command'
+                  setThinkingStatus(`⚡ Running: ${command}`)
+                  onStatusChange?.('executing', command)
                 }
 
                 // Handle command execution

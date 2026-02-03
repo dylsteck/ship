@@ -29,13 +29,26 @@ app.get("/debug", (c) => {
 // POST /chat/:sessionId - Send message and receive streaming response
 app.post('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId')
+  // Use both console.log and console.error to ensure logs are captured
+  console.error(`[chat:${sessionId}] ===== CHAT REQUEST STARTED =====`)
   console.log(`[chat:${sessionId}] ===== CHAT REQUEST STARTED =====`)
 
-  const { content, mode = 'build' } = await c.req.json<{
-    content: string
-    mode?: 'build' | 'plan'
-  }>()
+  let content: string
+  let mode: 'build' | 'plan' = 'build'
+  
+  try {
+    const body = await c.req.json<{
+      content: string
+      mode?: 'build' | 'plan'
+    }>()
+    content = body.content
+    mode = body.mode || 'build'
+  } catch (parseError) {
+    console.error(`[chat:${sessionId}] Failed to parse request body:`, parseError)
+    return c.json({ error: 'Invalid request body' }, 400)
+  }
 
+  console.error(`[chat:${sessionId}] Mode: ${mode}, Content length: ${content?.length || 0}`)
   console.log(`[chat:${sessionId}] Mode: ${mode}, Content length: ${content?.length || 0}`)
 
   if (!content?.trim()) {
@@ -45,6 +58,7 @@ app.post('/:sessionId', async (c) => {
   // Get DO stub
   const id = c.env.SESSION_DO.idFromName(sessionId)
   const stub = c.env.SESSION_DO.get(id)
+  console.error(`[chat:${sessionId}] Got DO stub`)
   console.log(`[chat:${sessionId}] Got DO stub`)
 
   // Persist user message
@@ -61,7 +75,9 @@ app.post('/:sessionId', async (c) => {
   let metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
   let meta = (await metaRes.json()) as Record<string, string>
   let opencodeSessionId = meta.opencodeSessionId
-  const selectedModel = meta.selected_model // Per-session model preference
+  // Model is stored as 'model' in sessions.ts, but may also be 'selected_model' for backwards compat
+  const selectedModel = meta.model || meta.selected_model // Per-session model preference
+  console.error(`[chat:${sessionId}] Model from meta: model=${meta.model}, selected_model=${meta.selected_model}, using: ${selectedModel}`)
   let sandboxId = meta.sandbox_id
   let sandboxStatus = meta.sandbox_status
   let opencodeUrl = meta.opencode_url // Get initial opencode URL from meta
@@ -76,14 +92,18 @@ app.post('/:sessionId', async (c) => {
 
   // All sandbox setup will happen INSIDE the SSE stream handler
   // so UI gets immediate feedback via SSE events
-  console.log(
-    `[chat:${sessionId}] Starting SSE stream immediately, mode=${mode}, model=${selectedModel}`,
-  )
+  console.error(`[chat:${sessionId}] Starting SSE stream immediately, mode=${mode}, model=${selectedModel}`)
+  console.log(`[chat:${sessionId}] Starting SSE stream immediately, mode=${mode}, model=${selectedModel}`)
 
   // Stream OpenCode events as SSE
-  return streamSSE(c, async (stream) => {
+  try {
+    return streamSSE(c, async (stream) => {
+    console.error(`[chat:${sessionId}] SSE stream handler started`)
+    console.log(`[chat:${sessionId}] SSE stream handler started`)
+    
     try {
       // Send initial status event so UI knows we're working
+      console.error(`[chat:${sessionId}] Sending initial status event`)
       await stream.writeSSE({
         event: 'status',
         data: JSON.stringify({
@@ -92,6 +112,7 @@ app.post('/:sessionId', async (c) => {
           message: 'Preparing sandbox and agent...',
         }),
       })
+      console.error(`[chat:${sessionId}] Initial status event sent`)
 
       // Initialize variables safely - ensure all are defined
       let currentSandboxId: string | undefined = sandboxId || undefined
@@ -286,159 +307,196 @@ app.post('/:sessionId', async (c) => {
         }
       }
 
-      // Clone repository if we have repo info but no repo_url yet
-      // Re-fetch meta to get latest repo info
-      const latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
-      const latestMeta = (await latestMetaRes.json()) as Record<string, string>
-      
-      if (currentSandboxId && latestMeta.repo_owner && latestMeta.repo_name && !latestMeta.repo_url) {
-        try {
-          console.log(`[chat:${sessionId}] Repository not cloned yet, cloning now...`)
-          const cloneStartTime = Date.now()
+      // Re-fetch meta to get latest repo info before OpenCode session creation
+      let latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+      let latestMeta = (await latestMetaRes.json()) as Record<string, string>
 
-          await stream.writeSSE({
-            event: 'status',
-            data: JSON.stringify({
-              type: 'status',
-              status: 'cloning',
-              message: `Cloning repository ${latestMeta.repo_owner}/${latestMeta.repo_name}...`,
-            }),
-          })
-
-          // Broadcast cloning started
-          await stub.fetch(
-            new Request(`${doUrl}/broadcast`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'sandbox-cloning',
-                repoOwner: latestMeta.repo_owner,
-                repoName: latestMeta.repo_name,
-              }),
-            }),
-          )
-
-          // Get GitHub token from accounts
-          const accountRes = await c.env.DB.prepare(
-            'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
-          )
-            .bind(latestMeta.user_id, 'github')
-            .first<{ access_token: string }>()
-
-          if (!accountRes?.access_token) {
-            console.error(`[chat:${sessionId}] No GitHub token found for user`)
-          } else {
-            const repoUrl = `https://github.com/${latestMeta.repo_owner}/${latestMeta.repo_name}.git`
-            const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
-
-            // Connect to sandbox and clone repo
+      if (!currentOpencodeSessionId) {
+        // Create new OpenCode session
+        console.error(`[chat:${sessionId}] ===== CREATING OPENCODE SESSION =====`)
+        console.log(`[chat:${sessionId}] Creating OpenCode session...`)
+        
+        // CRITICAL: Ensure repo is cloned BEFORE creating OpenCode session
+        // Re-fetch meta to get latest repo status
+        latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+        latestMeta = (await latestMetaRes.json()) as Record<string, string>
+        
+        const repoPath = '/home/user/repo'
+        let repoExists = false
+        
+        // ALWAYS check if repo exists and clone if needed
+        if (latestMeta.repo_owner && latestMeta.repo_name && currentSandboxId) {
+          console.error(`[chat:${sessionId}] Checking repo status: owner=${latestMeta.repo_owner}, name=${latestMeta.repo_name}`)
+          
+          // Check if repo directory exists in sandbox
+          try {
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
-
-            // Clone the repository
-            const repoPath = '/home/user/repo'
-            const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
-
-            console.log(`[chat:${sessionId}] Cloning ${repoUrl}...`)
-            const cloneResult = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
-
-            if (cloneResult.exitCode !== 0) {
-              throw new Error(`Git clone failed: ${cloneResult.stderr}`)
-            }
-
-            // Configure git user
-            await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
-            await sandbox.commands.run(`cd ${repoPath} && git config user.email "agent@ship.dylansteck.com"`)
-
-            // Create and checkout branch
-            await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
-
-            // Store repo info in session meta
-            await stub.fetch(
-              new Request(`${doUrl}/meta`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  repo_url: repoUrl,
-                  current_branch: branchName,
-                  repo_path: repoPath,
-                }),
-              }),
-            )
-
-            const cloneElapsed = ((Date.now() - cloneStartTime) / 1000).toFixed(1)
-            console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created (took ${cloneElapsed}s)`)
-
-            // Broadcast cloning completed
-            await stub.fetch(
-              new Request(`${doUrl}/broadcast`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  type: 'sandbox-ready',
-                  repoUrl,
-                  branchName,
-                }),
-              }),
-            )
-
+            const checkResult = await sandbox.commands.run(`test -d ${repoPath} && echo "EXISTS" || echo "NOT_FOUND"`)
+            repoExists = checkResult.stdout.trim() === 'EXISTS'
+            console.error(`[chat:${sessionId}] Repo directory check: ${repoExists ? 'EXISTS' : 'NOT_FOUND'} at ${repoPath}`)
+            console.log(`[chat:${sessionId}] Repo directory check: ${repoExists ? 'EXISTS' : 'NOT_FOUND'} at ${repoPath}`)
+          } catch (checkError) {
+            console.error(`[chat:${sessionId}] Could not verify repo existence:`, checkError)
+            console.warn(`[chat:${sessionId}] Could not verify repo existence:`, checkError)
+          }
+          
+          // If repo doesn't exist, clone it NOW
+          if (!repoExists) {
+            console.error(`[chat:${sessionId}] ===== CLONING REPO BEFORE OPENCODE SESSION =====`)
+            console.log(`[chat:${sessionId}] Repo not cloned yet, cloning now before creating OpenCode session...`)
+            
             await stream.writeSSE({
               event: 'status',
               data: JSON.stringify({
                 type: 'status',
-                status: 'repo-ready',
-                message: `Repository cloned. Branch: ${branchName}`,
+                status: 'cloning',
+                message: `Cloning repository ${latestMeta.repo_owner}/${latestMeta.repo_name}...`,
               }),
             })
-
-            // Initialize agent executor now that we have everything needed
-            console.log(`[chat:${sessionId}] Initializing agent executor...`)
-
+            
             try {
+              // Get GitHub token
+              const accountRes = await c.env.DB.prepare(
+                'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
+              )
+                .bind(latestMeta.user_id, 'github')
+                .first<{ access_token: string }>()
+
+              if (!accountRes?.access_token) {
+                throw new Error('No GitHub token found')
+              }
+
+              const repoUrl = `https://github.com/${latestMeta.repo_owner}/${latestMeta.repo_name}.git`
+              const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
+
+              // Connect to sandbox and clone repo
+              const { Sandbox } = await import('../lib/e2b')
+              const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+              const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
+
+              console.error(`[chat:${sessionId}] Cloning ${repoUrl} to ${repoPath}...`)
+              console.log(`[chat:${sessionId}] Cloning ${repoUrl}...`)
+              
+              const cloneResult = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
+
+              if (cloneResult.exitCode !== 0) {
+                throw new Error(`Git clone failed: ${cloneResult.stderr}`)
+              }
+
+              // Configure git and create branch
+              await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
+              await sandbox.commands.run(`cd ${repoPath} && git config user.email "agent@ship.dylansteck.com"`)
+              await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
+
+              // Verify repo was cloned
+              const verifyResult = await sandbox.commands.run(`test -d ${repoPath} && echo "EXISTS" || echo "NOT_FOUND"`)
+              if (verifyResult.stdout.trim() !== 'EXISTS') {
+                throw new Error('Repo directory not found after clone')
+              }
+
+              // Store repo info
               await stub.fetch(
-                new Request(`${doUrl}/agent/init`, {
+                new Request(`${doUrl}/meta`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    githubToken: accountRes.access_token,
-                    gitUser: {
-                      name: 'Ship Agent',
-                      email: 'agent@ship.dylansteck.com',
-                    },
+                    repo_url: repoUrl,
+                    current_branch: branchName,
+                    repo_path: repoPath,
                   }),
                 }),
               )
-              console.log(`[chat:${sessionId}] Agent executor initialized successfully`)
-            } catch (initError) {
-              console.error(`[chat:${sessionId}] Failed to initialize agent executor:`, initError)
-              // Don't fail - chat can still work without agent executor
+
+              // Re-fetch meta to get updated repo_path
+              latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+              latestMeta = (await latestMetaRes.json()) as Record<string, string>
+              repoExists = true
+              
+              console.error(`[chat:${sessionId}] ✓ Repo cloned successfully, path: ${repoPath}`)
+              console.log(`[chat:${sessionId}] ✓ Repo cloned successfully, path: ${repoPath}`)
+              
+              await stream.writeSSE({
+                event: 'status',
+                data: JSON.stringify({
+                  type: 'status',
+                  status: 'repo-ready',
+                  message: `Repository cloned. Branch: ${branchName}`,
+                }),
+              })
+            } catch (cloneError) {
+              console.error(`[chat:${sessionId}] ✗ Failed to clone repo:`, cloneError)
+              console.error(`[chat:${sessionId}] Clone error details:`, cloneError instanceof Error ? {
+                message: cloneError.message,
+                stack: cloneError.stack
+              } : cloneError)
+              
+              await stream.writeSSE({
+                event: 'error',
+                data: JSON.stringify({
+                  error: 'Failed to clone repository',
+                  details: cloneError instanceof Error ? cloneError.message : String(cloneError),
+                  category: 'persistent',
+                  retryable: true,
+                }),
+              })
+              // Don't continue - OpenCode needs the repo to work properly
+              return
             }
+          } else {
+            console.error(`[chat:${sessionId}] ✓ Repo already exists at ${repoPath}`)
+            console.log(`[chat:${sessionId}] ✓ Repo already exists at ${repoPath}`)
           }
-        } catch (error) {
-          console.error(`[chat:${sessionId}] Failed to clone repository:`, error)
+        }
+        
+        // Use repoPath (always /home/user/repo if repo was cloned)
+        const projectPath = repoExists ? repoPath : (latestMeta.repo_path || latestMeta.repoPath || '/home/user/repo')
+        console.error(`[chat:${sessionId}] Using project path: ${projectPath}, repo exists: ${repoExists}`)
+        console.log(`[chat:${sessionId}] Project path: ${projectPath}`)
+        console.log(`[chat:${sessionId}] Repo URL: ${latestMeta.repo_url || 'none'}`)
+        console.log(`[chat:${sessionId}] Repo cloned: ${!!latestMeta.repo_url}`)
+        console.log(`[chat:${sessionId}] Repo exists in sandbox: ${repoExists}`)
+
+        if (!repoExists && latestMeta.repo_owner && latestMeta.repo_name) {
+          console.error(`[chat:${sessionId}] ✗ CRITICAL: Repo should exist but doesn't! Cannot create OpenCode session.`)
           await stream.writeSSE({
-            event: 'status',
+            event: 'error',
             data: JSON.stringify({
-              type: 'status',
-              status: 'warning',
-              message: 'Repository cloning failed, continuing without repo...',
+              error: 'Repository not found. Please try again.',
+              category: 'persistent',
+              retryable: true,
             }),
           })
-          // Don't fail the chat - just log the error and continue
-          // The agent can still work without a cloned repo
+          return
         }
-      }
-
-      if (!currentOpencodeSessionId) {
-        // Create new OpenCode session
-        console.log(`[chat:${sessionId}] Creating OpenCode session...`)
-        const projectPath = latestMeta.repoPath || latestMeta.repo_path || '/home/user/repo'
-        console.log(`[chat:${sessionId}] Project path: ${projectPath}`)
 
         try {
           const ocSession = await createOpenCodeSession(projectPath, currentOpencodeUrl)
           currentOpencodeSessionId = ocSession.id
-          console.log(`[chat:${sessionId}] OpenCode session created: ${currentOpencodeSessionId}`)
+          console.error(`[chat:${sessionId}] ✓ OpenCode session created: ${currentOpencodeSessionId}`)
+          console.log(`[chat:${sessionId}] ✓ OpenCode session created: ${currentOpencodeSessionId}`)
+          console.error(`[chat:${sessionId}] Session project path: ${ocSession.projectPath}`)
+          console.log(`[chat:${sessionId}] Session project path: ${ocSession.projectPath}`)
+          
+          // CRITICAL: Verify session exists and is ready before proceeding
+          // Give OpenCode a moment to initialize the session
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // Verify session by checking if we can access it
+          try {
+            const { getOpenCodeClient } = await import('../lib/opencode')
+            const verifyClient = await getOpenCodeClient(currentOpencodeUrl)
+            const sessionCheck = await verifyClient.session.get({ path: { id: currentOpencodeSessionId } })
+            if (sessionCheck.error) {
+              console.error(`[chat:${sessionId}] ⚠️ Session verification failed:`, sessionCheck.error)
+            } else {
+              console.error(`[chat:${sessionId}] ✓ Session verified and ready`)
+              console.log(`[chat:${sessionId}] ✓ Session verified and ready`)
+            }
+          } catch (verifyError) {
+            console.error(`[chat:${sessionId}] ⚠️ Could not verify session:`, verifyError)
+            // Continue anyway - session might still work
+          }
 
           // Save to session meta
           await stub.fetch(
@@ -448,8 +506,25 @@ app.post('/:sessionId', async (c) => {
               body: JSON.stringify({ opencodeSessionId: currentOpencodeSessionId }),
             }),
           )
+
+          // Broadcast session created event so frontend can update
+          await stub.fetch(
+            new Request(`${doUrl}/broadcast`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'opencode-session-created',
+                sessionId: currentOpencodeSessionId,
+              }),
+            }),
+          )
         } catch (sessionError) {
-          console.error(`[chat:${sessionId}] Failed to create OpenCode session:`, sessionError)
+          console.error(`[chat:${sessionId}] ✗ Failed to create OpenCode session:`, sessionError)
+          console.error(`[chat:${sessionId}] Error details:`, sessionError instanceof Error ? {
+            message: sessionError.message,
+            stack: sessionError.stack,
+            name: sessionError.name
+          } : sessionError)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
@@ -524,13 +599,38 @@ app.post('/:sessionId', async (c) => {
       }
 
       // Subscribe to events BEFORE sending prompt so we don't miss any events
-      console.log(`[chat:${sessionId}] Subscribing to events from ${currentOpencodeUrl} for session ${currentOpencodeSessionId}`)
+      console.error(`[chat:${sessionId}] ===== SUBSCRIBING TO EVENTS =====`)
+      console.log(`[chat:${sessionId}] ===== SUBSCRIBING TO EVENTS =====`)
+      console.error(`[chat:${sessionId}] OpenCode URL: ${currentOpencodeUrl}`)
+      console.log(`[chat:${sessionId}] OpenCode URL: ${currentOpencodeUrl}`)
+      console.error(`[chat:${sessionId}] OpenCode Session ID: ${currentOpencodeSessionId}`)
+      console.log(`[chat:${sessionId}] OpenCode Session ID: ${currentOpencodeSessionId}`)
+      
+      // Get the project directory for directory-scoped events
+      const projectPath = latestMeta.repo_path || latestMeta.repoPath || '/home/user/repo'
+      console.error(`[chat:${sessionId}] Subscribing to directory-scoped events for: ${projectPath}`)
+      console.log(`[chat:${sessionId}] Project directory: ${projectPath}`)
+      
       let eventStream: AsyncIterable<Event>
       try {
-        eventStream = await subscribeToEvents(currentOpencodeUrl)
-        console.log(`[chat:${sessionId}] Got event stream, filtering for session ${currentOpencodeSessionId}`)
+        const subscribeStartTime = Date.now()
+        eventStream = await subscribeToEvents(currentOpencodeUrl, projectPath)
+        const subscribeElapsed = ((Date.now() - subscribeStartTime) / 1000).toFixed(2)
+        console.log(`[chat:${sessionId}] ✓ Successfully subscribed to event stream (took ${subscribeElapsed}s)`)
+        console.log(`[chat:${sessionId}] Event stream type: ${typeof eventStream}, isAsyncIterable: ${Symbol.asyncIterator in eventStream}`)
+        
+        // Verify the stream is actually iterable
+        if (!eventStream || typeof eventStream[Symbol.asyncIterator] !== 'function') {
+          throw new Error(`Event stream is not async iterable. Type: ${typeof eventStream}`)
+        }
+        console.log(`[chat:${sessionId}] ✓ Event stream is async iterable`)
       } catch (streamError) {
-        console.error(`[chat:${sessionId}] Failed to subscribe to events:`, streamError)
+        console.error(`[chat:${sessionId}] ✗ Failed to subscribe to events:`, streamError)
+        console.error(`[chat:${sessionId}] Error details:`, streamError instanceof Error ? {
+          message: streamError.message,
+          stack: streamError.stack,
+          name: streamError.name
+        } : streamError)
         await stream.writeSSE({
           event: 'error',
           data: JSON.stringify({
@@ -543,10 +643,25 @@ app.post('/:sessionId', async (c) => {
         return
       }
       
+      // CRITICAL: Wait a moment after subscribing to ensure event stream is ready
+      // This ensures we don't miss the first events
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Filter events for this session
       const sessionEvents = filterSessionEvents(eventStream, currentOpencodeSessionId!)
-      console.log(`[chat:${sessionId}] Event subscription started, ready to receive events`)
+      console.error(`[chat:${sessionId}] ✓ Event filter created for session ${currentOpencodeSessionId}`)
+      console.log(`[chat:${sessionId}] ✓ Event filter created for session ${currentOpencodeSessionId}`)
+      console.error(`[chat:${sessionId}] ===== READY TO SEND PROMPT =====`)
+      console.log(`[chat:${sessionId}] ===== READY TO SEND PROMPT =====`)
 
-      console.log(`[chat:${sessionId}] Sending prompt to OpenCode...`)
+      console.error(`[chat:${sessionId}] ===== SENDING PROMPT =====`)
+      console.log(`[chat:${sessionId}] ===== SENDING PROMPT =====`)
+      console.error(`[chat:${sessionId}] Prompt length: ${content.length} chars, mode: ${mode}, model: ${selectedModel || 'default'}`)
+      console.log(`[chat:${sessionId}] Prompt length: ${content.length} chars, mode: ${mode}, model: ${selectedModel || 'default'}`)
+      console.error(`[chat:${sessionId}] OpenCode Session ID: ${currentOpencodeSessionId}`)
+      console.error(`[chat:${sessionId}] OpenCode URL: ${currentOpencodeUrl}`)
+      console.error(`[chat:${sessionId}] Prompt content: ${content.slice(0, 100)}...`)
+      
       await stream.writeSSE({
         event: 'status',
         data: JSON.stringify({
@@ -557,15 +672,33 @@ app.post('/:sessionId', async (c) => {
       })
       const promptStartTime = Date.now()
       
+      // CRITICAL: Start event loop BEFORE sending prompt to ensure we catch all events
+      // The event loop runs in parallel with prompt sending
+      const eventLoopPromise = (async () => {
+        console.error(`[chat:${sessionId}] Starting event loop in parallel with prompt...`)
+        // This will be handled in the main event loop below
+      })()
+      
       // Send prompt to OpenCode with retry wrapper
       try {
         await executeWithRetry(
           async () => {
+            console.error(`[chat:${sessionId}] Calling promptOpenCode with session ${currentOpencodeSessionId?.slice(0, 8)}...`)
+            console.log(`[chat:${sessionId}] Calling promptOpenCode with session ${currentOpencodeSessionId?.slice(0, 8)}...`)
+            
+            // Send prompt - this should trigger events
             await promptOpenCode(currentOpencodeSessionId!, content, { mode, model: selectedModel }, currentOpencodeUrl!)
+            
+            console.error(`[chat:${sessionId}] ✓ promptOpenCode call completed - events should start flowing`)
+            console.log(`[chat:${sessionId}] promptOpenCode call completed`)
+            
+            // Give OpenCode a moment to start processing
+            await new Promise(resolve => setTimeout(resolve, 1000))
           },
           {
             operationName: 'Send prompt to OpenCode',
             onError: async (error, attempt) => {
+              console.error(`[chat:${sessionId}] Prompt send error (attempt ${attempt}):`, error)
               const details = classifyError(error)
               const sanitized = sanitizeError(error)
 
@@ -582,9 +715,18 @@ app.post('/:sessionId', async (c) => {
             },
           },
         )
-        console.log(`[chat:${sessionId}] Prompt sent successfully (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s)`)
+        const promptElapsed = ((Date.now() - promptStartTime) / 1000).toFixed(2)
+        console.error(`[chat:${sessionId}] ✓ Prompt sent successfully (took ${promptElapsed}s)`)
+        console.log(`[chat:${sessionId}] ✓ Prompt sent successfully (took ${promptElapsed}s)`)
+        console.error(`[chat:${sessionId}] Now waiting for events from OpenCode...`)
+        console.error(`[chat:${sessionId}] Event stream should start yielding message.part.updated events soon...`)
       } catch (promptError) {
-        console.error(`[chat:${sessionId}] Failed to send prompt:`, promptError)
+        console.error(`[chat:${sessionId}] ✗ Failed to send prompt:`, promptError)
+        console.error(`[chat:${sessionId}] Error details:`, promptError instanceof Error ? {
+          message: promptError.message,
+          stack: promptError.stack,
+          name: promptError.name
+        } : promptError)
         await stream.writeSSE({
           event: 'error',
           data: JSON.stringify({
@@ -597,16 +739,30 @@ app.post('/:sessionId', async (c) => {
         return
       }
       
-      console.log(`[chat:${sessionId}] Waiting for events from OpenCode...`)
+      console.error(`[chat:${sessionId}] ===== WAITING FOR EVENTS =====`)
+      console.log(`[chat:${sessionId}] ===== WAITING FOR EVENTS =====`)
+      console.error(`[chat:${sessionId}] Event stream is ready, waiting for events from OpenCode...`)
+      console.log(`[chat:${sessionId}] Event stream is ready, waiting for events from OpenCode...`)
+      console.error(`[chat:${sessionId}] About to enter event loop - sessionEvents is:`, typeof sessionEvents)
+      console.log(`[chat:${sessionId}] About to enter event loop - sessionEvents is:`, typeof sessionEvents)
       
-      await stream.writeSSE({
-        event: 'status',
-        data: JSON.stringify({
-          type: 'status',
-          status: 'agent-active',
-          message: 'Agent is processing your request...',
-        }),
-      })
+      // Send initial status to confirm SSE stream is working
+      console.error(`[chat:${sessionId}] Sending initial status via SSE...`)
+      try {
+        await stream.writeSSE({
+          event: 'status',
+          data: JSON.stringify({
+            type: 'status',
+            status: 'agent-active',
+            message: 'Agent is processing your request...',
+          }),
+        })
+        console.error(`[chat:${sessionId}] ✓ Initial status sent via SSE, stream is working`)
+        console.log(`[chat:${sessionId}] ✓ Initial status sent via SSE, stream is working`)
+      } catch (statusError) {
+        console.error(`[chat:${sessionId}] ✗ Failed to send initial status:`, statusError)
+        throw statusError
+      }
 
       // Accumulate assistant message content
       let assistantContent = ''
@@ -637,11 +793,14 @@ app.post('/:sessionId', async (c) => {
       try {
         // Process events with timeout
         const eventTimeout = setTimeout(async () => {
-          console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s, no events received`)
+          console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s`)
+          console.error(`[chat:${sessionId}] Event stream stats: eventCount=${eventCount}, lastEventTime=${new Date(lastEventTime).toISOString()}, timeSinceLastEvent=${Date.now() - lastEventTime}ms`)
+          console.error(`[chat:${sessionId}] OpenCode session: ${currentOpencodeSessionId}, URL: ${currentOpencodeUrl}`)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
               error: 'Agent did not respond in time. The request may have timed out.',
+              details: `No events received after ${EVENT_TIMEOUT_MS / 1000}s. Event count: ${eventCount}`,
               category: 'persistent',
               retryable: true,
             }),
@@ -649,27 +808,101 @@ app.post('/:sessionId', async (c) => {
         }, EVENT_TIMEOUT_MS)
 
         // Process events
-        console.log(`[chat:${sessionId}] Starting event loop, waiting for events from OpenCode...`)
+        console.log(`[chat:${sessionId}] ===== STARTING EVENT LOOP =====`)
         console.log(`[chat:${sessionId}] Session ID: ${currentOpencodeSessionId}, URL: ${currentOpencodeUrl}`)
+        console.log(`[chat:${sessionId}] Entering for-await loop...`)
+        console.log(`[chat:${sessionId}] sessionEvents type: ${typeof sessionEvents}, isAsyncIterable: ${Symbol.asyncIterator in sessionEvents}`)
         
-        for await (const event of sessionEvents) {
-          clearTimeout(eventTimeout) // Reset timeout on each event
-          lastEventTime = Date.now()
-          eventCount++
+        let loopStarted = false
+        let loopEntered = false
+        try {
+          // Start the async iterator explicitly
+          const iterator = sessionEvents[Symbol.asyncIterator]()
+          console.log(`[chat:${sessionId}] ✓ Got async iterator from sessionEvents`)
+          
+          while (true) {
+            if (!loopEntered) {
+              loopEntered = true
+              console.log(`[chat:${sessionId}] Starting to iterate events...`)
+            }
+            
+            const result = await iterator.next()
+            
+            if (result.done) {
+              console.error(`[chat:${sessionId}] Event iterator done, breaking loop`)
+              console.log(`[chat:${sessionId}] Event iterator done, breaking loop`)
+              break
+            }
+            
+            const event = result.value
+            
+            if (!loopStarted) {
+              loopStarted = true
+              console.error(`[chat:${sessionId}] ✓ Event loop started, received first event: ${event.type}`)
+              console.log(`[chat:${sessionId}] ✓ Event loop started, received first event: ${event.type}`)
+            }
+            
+            clearTimeout(eventTimeout) // Reset timeout on each event
+            lastEventTime = Date.now()
+            eventCount++
           
           // Always log first 20 events, then every 10th event
           if (eventCount <= 20 || eventCount % 10 === 0) {
+            console.error(`[chat:${sessionId}] Event #${eventCount}: type=${event.type}, hasProperties=${!!event.properties}`)
             console.log(`[chat:${sessionId}] Event #${eventCount}: type=${event.type}, hasProperties=${!!event.properties}`)
             if (eventCount <= 5) {
+              console.error(`[chat:${sessionId}] Event #${eventCount} full structure:`, JSON.stringify(event).slice(0, 1000))
               console.log(`[chat:${sessionId}] Event #${eventCount} full structure:`, JSON.stringify(event).slice(0, 500))
             }
           }
+          
+          // CRITICAL: Log message.part.updated events immediately
+          if (event.type === 'message.part.updated') {
+            console.error(`[chat:${sessionId}] 🎉 GOT message.part.updated EVENT!`)
+            console.error(`[chat:${sessionId}] Part type: ${event.properties?.part?.type}`)
+            console.error(`[chat:${sessionId}] Part data:`, JSON.stringify(event.properties?.part).slice(0, 500))
+            
+            // Send immediate status update for tool calls
+            const part = event.properties?.part
+            if (part?.type === 'tool') {
+              const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
+              if (toolName) {
+                await stream.writeSSE({
+                  event: 'status',
+                  data: JSON.stringify({
+                    type: 'status',
+                    status: 'tool-call',
+                    message: `Using tool: ${toolName}`,
+                    toolName,
+                    toolTitle: part.state?.title || toolName,
+                  }),
+                })
+              }
+            } else if (part?.type === 'text') {
+              // Send status for text parts
+              await stream.writeSSE({
+                event: 'status',
+                data: JSON.stringify({
+                  type: 'status',
+                  status: 'agent-thinking',
+                  message: 'Agent is thinking...',
+                }),
+              })
+            }
+          }
 
-        // Stream event to client
-        await stream.writeSSE({
-          event: 'event',
-          data: JSON.stringify(event),
-        })
+        // Stream event to client - ALWAYS send all events
+        console.error(`[chat:${sessionId}] Sending event #${eventCount} via SSE: type=${event.type}`)
+        try {
+          await stream.writeSSE({
+            event: 'event',
+            data: JSON.stringify(event),
+          })
+          console.error(`[chat:${sessionId}] ✓ Event #${eventCount} sent successfully`)
+        } catch (sseError) {
+          console.error(`[chat:${sessionId}] ✗ Failed to send event #${eventCount} via SSE:`, sseError)
+          throw sseError
+        }
 
         // Broadcast to WebSocket clients via DO
         if (eventCount <= 5 || eventCount % 20 === 0) {
@@ -801,88 +1034,130 @@ app.post('/:sessionId', async (c) => {
           }
         }
 
-          // Stop when session becomes idle
-          if (event.type === 'session.idle') {
-            console.log(`[chat:${sessionId}] Session idle, stopping event loop after ${eventCount} events`)
-            clearTimeout(eventTimeout)
-            break
+            // Stop when session becomes idle
+            if (event.type === 'session.idle') {
+              console.log(`[chat:${sessionId}] Session idle, stopping event loop after ${eventCount} events`)
+              clearTimeout(eventTimeout)
+              break
+            }
           }
+          
+          console.log(`[chat:${sessionId}] Event iterator loop completed`)
+        } catch (loopError) {
+          console.error(`[chat:${sessionId}] ✗ Error in event loop:`, loopError)
+          console.error(`[chat:${sessionId}] Loop error details:`, loopError instanceof Error ? {
+            message: loopError.message,
+            stack: loopError.stack,
+            name: loopError.name
+          } : loopError)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Error processing agent events',
+              details: loopError instanceof Error ? loopError.message : 'Unknown error',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
+        } finally {
+          clearTimeout(eventTimeout) // Clear timeout if we exit normally
+          clearInterval(heartbeatInterval) // Always clear heartbeat
         }
 
-        clearTimeout(eventTimeout) // Clear timeout if we exit normally
-      } finally {
-        clearInterval(heartbeatInterval) // Always clear heartbeat
-      }
-
-      console.log(
-        `[chat:${sessionId}] Event loop ended, total events: ${eventCount}, assistantContent length: ${assistantContent.length}, parts: ${parts.length}`,
-      )
-
-      // Persist assistant message with accumulated content and parts
-      if (assistantContent || parts.length > 0) {
-        await stub.fetch(
-          new Request(`${doUrl}/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              role: 'assistant',
-              content: assistantContent,
-              parts: JSON.stringify(parts),
-            }),
-          }),
+        console.log(
+          `[chat:${sessionId}] Event loop ended, total events: ${eventCount}, assistantContent length: ${assistantContent.length}, parts: ${parts.length}`,
         )
-      }
 
-      await stream.writeSSE({
-        event: 'done',
-        data: JSON.stringify({ type: 'done' }),
-      })
-      console.log(`[chat:${sessionId}] SSE stream completed successfully`)
-    } catch (error) {
-      console.error(`[chat:${sessionId}] OpenCode error:`, error)
-      console.error(`[chat:${sessionId}] Error stack:`, error instanceof Error ? error.stack : 'No stack trace')
+        // Persist assistant message with accumulated content and parts
+        if (assistantContent || parts.length > 0) {
+          await stub.fetch(
+            new Request(`${doUrl}/messages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: 'assistant',
+                content: assistantContent,
+                parts: JSON.stringify(parts),
+              }),
+            }),
+          )
+        }
 
-      // Classify and report error
-      const details = classifyError(error)
-      const sanitized = sanitizeError(error)
-      const errorMessage = error instanceof Error ? error.message : String(error)
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ type: 'done' }),
+        })
+        console.log(`[chat:${sessionId}] SSE stream completed successfully`)
+      } catch (error) {
+        console.error(`[chat:${sessionId}] OpenCode error:`, error)
+        console.error(`[chat:${sessionId}] Error stack:`, error instanceof Error ? error.stack : 'No stack trace')
 
-      // Broadcast error to WebSocket clients too
-      try {
-        await stub.fetch(
-          new Request(`${doUrl}/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'error',
+        // Classify and report error
+        const details = classifyError(error)
+        const sanitized = sanitizeError(error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        // Broadcast error to WebSocket clients too
+        try {
+          await stub.fetch(
+            new Request(`${doUrl}/broadcast`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'error',
+                error: sanitized,
+                message: errorMessage,
+                category: details.category,
+                retryable: details.retryable,
+              }),
+            }),
+          )
+        } catch (broadcastError) {
+          console.error(`[chat:${sessionId}] Failed to broadcast error:`, broadcastError)
+        }
+
+        // Always try to send error via SSE, even if stream might be broken
+        try {
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
               error: sanitized,
               message: errorMessage,
               category: details.category,
               retryable: details.retryable,
             }),
-          }),
-        )
-      } catch (broadcastError) {
-        console.error(`[chat:${sessionId}] Failed to broadcast error:`, broadcastError)
+          })
+        } catch (sseError) {
+          console.error(`[chat:${sessionId}] Failed to send error via SSE:`, sseError)
+          // If SSE fails, at least we logged it and broadcasted to WebSocket
+        }
       }
-
-      // Always try to send error via SSE, even if stream might be broken
+    } catch (outerError) {
+      // Catch any errors from the outer try block (line 85) that weren't caught by inner catches
+      console.error(`[chat:${sessionId}] Unhandled error in stream handler:`, outerError)
+      // Try to send error via SSE if possible
       try {
         await stream.writeSSE({
           event: 'error',
           data: JSON.stringify({
-            error: sanitized,
-            message: errorMessage,
-            category: details.category,
-            retryable: details.retryable,
+            error: outerError instanceof Error ? outerError.message : 'Unknown error',
+            category: 'persistent',
+            retryable: true,
           }),
         })
-      } catch (sseError) {
-        console.error(`[chat:${sessionId}] Failed to send error via SSE:`, sseError)
-        // If SSE fails, at least we logged it and broadcasted to WebSocket
+      } catch {
+        // Ignore if SSE is already broken
       }
     }
   })
+  } catch (handlerError) {
+    console.error(`[chat:${sessionId}] CRITICAL: Error in chat handler before SSE:`, handlerError)
+    console.error(`[chat:${sessionId}] Error stack:`, handlerError instanceof Error ? handlerError.stack : 'No stack')
+    return c.json({ 
+      error: 'Failed to start chat stream',
+      details: handlerError instanceof Error ? handlerError.message : String(handlerError)
+    }, 500)
+  }
 })
 
 // POST /chat/:sessionId/stop - Stop streaming

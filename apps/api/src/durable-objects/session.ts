@@ -492,11 +492,13 @@ export class SessionDO extends DurableObject<Env> {
    * Get sandbox status
    * Returns current status from session_meta
    */
-  async getSandboxStatus(): Promise<{ sandboxId: string | null; status: string | null }> {
+  async getSandboxStatus(): Promise<{ sandboxId: string | null; status: string | null; opencodeUrl?: string | null; opencodeSessionId?: string | null }> {
     const meta = await this.getSessionMeta()
     return {
       sandboxId: meta['sandbox_id'] || null,
       status: meta['sandbox_status'] || null,
+      opencodeUrl: meta['opencode_url'] || null,
+      opencodeSessionId: meta['opencodeSessionId'] || null,
     }
   }
 

@@ -31,6 +31,7 @@ interface SessionPanelProps {
   sandboxId?: string | null
   sandboxStatus?: 'provisioning' | 'ready' | 'error' | 'none'
   opencodeUrl?: string | null
+  opencodeSessionId?: string | null
 }
 
 interface GitState {
@@ -45,7 +46,7 @@ interface GitState {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
-export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool, sandboxId, sandboxStatus, opencodeUrl }: SessionPanelProps) {
+export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool, sandboxId, sandboxStatus, opencodeUrl, opencodeSessionId }: SessionPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showStatusDetails, setShowStatusDetails] = useState(false)
   const [gitState, setGitState] = useState<GitState | null>(null)
@@ -55,13 +56,21 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
 
   // Debug: Log when opencodeUrl changes
   useEffect(() => {
-    console.log('[SessionPanel] opencodeUrl prop value:', opencodeUrl)
+    console.log('[SessionPanel] ===== opencodeUrl prop changed =====')
+    console.log('[SessionPanel] opencodeUrl:', opencodeUrl)
+    console.log('[SessionPanel] opencodeUrl type:', typeof opencodeUrl)
+    console.log('[SessionPanel] opencodeUrl truthy?', !!opencodeUrl)
+    console.log('[SessionPanel] opencodeUrl length:', opencodeUrl?.length || 0)
+    console.log('[SessionPanel] opencodeSessionId:', opencodeSessionId)
+    console.log('[SessionPanel] sandboxStatus:', sandboxStatus)
+    console.log('[SessionPanel] sandboxId:', sandboxId)
     if (opencodeUrl) {
-      console.log('[SessionPanel] opencodeUrl received, will render URL section')
+      console.log('[SessionPanel] ✓ opencodeUrl received, will render URL section')
     } else {
-      console.log('[SessionPanel] opencodeUrl is null/undefined, URL section will not render')
+      console.log('[SessionPanel] ✗ opencodeUrl is null/undefined, URL section will NOT render')
+      console.log('[SessionPanel] Will show placeholder if sandboxStatus === ready:', sandboxStatus === 'ready')
     }
-  }, [opencodeUrl])
+  }, [opencodeUrl, opencodeSessionId, sandboxStatus, sandboxId])
 
   // Fetch tasks
   useEffect(() => {
@@ -218,31 +227,39 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
         </div>
       )}
 
-      {/* OpenCode Server URL - Always show section, hide content if no URL */}
-      {opencodeUrl && (
+      {/* OpenCode Server URL - Always show section when sandbox is ready OR we have a URL */}
+      {(sandboxStatus === 'ready' || sandboxStatus === 'provisioning' || opencodeUrl) && (
         <div className="p-4 border-b dark:border-gray-800">
           <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">OpenCode Server</h3>
-          <a
-            href={opencodeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline break-all"
-          >
-            {opencodeUrl}
-          </a>
-          <div className="mt-2">
-            <a
-              href={opencodeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded transition-colors"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              Open in new tab
-            </a>
-          </div>
+          {opencodeUrl ? (
+            <>
+              <a
+                href={opencodeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline break-all"
+              >
+                {opencodeUrl}
+              </a>
+              <div className="mt-2">
+                <a
+                  href={opencodeSessionId ? `${opencodeUrl}/sessions/${opencodeSessionId}` : opencodeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  {opencodeSessionId ? 'Open session' : 'Open in new tab'}
+                </a>
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              URL not available yet...
+            </div>
+          )}
         </div>
       )}
 

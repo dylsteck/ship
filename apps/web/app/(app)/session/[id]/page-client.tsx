@@ -56,6 +56,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   const [sandboxStatus, setSandboxStatus] = useState<'provisioning' | 'ready' | 'error' | 'none'>('none')
   const [sandboxProgress, setSandboxProgress] = useState<string | null>(null)
   const [opencodeUrl, setOpencodeUrl] = useState<string | null>(null)
+  const [opencodeSessionId, setOpencodeSessionId] = useState<string | null>(null)
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
 
@@ -115,17 +116,36 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
     async function loadSandbox() {
       try {
+        console.log(`[page-client] Loading sandbox status for session ${sessionId}...`)
         const res = await fetch(`${API_URL}/sessions/${sessionId}/sandbox`)
         if (res.ok) {
           const data = await res.json()
+          console.log(`[page-client] Sandbox status response:`, data)
           setSandboxId(data.sandboxId || null)
           setSandboxStatus(normalizeSandboxStatus(data.status))
+          // Load opencodeUrl if available
+          if (data.opencodeUrl) {
+            console.log(`[page-client] ✓ Found opencodeUrl in response: ${data.opencodeUrl}`)
+            setOpencodeUrl(data.opencodeUrl)
+          } else {
+            console.log(`[page-client] ✗ No opencodeUrl in sandbox response`)
+          }
+          // Load opencodeSessionId if available
+          if (data.opencodeSessionId) {
+            console.log(`[page-client] ✓ Found opencodeSessionId in response: ${data.opencodeSessionId}`)
+            setOpencodeSessionId(data.opencodeSessionId)
+          } else {
+            console.log(`[page-client] ✗ No opencodeSessionId in sandbox response`)
+          }
         } else if (res.status === 404) {
           // No sandbox yet - this is normal for new sessions
+          console.log(`[page-client] No sandbox found (404)`)
           setSandboxStatus('none')
+        } else {
+          console.error(`[page-client] Failed to load sandbox: ${res.status} ${res.statusText}`)
         }
       } catch (err) {
-        console.error('Failed to load sandbox:', err)
+        console.error('[page-client] Failed to load sandbox:', err)
         setSandboxStatus('error')
       }
     }
@@ -236,23 +256,32 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
         if (data.type === 'opencode-started') {
           console.log('[page-client] Received opencode-started event:', JSON.stringify(data, null, 2))
           setSandboxProgress('OpenCode server started')
-          // Try multiple possible URL field names
+          // Extract URL - try multiple possible field names for robustness
           const url = data.url || data.opencodeUrl || data.serverUrl || (data as any).opencode_url
           console.log('[page-client] Extracted URL:', url, 'from fields:', { url: data.url, opencodeUrl: data.opencodeUrl, serverUrl: data.serverUrl })
-          if (url && typeof url === 'string') {
+          if (url && typeof url === 'string' && url.trim()) {
             console.log('[page-client] Setting opencodeUrl state to:', url)
-            // Force immediate state update
-            setOpencodeUrl(url)
-            // Double-check after a tick to ensure it was set
-            setTimeout(() => {
-              console.log('[page-client] opencodeUrl state check after 100ms - should be:', url)
-            }, 100)
+            setOpencodeUrl(url.trim())
+            // Also ensure sandbox status is set to ready if not already
+            if (sandboxStatus !== 'ready') {
+              console.log('[page-client] Setting sandboxStatus to ready (from opencode-started)')
+              setSandboxStatus('ready')
+            }
           } else {
-            console.warn('[page-client] opencode-started event missing url field. Full data:', JSON.stringify(data))
+            console.warn('[page-client] opencode-started event missing valid url field. Full data:', JSON.stringify(data))
             console.warn('[page-client] Available keys in data:', Object.keys(data))
           }
           // Clear progress message after 2 seconds
           setTimeout(() => setSandboxProgress(null), 2000)
+        }
+
+        // Handle OpenCode session created
+        if (data.type === 'opencode-session-created') {
+          console.log('[page-client] Received opencode-session-created event:', JSON.stringify(data, null, 2))
+          if (data.sessionId && typeof data.sessionId === 'string') {
+            console.log('[page-client] Setting opencodeSessionId state to:', data.sessionId)
+            setOpencodeSessionId(data.sessionId)
+          }
         }
 
         // Handle OpenCode events for real-time activity
@@ -466,6 +495,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               sandboxId={sandboxId}
               sandboxStatus={sandboxStatus}
               opencodeUrl={opencodeUrl}
+              opencodeSessionId={opencodeSessionId}
             />
           </div>
 

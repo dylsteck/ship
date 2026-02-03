@@ -152,55 +152,136 @@ export async function promptOpenCode(
     type: 'text',
     text: content,
   }
+  console.error(`[opencode:prompt] Sending prompt with ${content.length} chars...`)
   console.log(`[opencode:prompt] Sending prompt with ${content.length} chars...`)
 
-  const promptBody: { parts: TextPartInput[]; mode?: 'build' | 'plan'; model?: string } = {
+  // Build prompt body according to OpenCode SDK spec
+  // Model format: { providerID: string, modelID: string }
+  // Mode is NOT a prompt parameter - it's session-level
+  const promptBody: { parts: TextPartInput[]; model?: { providerID: string; modelID: string } } = {
     parts: [textPart],
   }
   
-  // Add mode if provided
-  if (options?.mode) {
-    promptBody.mode = options.mode
-    console.log(`[opencode:prompt] Using mode: ${options.mode}`)
-  }
-  
-  // Add model if provided
+  // Parse model string (format: "provider/model" or just "model")
+  // User's selected model takes priority
   if (options?.model) {
-    promptBody.model = options.model
-    console.log(`[opencode:prompt] Using model: ${options.model}`)
+    const modelParts = options.model.split('/')
+    if (modelParts.length === 2) {
+      promptBody.model = {
+        providerID: modelParts[0],
+        modelID: modelParts[1],
+      }
+    } else {
+      // Assume Anthropic if no provider specified
+      promptBody.model = {
+        providerID: 'anthropic',
+        modelID: options.model,
+      }
+    }
+    console.error(`[opencode:prompt] Using user-selected model: ${promptBody.model.providerID}/${promptBody.model.modelID}`)
+    console.log(`[opencode:prompt] Using model: ${promptBody.model.providerID}/${promptBody.model.modelID}`)
+  } else {
+    // Default model - use claude-sonnet-4-20250514 (matches UI selection)
+    promptBody.model = {
+      providerID: 'anthropic',
+      modelID: 'claude-sonnet-4-20250514', // Matches what user selects in UI
+    }
+    console.error(`[opencode:prompt] Using default model: anthropic/claude-sonnet-4-20250514`)
+    console.log(`[opencode:prompt] Using default model: anthropic/claude-sonnet-4-20250514`)
   }
 
+  console.error(`[opencode:prompt] Prompt body:`, JSON.stringify(promptBody, null, 2))
+  
   const response = await client.session.prompt({
     path: { id: sessionId },
     body: promptBody,
   })
-  console.log(
-    `[opencode:prompt] Prompt sent, response:`,
-    response.error ? `Error: ${JSON.stringify(response.error)}` : 'Success',
-  )
+  
+  console.error(`[opencode:prompt] Prompt API response status:`, response.error ? 'ERROR' : 'SUCCESS')
+  console.log(`[opencode:prompt] Prompt sent, response:`, response.error ? `Error: ${JSON.stringify(response.error)}` : 'Success')
+  
+  // Check for API-level errors first
+  if (response.error) {
+    console.error(`[opencode:prompt] ✗ Prompt API error:`, JSON.stringify(response.error, null, 2))
+    throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
+  }
   
   // Log response data if available
   if (response.data && typeof response.data === 'object') {
+    console.error(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
     console.log(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
+    console.error(`[opencode:prompt] Response data:`, JSON.stringify(response.data, null, 2).slice(0, 2000))
+    console.log(`[opencode:prompt] Response data:`, JSON.stringify(response.data).slice(0, 500))
+    
+    // CRITICAL: Check if response contains an error in the message info
+    // OpenCode returns errors in response.data.info.error, not response.error
+    const data = response.data as { info?: { error?: unknown }; parts?: unknown[] }
+    if (data.info?.error) {
+      const errorInfo = data.info.error as { name?: string; data?: { message?: string; statusCode?: number } }
+      console.error(`[opencode:prompt] ✗ Response contains error in message info:`, JSON.stringify(errorInfo, null, 2))
+      
+      // If it's a model not found error (404), throw a clear error
+      if (errorInfo.data?.statusCode === 404 && errorInfo.data?.message?.includes('model')) {
+        const errorMsg = `Model not found: ${promptBody.model?.providerID}/${promptBody.model?.modelID}. Error: ${errorInfo.data.message}`
+        console.error(`[opencode:prompt] ${errorMsg}`)
+        throw new Error(errorMsg)
+      }
+      
+      // For other errors, throw with full error info
+      const errorMsg = `OpenCode returned error: ${errorInfo.name || 'Unknown'} - ${JSON.stringify(errorInfo.data || errorInfo)}`
+      console.error(`[opencode:prompt] ${errorMsg}`)
+      throw new Error(errorMsg)
+    }
+    
+    // Check if response contains initial message parts
+    if (data.parts && Array.isArray(data.parts) && data.parts.length > 0) {
+      console.error(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
+      console.log(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
+    }
+  }
+  
+  // Log response data if available
+  if (response.data && typeof response.data === 'object') {
+    console.error(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
+    console.log(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
+    console.error(`[opencode:prompt] Response data:`, JSON.stringify(response.data).slice(0, 1000))
+    console.log(`[opencode:prompt] Response data:`, JSON.stringify(response.data).slice(0, 500))
+    
+    // Check if response contains initial message parts
+    const data = response.data as { info?: unknown; parts?: unknown[] }
+    if (data.parts && Array.isArray(data.parts) && data.parts.length > 0) {
+      console.error(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
+      console.log(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
+    }
   }
 
   if (response.error) {
+    console.error(`[opencode:prompt] ✗ Prompt error:`, response.error)
     throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
   }
+  console.error(`[opencode:prompt] ✓ Prompt completed successfully`)
   console.log(`[opencode:prompt] Prompt completed successfully`)
 }
 
 /**
- * Subscribe to OpenCode global events
+ * Subscribe to OpenCode events (directory-scoped for better filtering)
  * Returns an async iterator of events
  *
  * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
+ * @param directory - Optional directory path to scope events to a specific project
  */
-export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncIterable<Event>> {
+export async function subscribeToEvents(sandboxUrl?: string, directory?: string): Promise<AsyncIterable<Event>> {
   const client = await getOpenCodeClient(sandboxUrl)
+  console.error(`[opencode] Subscribing to events at ${sandboxUrl}${directory ? `, directory: ${directory}` : ' (global)'}...`)
   console.log(`[opencode] Subscribing to events at ${sandboxUrl}...`)
 
-  const eventStream = await client.global.event()
+  // Use directory-scoped events if directory is provided (per OpenCode docs)
+  // This ensures we only get events for the specific project/session
+  const eventStream = directory 
+    ? await client.event.subscribe({ query: { directory } })
+    : await client.event.subscribe()
+  
+  console.error(`[opencode] Got event stream, type: ${typeof eventStream}, has stream: ${'stream' in eventStream}`)
   console.log(`[opencode] Got event stream, type: ${typeof eventStream}, has stream: ${'stream' in eventStream}`)
   
   // Log the structure of the eventStream for debugging
@@ -210,14 +291,28 @@ export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncItera
 
   // The SDK returns a ServerSentEventsResult with a .stream property
   // The stream is an AsyncGenerator that yields events
+  // Per docs: for await (const event of events.stream)
   const stream = eventStream.stream as AsyncIterable<Event>
   
   // Wrap the stream to ensure events are properly typed
   async function* eventWrapper(): AsyncGenerator<Event> {
     try {
       console.log(`[opencode] Starting to iterate event stream...`)
+      console.log(`[opencode] Stream type check: ${typeof stream}, has Symbol.asyncIterator: ${Symbol.asyncIterator in stream}`)
       let iterCount = 0
+      let firstEventReceived = false
+      const firstEventTimeout = setTimeout(() => {
+        if (!firstEventReceived) {
+          console.error(`[opencode] WARNING: No events received after 5s. Event stream may be hanging.`)
+        }
+      }, 5000)
+      
       for await (const rawEvent of stream) {
+        if (!firstEventReceived) {
+          firstEventReceived = true
+          clearTimeout(firstEventTimeout)
+          console.log(`[opencode] ✓ First event received from stream`)
+        }
         iterCount++
         if (iterCount <= 3) {
           console.log(`[opencode] Raw event from stream #${iterCount}:`, typeof rawEvent, rawEvent ? Object.keys(rawEvent as object) : 'null')
@@ -239,9 +334,15 @@ export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncItera
         
         yield event
       }
+      clearTimeout(firstEventTimeout)
       console.log(`[opencode] Event stream iteration ended after ${iterCount} events`)
     } catch (streamError) {
-      console.error(`[opencode] Error iterating event stream:`, streamError)
+      console.error(`[opencode] ✗ Error iterating event stream:`, streamError)
+      console.error(`[opencode] Error details:`, streamError instanceof Error ? {
+        message: streamError.message,
+        stack: streamError.stack,
+        name: streamError.name
+      } : streamError)
       throw streamError
     }
   }
@@ -408,14 +509,15 @@ export async function* filterSessionEvents(
       // Check if event belongs to this session
       const eventSessionId = getEventSessionId(event)
       
-      // Log session ID extraction for first 10 events
-      if (count <= 10) {
+      // Log session ID extraction for first 20 events (increased to catch more)
+      if (count <= 20) {
         console.log(`[opencode] Event #${count} session ID extraction:`, {
           type: event.type,
-          extractedSessionId: eventSessionId?.slice(0, 8),
+          extractedSessionId: eventSessionId?.slice(0, 8) || 'none',
           targetSessionId: sessionId.slice(0, 8),
           propertiesKeys: event.properties ? Object.keys(event.properties) : [],
           partKeys: event.properties?.part ? Object.keys(event.properties.part) : [],
+          fullEvent: count <= 5 ? JSON.stringify(event).slice(0, 1000) : undefined,
         })
       }
 
