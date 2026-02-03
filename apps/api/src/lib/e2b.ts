@@ -375,13 +375,10 @@ export async function startOpenCodeServer(
     },
   })
 
-  console.log(`[opencode:${sandboxId}] Server process started, PID check: ${proc ? 'yes' : 'no'}`)
+  console.log(`[opencode:${sandboxId}] Server process started`)
 
-  // Wait a moment for server to initialize
-  await new Promise((r) => setTimeout(r, 2000))
-
-  // Wait for server to be ready
-  await waitForOpenCodeServer(sandbox, 4096, 60, sandboxId)
+  // Wait for server to be ready (poll faster - check every 200ms for 10 seconds max)
+  await waitForOpenCodeServer(sandbox, 4096, 50, sandboxId, 200)
   console.log(`[opencode:${sandboxId}] Server is ready`)
 
   // Get public URL for the OpenCode server
@@ -405,58 +402,31 @@ async function waitForOpenCodeServer(
   port: number,
   maxAttempts = 60,
   sandboxId?: string,
+  pollIntervalMs = 1000,
 ): Promise<void> {
   const logPrefix = sandboxId ? `[opencode:${sandboxId}]` : '[opencode]'
   console.log(`${logPrefix} Waiting for server on port ${port}...`)
 
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      // Method 1: Try health endpoint
+      // Fast health check
       const result = await sandbox.commands.run(
         `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/health`,
       )
       if (result.stdout.trim() === '200') {
-        console.log(`${logPrefix} Health check passed on attempt ${i + 1}`)
+        console.log(`${logPrefix} Health check passed in ${((i * pollIntervalMs) / 1000).toFixed(1)}s`)
         return
       }
-
-      // Log non-200 responses for debugging
-      if (result.stdout.trim() && result.stdout.trim() !== '000') {
-        console.log(`${logPrefix} Health check attempt ${i + 1}: HTTP ${result.stdout.trim()}`)
-      }
-    } catch (err) {
-      // Log error every 5 attempts
-      if (i % 5 === 0) {
-        console.log(`${logPrefix} Health check attempt ${i + 1}: ${err instanceof Error ? err.message : 'error'}`)
-      }
+    } catch {
+      // Ignore errors, keep trying
     }
 
-    // Every 10 seconds, log status and check if process is running
-    if (i > 0 && i % 10 === 0) {
-      console.log(`${logPrefix} Still waiting for server... (${i}s)`)
-
-      // Check what's listening on the port
-      try {
-        const netstatResult = await sandbox.commands.run(
-          `netstat -tlnp 2>/dev/null | grep ${port} || ss -tlnp 2>/dev/null | grep ${port} || echo "No process on port ${port}"`,
-        )
-        console.log(`${logPrefix} Port ${port} status: ${netstatResult.stdout.trim()}`)
-      } catch {
-        // Ignore netstat errors
-      }
-
-      // Check if opencode process is running
-      try {
-        const psResult = await sandbox.commands.run(
-          `ps aux | grep opencode | grep -v grep || echo "No opencode process"`,
-        )
-        console.log(`${logPrefix} Process check: ${psResult.stdout.trim().slice(0, 100)}`)
-      } catch {
-        // Ignore ps errors
-      }
+    // Log progress every ~2 seconds
+    if (i > 0 && i % Math.ceil(2000 / pollIntervalMs) === 0) {
+      console.log(`${logPrefix} Still waiting... (${((i * pollIntervalMs) / 1000).toFixed(0)}s)`)
     }
 
-    await new Promise((r) => setTimeout(r, 1000))
+    await new Promise((r) => setTimeout(r, pollIntervalMs))
   }
 
   // On failure, get detailed diagnostics
