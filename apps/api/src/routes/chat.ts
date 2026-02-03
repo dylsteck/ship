@@ -93,8 +93,11 @@ app.post('/:sessionId', async (c) => {
   // If we have a sandbox but no OpenCode URL, start the OpenCode server
   if (sandboxId && !opencodeUrl) {
     try {
+      console.log(`[chat:${sessionId}] Starting OpenCode server in sandbox ${sandboxId}...`)
       const { url } = await startOpenCodeServer(c.env.E2B_API_KEY, sandboxId, c.env.ANTHROPIC_API_KEY)
       opencodeUrl = url
+      console.log(`[chat:${sessionId}] OpenCode server started at ${url}`)
+
       // Store the URL for future requests
       await stub.fetch(
         new Request(`${doUrl}/meta`, {
@@ -104,8 +107,18 @@ app.post('/:sessionId', async (c) => {
         }),
       )
     } catch (error) {
-      console.error('Failed to start OpenCode server in sandbox:', error)
-      return c.json({ error: 'Failed to start agent in sandbox. Please try again.' }, 500)
+      console.error(`[chat:${sessionId}] Failed to start OpenCode server in sandbox:`, error)
+
+      // Return error immediately - don't try to stream
+      return c.json(
+        {
+          error: 'Failed to start agent server',
+          details: error instanceof Error ? error.message : 'Unknown error',
+          sandboxId,
+          suggestion: 'The sandbox may need more time to initialize. Please refresh and try again.',
+        },
+        500,
+      )
     }
   }
 
@@ -223,11 +236,7 @@ app.post('/:sessionId', async (c) => {
               // File write/edit operations indicate changes to commit
               // part.tool is a string (tool name) in OpenCode SDK
               const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
-              if (
-                toolName?.includes('write') ||
-                toolName?.includes('edit') ||
-                toolName?.includes('create')
-              ) {
+              if (toolName?.includes('write') || toolName?.includes('edit') || toolName?.includes('create')) {
                 hasChanges = true
               }
             }
@@ -437,9 +446,7 @@ app.post('/:sessionId/git/pr/ready', async (c) => {
   const id = c.env.SESSION_DO.idFromName(sessionId)
   const stub = c.env.SESSION_DO.get(id)
 
-  const response = await stub.fetch(
-    new Request('https://do/git/pr/ready', { method: 'POST' }),
-  )
+  const response = await stub.fetch(new Request('https://do/git/pr/ready', { method: 'POST' }))
 
   return new Response(response.body, response)
 })
