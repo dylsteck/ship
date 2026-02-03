@@ -171,12 +171,99 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
 
         // Handle OpenCode events for real-time activity
         if (event.type === 'opencode-event') {
-          const payload = (event as { event?: { payload?: { type?: string } } }).event?.payload
-          if (payload?.type === 'server.connected') {
+          const ocEvent = (event as {
+            event?: {
+              type?: string
+              payload?: { type?: string }
+              properties?: {
+                part?: {
+                  type?: string
+                  tool?: string | { name?: string }
+                  callID?: string
+                  state?: { title?: string; status?: string }
+                }
+                delta?: string
+              }
+            }
+          }).event
+
+          // Handle server connection
+          if (ocEvent?.payload?.type === 'server.connected') {
             setThinkingStatus('Connected to agent')
-          } else if (payload?.type) {
-            // Show the event type as status
-            setThinkingStatus(payload.type.replace(/\./g, ' '))
+            return
+          }
+
+          // Handle message.part.updated events (tool calls, text, etc.)
+          if (ocEvent?.type === 'message.part.updated') {
+            const part = ocEvent.properties?.part
+            if (part?.type === 'tool') {
+              // Extract tool name
+              const toolName = typeof part.tool === 'string' ? part.tool : part.tool?.name
+              const toolTitle = part.state?.title || ''
+              const toolStatus = part.state?.status
+
+              // Add to thinking parts for the ThinkingIndicator
+              if (toolName && part.callID) {
+                const toolPart: ToolPart = {
+                  type: 'tool',
+                  callID: part.callID,
+                  tool: toolName,
+                  state: {
+                    title: toolTitle,
+                    status: toolStatus as 'pending' | 'running' | 'complete' | 'error' | undefined,
+                  },
+                }
+                setThinkingParts((prev) => {
+                  const existing = prev.findIndex((p) => p.callID === toolPart.callID)
+                  if (existing >= 0) {
+                    return prev.map((p, i) => (i === existing ? toolPart : p))
+                  }
+                  return [...prev, toolPart]
+                })
+              }
+
+              // Update status based on tool type
+              if (toolName) {
+                const name = toolName.toLowerCase()
+                if (name.includes('read') || name.includes('glob') || name.includes('grep')) {
+                  setThinkingStatus(`Reading: ${toolTitle.slice(0, 40) || 'files...'}`)
+                } else if (name.includes('write') || name.includes('edit')) {
+                  setThinkingStatus(`Writing: ${toolTitle.slice(0, 40) || 'code...'}`)
+                } else if (name.includes('bash') || name.includes('run') || name.includes('shell')) {
+                  setThinkingStatus(`Running: ${toolTitle.slice(0, 40) || 'command...'}`)
+                } else if (name.includes('task') || name.includes('agent')) {
+                  setThinkingStatus('Creating task...')
+                } else if (name.includes('search') || name.includes('semantic')) {
+                  setThinkingStatus(`Searching: ${toolTitle.slice(0, 40) || '...'}`)
+                } else {
+                  setThinkingStatus(`${toolName}: ${toolTitle.slice(0, 30)}`)
+                }
+              }
+            } else if (part?.type === 'text') {
+              // Text being generated - keep the thinking status
+              setThinkingStatus('Thinking...')
+            } else if (part?.type === 'reasoning') {
+              setThinkingStatus('Reasoning...')
+            }
+          }
+
+          // Handle other event types
+          if (ocEvent?.type === 'session.status') {
+            const status = (ocEvent as { properties?: { status?: string } }).properties?.status
+            if (status) {
+              setThinkingStatus(status)
+            }
+          }
+
+          if (ocEvent?.type === 'todo.updated') {
+            setThinkingStatus('Updating tasks...')
+          }
+
+          if (ocEvent?.type === 'file-watcher.updated') {
+            const props = (ocEvent as { properties?: { event?: string; path?: string } }).properties
+            if (props?.event && props?.path) {
+              setThinkingStatus(`${props.event}: ${props.path.split('/').pop()}`)
+            }
           }
         }
       },

@@ -226,10 +226,63 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
         // Handle OpenCode events for real-time activity
         if (data.type === 'opencode-event') {
-          const payload = data.event?.payload
-          if (payload?.type === 'server.connected') {
+          const ocEvent = data.event
+
+          // Handle server connection
+          if (ocEvent?.payload?.type === 'server.connected') {
             setSandboxProgress('Connected to agent')
             setTimeout(() => setSandboxProgress(null), 2000)
+            return
+          }
+
+          // Handle message.part.updated events (tool calls)
+          if (ocEvent?.type === 'message.part.updated') {
+            const part = ocEvent.properties?.part
+            if (part?.type === 'tool') {
+              const toolName = typeof part.tool === 'string' ? part.tool : part.tool?.name
+              const toolTitle = part.state?.title || ''
+              const toolStatus = part.state?.status
+
+              if (toolName) {
+                const name = toolName.toLowerCase()
+                let statusLabel = toolName
+
+                if (name.includes('read') || name.includes('glob') || name.includes('grep')) {
+                  statusLabel = `Reading: ${toolTitle.slice(0, 30) || 'files'}`
+                  setAgentStatus('planning')
+                } else if (name.includes('write') || name.includes('edit')) {
+                  statusLabel = `Writing: ${toolTitle.slice(0, 30) || 'code'}`
+                  setAgentStatus('coding')
+                } else if (name.includes('bash') || name.includes('run') || name.includes('shell')) {
+                  statusLabel = `Running: ${toolTitle.slice(0, 30) || 'command'}`
+                  setAgentStatus('executing')
+                } else if (name.includes('task') || name.includes('agent')) {
+                  statusLabel = 'Creating task'
+                  setAgentStatus('planning')
+                } else if (name.includes('search') || name.includes('semantic')) {
+                  statusLabel = `Searching: ${toolTitle.slice(0, 30) || ''}`
+                  setAgentStatus('planning')
+                }
+
+                setCurrentTool(statusLabel)
+                setSandboxProgress(statusLabel)
+
+                // Clear progress after tool completes
+                if (toolStatus === 'complete') {
+                  setTimeout(() => setSandboxProgress(null), 1000)
+                }
+              }
+            } else if (part?.type === 'text') {
+              setAgentStatus('coding')
+              setCurrentTool('Writing response')
+            }
+          }
+
+          // Handle session idle
+          if (ocEvent?.type === 'session.idle') {
+            setAgentStatus('idle')
+            setCurrentTool(undefined)
+            setSandboxProgress(null)
           }
         }
       } catch (err) {
