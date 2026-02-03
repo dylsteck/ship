@@ -15,6 +15,17 @@ import type { Env } from '../env.d'
 
 const app = new Hono<{ Bindings: Env }>()
 
+// Debug endpoint to verify deployment and test logging
+app.get("/debug", (c) => {
+  console.log("[chat:debug] Debug endpoint called")
+  return c.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    version: "99-01-debug-v2",
+    env: c.env.ENVIRONMENT
+  })
+})
+
 // POST /chat/:sessionId - Send message and receive streaming response
 app.post('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId')
