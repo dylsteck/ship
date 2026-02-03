@@ -7,6 +7,11 @@
  * - SSE streaming with rich event types
  *
  * We do NOT make direct LLM calls - OpenCode handles everything.
+ *
+ * ARCHITECTURE NOTE:
+ * In production, OpenCode runs INSIDE the E2B sandbox, not as a separate server.
+ * The client connects to the sandbox's OpenCode server via sandbox.getHost(port).
+ * In development, we auto-start a local OpenCode server.
  */
 
 import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk'
@@ -15,20 +20,65 @@ import type { Event, Session, Part, TextPartInput } from '@opencode-ai/sdk'
 // Re-export types for convenience
 export type { Event, Session, Part, TextPartInput }
 
-// Client instance cache
-let clientInstance: OpencodeClient | null = null
+// Client instance cache for development mode only
+let devClientInstance: OpencodeClient | null = null
 let serverCleanup: (() => void) | null = null
+
+// Cache of clients per sandbox URL (for production)
+const sandboxClients: Map<string, OpencodeClient> = new Map()
+
+/**
+ * Create an OpenCode client for a specific sandbox
+ * This is the primary method for production use in CF Workers
+ *
+ * @param baseUrl - The public URL of the OpenCode server in the sandbox
+ * @returns OpencodeClient connected to the sandbox
+ */
+export function createOpenCodeClientForSandbox(baseUrl: string): OpencodeClient {
+  // Check cache first
+  const cached = sandboxClients.get(baseUrl)
+  if (cached) {
+    return cached
+  }
+
+  // Create new client
+  const client = createOpencodeClient({ baseUrl })
+  sandboxClients.set(baseUrl, client)
+  return client
+}
+
+/**
+ * Get or create OpenCode client for development
+ * Auto-starts the OpenCode server locally
+ *
+ * WARNING: This should only be used in development mode!
+ * In production, use createOpenCodeClientForSandbox() with the sandbox URL.
+ */
+export async function getOpenCodeClientDev(): Promise<OpencodeClient> {
+  if (devClientInstance) {
+    return devClientInstance
+  }
+
+  // Auto-start server in development
+  // OpenCode will automatically load opencode.json from project root
+  const { client, server } = await createOpencode({
+    hostname: '127.0.0.1',
+    port: 4096,
+  })
+  devClientInstance = client
+  serverCleanup = server.close
+
+  return devClientInstance
+}
 
 /**
  * Get or create OpenCode client
  * In development, auto-starts the OpenCode server
- * In production, connects to existing server
+ * In production with sandbox URL, connects to sandbox's OpenCode server
+ *
+ * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
  */
-export async function getOpenCodeClient(): Promise<OpencodeClient> {
-  if (clientInstance) {
-    return clientInstance
-  }
-
+export async function getOpenCodeClient(sandboxUrl?: string): Promise<OpencodeClient> {
   // Check if we're in a Node.js environment (development)
   const globalProcess = (globalThis as { process?: { env?: Record<string, string> } }).process
   const isNode = typeof globalThis !== 'undefined' && globalProcess !== undefined
@@ -39,39 +89,28 @@ export async function getOpenCodeClient(): Promise<OpencodeClient> {
   const isDev = environment === 'development'
 
   if (isDev) {
-    // Auto-start server in development
-    // OpenCode will automatically load opencode.json from project root
-    // which configures the Vercel MCP server
-    const { client, server } = await createOpencode({
-      hostname: '127.0.0.1',
-      port: 4096,
-      // Config file path - defaults to ./opencode.json if not specified
-      // configPath: './opencode.json',
-    })
-    clientInstance = client
-    serverCleanup = server.close
-  } else {
-    // Connect to existing server in production
-    const host = isNode ? globalProcess?.env?.OPENCODE_HOST : undefined
-    const port = isNode ? globalProcess?.env?.OPENCODE_PORT : undefined
-
-    clientInstance = createOpencodeClient({
-      baseUrl: `http://${host || '127.0.0.1'}:${port || '4096'}`,
-    })
+    return getOpenCodeClientDev()
   }
 
-  if (!clientInstance) {
-    throw new Error('Failed to initialize OpenCode client')
+  // Production mode - must have sandbox URL
+  if (!sandboxUrl) {
+    throw new Error('OpenCode sandbox URL required in production. Ensure sandbox is provisioned and OpenCode server is started.')
   }
 
-  return clientInstance
+  return createOpenCodeClientForSandbox(sandboxUrl)
 }
 
 /**
  * Create a new OpenCode session for a project
+ *
+ * @param projectPath - Path to the project in the sandbox
+ * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
  */
-export async function createOpenCodeSession(projectPath: string): Promise<{ id: string; projectPath: string }> {
-  const client = await getOpenCodeClient()
+export async function createOpenCodeSession(
+  projectPath: string,
+  sandboxUrl?: string,
+): Promise<{ id: string; projectPath: string }> {
+  const client = await getOpenCodeClient(sandboxUrl)
   const response = await client.session.create({
     query: { directory: projectPath },
   })
@@ -91,13 +130,19 @@ export async function createOpenCodeSession(projectPath: string): Promise<{ id: 
  * Send a prompt to OpenCode session
  * This initiates the prompt and returns the response
  * For streaming events, use subscribeToEvents()
+ *
+ * @param sessionId - OpenCode session ID
+ * @param content - Prompt content
+ * @param options - Optional mode and model settings
+ * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
  */
 export async function promptOpenCode(
   sessionId: string,
   content: string,
-  _options?: { mode?: 'build' | 'plan' },
+  options?: { mode?: 'build' | 'plan'; model?: string },
+  sandboxUrl?: string,
 ): Promise<void> {
-  const client = await getOpenCodeClient()
+  const client = await getOpenCodeClient(sandboxUrl)
 
   const textPart: TextPartInput = {
     type: 'text',
@@ -119,9 +164,11 @@ export async function promptOpenCode(
 /**
  * Subscribe to OpenCode global events
  * Returns an async iterator of events
+ *
+ * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
  */
-export async function subscribeToEvents(): Promise<AsyncIterable<Event>> {
-  const client = await getOpenCodeClient()
+export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncIterable<Event>> {
+  const client = await getOpenCodeClient(sandboxUrl)
   const eventStream = await client.global.event()
 
   // The SDK returns a ServerSentEventsResult which is async iterable
@@ -130,9 +177,12 @@ export async function subscribeToEvents(): Promise<AsyncIterable<Event>> {
 
 /**
  * Stop/abort the current OpenCode session activity
+ *
+ * @param sessionId - OpenCode session ID
+ * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
  */
-export async function stopOpenCode(sessionId: string): Promise<void> {
-  const client = await getOpenCodeClient()
+export async function stopOpenCode(sessionId: string, sandboxUrl?: string): Promise<void> {
+  const client = await getOpenCodeClient(sandboxUrl)
   await client.session.abort({
     path: { id: sessionId },
   })
@@ -161,7 +211,9 @@ export function cleanupOpenCode(): void {
     serverCleanup()
     serverCleanup = null
   }
-  clientInstance = null
+  devClientInstance = null
+  // Clear sandbox clients cache
+  sandboxClients.clear()
 }
 
 /**

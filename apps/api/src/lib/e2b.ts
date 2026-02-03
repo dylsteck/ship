@@ -269,5 +269,71 @@ export class SandboxManager {
   }
 }
 
+/**
+ * Start OpenCode server in sandbox and return public URL
+ * OpenCode must be pre-installed in the sandbox template or installed on first use
+ *
+ * @param apiKey - E2B API key
+ * @param sandboxId - The sandbox ID to connect to
+ * @param anthropicKey - Anthropic API key for OpenCode
+ * @returns Object with URL and process handle
+ */
+export async function startOpenCodeServer(
+  apiKey: string,
+  sandboxId: string,
+  anthropicKey: string,
+): Promise<{ url: string; process: unknown }> {
+  const sandbox = await Sandbox.connect(sandboxId, { apiKey })
+
+  // Start OpenCode server as background process
+  const proc = await sandbox.commands.run(`ANTHROPIC_API_KEY=${anthropicKey} opencode serve --port 4096`, {
+    background: true,
+    onStdout: (data: string) => console.log('[opencode]', data),
+    onStderr: (data: string) => console.error('[opencode]', data),
+  })
+
+  // Wait for server to be ready
+  await waitForOpenCodeServer(sandbox, 4096)
+
+  // Get public URL for the OpenCode server
+  const host = sandbox.getHost(4096)
+
+  return { url: `https://${host}`, process: proc }
+}
+
+/**
+ * Wait for OpenCode server to be ready by polling health endpoint
+ *
+ * @param sandbox - E2B sandbox instance
+ * @param port - Port to check
+ * @param maxAttempts - Maximum number of attempts (default 30 = 30 seconds)
+ */
+async function waitForOpenCodeServer(sandbox: Sandbox, port: number, maxAttempts = 30): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const result = await sandbox.commands.run(`curl -s http://localhost:${port}/health`)
+      if (result.exitCode === 0) return
+    } catch {
+      // Ignore errors, keep retrying
+    }
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+  throw new Error('OpenCode server failed to start within timeout')
+}
+
+/**
+ * Get the public URL for a port in the sandbox
+ *
+ * @param apiKey - E2B API key
+ * @param sandboxId - The sandbox ID
+ * @param port - The port number
+ * @returns Public URL string
+ */
+export async function getSandboxPortUrl(apiKey: string, sandboxId: string, port: number): Promise<string> {
+  const sandbox = await Sandbox.connect(sandboxId, { apiKey })
+  const host = sandbox.getHost(port)
+  return `https://${host}`
+}
+
 // Re-export types from E2B SDK for convenience
 export { Sandbox } from '@e2b/code-interpreter'

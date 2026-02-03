@@ -175,8 +175,8 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
         </div>
       )}
 
-      {/* Sandbox Info */}
-      {sandboxStatus && sandboxStatus !== 'none' && (
+      {/* Sandbox Info - show if we have sandbox status OR sandboxId */}
+      {((sandboxStatus && sandboxStatus !== 'none') || sandboxId) && (
         <div className="p-4 border-b dark:border-gray-800">
           <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">Sandbox</h3>
           <div className="flex items-center gap-2">
@@ -186,11 +186,17 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
                   ? 'bg-green-500'
                   : sandboxStatus === 'provisioning'
                     ? 'bg-yellow-500 animate-pulse'
-                    : 'bg-red-500'
+                    : sandboxStatus === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-gray-400' // For 'none' status when we have sandboxId
               }`}
             />
             <span className="text-sm capitalize dark:text-gray-200">
-              {sandboxStatus === 'ready' ? 'Active' : sandboxStatus}
+              {sandboxStatus === 'ready'
+                ? 'Active'
+                : sandboxStatus === 'none' && sandboxId
+                  ? 'Paused'
+                  : sandboxStatus}
             </span>
           </div>
           {sandboxId && (

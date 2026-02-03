@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ChatInterface } from '@/components/chat/chat-interface'
 import { SessionPanel } from '@/components/session/session-panel'
 import { AgentStatus } from '@/components/session/status-indicator'
@@ -23,13 +23,27 @@ interface SessionPageClientProps {
   sessions: ChatSession[]
 }
 
-export function SessionPageClient({ sessionId, userId, user, sessions }: SessionPageClientProps) {
+// Hook to manage sessions locally with optimistic updates
+function useLocalSessions(initialSessions: ChatSession[]) {
+  const [sessions, setSessions] = useState(initialSessions)
+
+  const removeSession = (sessionId: string) => {
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+  }
+
+  return { sessions, removeSession }
+}
+
+export function SessionPageClient({ sessionId, userId, user, sessions: initialSessions }: SessionPageClientProps) {
   const searchParams = useSearchParams()
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null)
   const [initialMode, setInitialMode] = useState<'build' | 'plan'>('build')
   const [searchQuery, setSearchQuery] = useState('')
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
   const [currentTool, setCurrentTool] = useState<string>()
+
+  // Local session state for optimistic updates on delete
+  const { sessions, removeSession } = useLocalSessions(initialSessions)
   const [sessionInfo, setSessionInfo] = useState({
     repoOwner: '',
     repoName: '',
@@ -42,6 +56,12 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
   const [sandboxStatus, setSandboxStatus] = useState<'provisioning' | 'ready' | 'error' | 'none'>('none')
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+
+  // Ref to track current sandbox status (avoids stale closure in interval)
+  const sandboxStatusRef = useRef(sandboxStatus)
+  useEffect(() => {
+    sandboxStatusRef.current = sandboxStatus
+  }, [sandboxStatus])
 
   // WebSocket connection state
   const [wsConnected, setWsConnected] = useState(false)
@@ -105,14 +125,15 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
     loadSandbox()
 
     // Poll sandbox status every 2 seconds while provisioning (for faster feedback)
+    // Use ref to avoid stale closure - the ref always has the current value
     const interval = setInterval(() => {
-      if (sandboxStatus === 'provisioning') {
+      if (sandboxStatusRef.current === 'provisioning') {
         loadSandbox()
       }
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [sessionId, sandboxStatus])
+  }, [sessionId]) // Removed sandboxStatus from deps - using ref instead
 
   // Pull initial prompt from sessionStorage (set on dashboard create)
   useEffect(() => {
@@ -205,6 +226,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         currentSessionId={sessionId}
+        onSessionDeleted={removeSession}
       />
       <SidebarInset>
         <div className="flex h-screen flex-col relative">

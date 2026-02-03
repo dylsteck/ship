@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import {
-  getOpenCodeClient,
   createOpenCodeSession,
   promptOpenCode,
   stopOpenCode,
@@ -10,6 +9,7 @@ import {
   type Event,
   type Part,
 } from '../lib/opencode'
+import { startOpenCodeServer } from '../lib/e2b'
 import { executeWithRetry, classifyError, sanitizeError } from '../lib/error-handler'
 import type { Env } from '../env.d'
 
@@ -41,16 +41,47 @@ app.post('/:sessionId', async (c) => {
     }),
   )
 
-  // Get session metadata including OpenCode session and model preference
+  // Get session metadata including OpenCode session, model preference, and sandbox info
   const metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
   const meta = (await metaRes.json()) as Record<string, string>
   let opencodeSessionId = meta.opencodeSessionId
   const selectedModel = meta.selected_model // Per-session model preference
+  const sandboxId = meta.sandbox_id
+
+  // In production, we need the sandbox URL for OpenCode
+  // OpenCode runs INSIDE the E2B sandbox, not as a separate server
+  let opencodeUrl = meta.opencode_url
+
+  // If we have a sandbox but no OpenCode URL, start the OpenCode server
+  if (sandboxId && !opencodeUrl) {
+    try {
+      const { url } = await startOpenCodeServer(c.env.E2B_API_KEY, sandboxId, c.env.ANTHROPIC_API_KEY)
+      opencodeUrl = url
+      // Store the URL for future requests
+      await stub.fetch(
+        new Request(`${doUrl}/meta`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opencode_url: url }),
+        }),
+      )
+    } catch (error) {
+      console.error('Failed to start OpenCode server in sandbox:', error)
+      return c.json({ error: 'Failed to start agent in sandbox. Please try again.' }, 500)
+    }
+  }
+
+  // If no sandbox, we can't proceed in production
+  // (In development mode, the functions will fall back to local server)
+  const isDev = c.env.ENVIRONMENT === 'development'
+  if (!sandboxId && !isDev) {
+    return c.json({ error: 'Sandbox not provisioned. Please wait for sandbox to be ready.' }, 400)
+  }
 
   if (!opencodeSessionId) {
     // Create new OpenCode session
     const projectPath = meta.repoPath || '/home/user/repo'
-    const ocSession = await createOpenCodeSession(projectPath)
+    const ocSession = await createOpenCodeSession(projectPath, opencodeUrl)
     opencodeSessionId = ocSession.id
 
     // Save to session meta
@@ -82,13 +113,16 @@ app.post('/:sessionId', async (c) => {
     }
   }
 
+  // Capture opencodeUrl in closure for SSE handler
+  const sandboxOpenCodeUrl = opencodeUrl
+
   // Stream OpenCode events as SSE
   return streamSSE(c, async (stream) => {
     try {
       // Send prompt to OpenCode with retry wrapper
       await executeWithRetry(
         async () => {
-          await promptOpenCode(opencodeSessionId!, content, { mode, model: selectedModel })
+          await promptOpenCode(opencodeSessionId!, content, { mode, model: selectedModel }, sandboxOpenCodeUrl)
         },
         {
           operationName: 'Send prompt to OpenCode',
@@ -111,7 +145,7 @@ app.post('/:sessionId', async (c) => {
       )
 
       // Subscribe to events and filter for this session
-      const eventStream = await subscribeToEvents()
+      const eventStream = await subscribeToEvents(sandboxOpenCodeUrl)
       const sessionEvents = filterSessionEvents(eventStream, opencodeSessionId!)
 
       // Accumulate assistant message content
@@ -156,10 +190,12 @@ app.post('/:sessionId', async (c) => {
             // If this is a tool part, track file changes for git commit
             if (part.type === 'tool') {
               // File write/edit operations indicate changes to commit
+              // part.tool is a string (tool name) in OpenCode SDK
+              const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
               if (
-                part.tool?.name?.includes('write') ||
-                part.tool?.name?.includes('edit') ||
-                part.tool?.name?.includes('create')
+                toolName?.includes('write') ||
+                toolName?.includes('edit') ||
+                toolName?.includes('create')
               ) {
                 hasChanges = true
               }
@@ -303,7 +339,7 @@ app.post('/:sessionId', async (c) => {
 app.post('/:sessionId/stop', async (c) => {
   const sessionId = c.req.param('sessionId')
 
-  // Get OpenCode session ID from DO
+  // Get OpenCode session ID and sandbox URL from DO
   const id = c.env.SESSION_DO.idFromName(sessionId)
   const stub = c.env.SESSION_DO.get(id)
 
@@ -311,7 +347,8 @@ app.post('/:sessionId/stop', async (c) => {
   const meta = (await metaRes.json()) as Record<string, string>
 
   if (meta.opencodeSessionId) {
-    await stopOpenCode(meta.opencodeSessionId)
+    // Use sandbox URL if available (production), otherwise will use dev fallback
+    await stopOpenCode(meta.opencodeSessionId, meta.opencode_url)
   }
 
   return c.json({ success: true })

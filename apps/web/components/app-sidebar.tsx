@@ -71,16 +71,19 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
 
     try {
       setDeletingSessionId(session.id)
-      // Optimistically update UI immediately
-      onSessionDeleted?.(session.id)
+      // Delete from API first
       await deleteSession({ sessionId: session.id })
+      // Update local state for immediate UI feedback
+      onSessionDeleted?.(session.id)
+      // If we deleted the currently viewed session, redirect to home
       if (currentSessionId === session.id) {
         router.push('/')
-        return
       }
+      // Refresh server state to ensure consistency
+      router.refresh()
     } catch (error) {
       console.error('Failed to delete session:', error)
-      // Could add the session back on error, but for now just refresh
+      // Refresh to get correct state
       router.refresh()
     } finally {
       setDeletingSessionId(null)
