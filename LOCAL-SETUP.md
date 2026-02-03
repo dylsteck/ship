@@ -218,6 +218,22 @@ If you see database errors:
 2. Verify OpenCode SDK is installed: `cd apps/api && pnpm list @opencode-ai/sdk`
 3. Check for port conflicts (OpenCode uses port 4096 by default)
 
+### Debugging Production Issues
+
+If you need to debug production issues:
+
+```bash
+# View real-time production logs
+npx wrangler tail ship-api-production
+
+# Look for specific log prefixes:
+# - [chat:...] - Chat request handling
+# - [opencode:...] - OpenCode event processing
+# - [opencode:prompt] - Prompt sending to OpenCode
+```
+
+This is especially useful when debugging agent execution, sandbox provisioning, or event streaming issues.
+
 ## Environment Variables Reference
 
 ### Web App (`apps/web/.env.local`)
@@ -258,6 +274,9 @@ cd apps/api
 
 # Start Worker dev server
 npx wrangler dev
+
+# View production logs (for debugging production issues)
+npx wrangler tail ship-api-production
 
 # Database operations
 npx wrangler d1 list                                    # List databases

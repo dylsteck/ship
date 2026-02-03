@@ -359,12 +359,17 @@ jobs:
 ### View Worker Logs
 
 ```bash
-# Real-time logs
+# Real-time logs (production)
+npx wrangler tail ship-api-production
+
+# Alternative (if using env flag)
 npx wrangler tail --env production
 
-# Filter logs
-npx wrangler tail --env production --format=pretty
+# Filter logs with formatting
+npx wrangler tail ship-api-production --format=pretty
 ```
+
+**Tip:** Use `npx wrangler tail ship-api-production` to debug production issues. Look for logs prefixed with `[chat:...]`, `[opencode:...]`, and `[opencode:prompt]` to track agent execution flow.
 
 ### View Database Queries
 

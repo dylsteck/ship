@@ -162,6 +162,7 @@ pnpm type-check  # TypeScript checks
 
 ```bash
 npx wrangler dev                    # Start Worker dev server
+npx wrangler tail ship-api-production  # View production logs (for debugging)
 npx wrangler d1 create <db-name>    # Create D1 database
 npx wrangler d1 execute <db-name> --local --file=<sql-file>  # Run migrations
 npx wrangler d1 execute <db-name> --local --command="SELECT * FROM users"  # Query database
