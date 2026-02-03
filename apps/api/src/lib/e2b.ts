@@ -285,38 +285,78 @@ export async function startOpenCodeServer(
 ): Promise<{ url: string; process: unknown }> {
   const sandbox = await Sandbox.connect(sandboxId, { apiKey })
 
-  // Check if OpenCode is installed
-  const checkResult = await sandbox.commands.run('which opencode || echo "not-found"')
-  const isInstalled = !checkResult.stdout.includes('not-found')
+  console.log(`[opencode:${sandboxId}] Checking if OpenCode is installed...`)
 
-  if (!isInstalled) {
-    console.log('[opencode] Installing OpenCode CLI...')
-    // Install OpenCode using the official install script
+  // Check if opencode binary exists
+  const whichResult = await sandbox.commands.run('which opencode || echo "NOT_FOUND"')
+  console.log(`[opencode:${sandboxId}] which opencode: ${whichResult.stdout.trim()}`)
+
+  if (whichResult.stdout.includes('NOT_FOUND')) {
+    console.log(`[opencode:${sandboxId}] OpenCode not found, checking .opencode directory...`)
+
+    // Check if .opencode exists (installation directory)
+    const checkDirResult = await sandbox.commands.run('ls -la ~/.opencode 2>&1 || echo "DIR_NOT_FOUND"')
+    console.log(`[opencode:${sandboxId}] .opencode directory: ${checkDirResult.stdout.slice(0, 200)}`)
+
+    // Try to find the binary in common locations
+    const findResult = await sandbox.commands.run('find /home -name "opencode" -type f 2>/dev/null | head -5')
+    console.log(`[opencode:${sandboxId}] find result: ${findResult.stdout}`)
+
+    // Install OpenCode if not found
+    console.log(`[opencode:${sandboxId}] Installing OpenCode CLI...`)
     const installResult = await sandbox.commands.run('curl -fsSL https://opencode.ai/install | bash', {
-      timeoutMs: 120000, // 2 minute timeout for install
+      timeoutMs: 120000,
+      onStdout: (data: string) => console.log(`[opencode:install] ${data}`),
+      onStderr: (data: string) => console.error(`[opencode:install] ${data}`),
     })
+    console.log(`[opencode:${sandboxId}] Install exit code: ${installResult.exitCode}`)
+
     if (installResult.exitCode !== 0) {
       throw new Error(`Failed to install OpenCode: ${installResult.stderr}`)
     }
-    console.log('[opencode] OpenCode CLI installed successfully')
   }
 
-  // Start OpenCode server as background process
-  console.log('[opencode] Starting OpenCode server...')
-  const proc = await sandbox.commands.run(`ANTHROPIC_API_KEY=${anthropicKey} opencode serve --port 4096`, {
+  // Get the actual path to opencode binary
+  const opencodePathResult = await sandbox.commands.run('which opencode')
+  const opencodePath = opencodePathResult.stdout.trim()
+  console.log(`[opencode:${sandboxId}] Using opencode at: ${opencodePath}`)
+
+  // Set up environment and start server
+  console.log(`[opencode:${sandboxId}] Starting OpenCode server on port 4096...`)
+
+  // Export env var first, then start server (more reliable than inline env in sandbox)
+  const setupCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="$HOME/.opencode/bin:$PATH"`
+  await sandbox.commands.run(setupCmd)
+
+  // Start the server as background process with full output capture
+  const serverCmd = `cd /home/user && ANTHROPIC_API_KEY="${anthropicKey}" opencode serve --port 4096 --host 0.0.0.0 2>&1`
+  console.log(`[opencode:${sandboxId}] Running: ${serverCmd}`)
+
+  const proc = await sandbox.commands.run(serverCmd, {
     background: true,
-    onStdout: (data: string) => console.log('[opencode]', data),
-    onStderr: (data: string) => console.error('[opencode]', data),
+    onStdout: (data: string) => {
+      console.log(`[opencode:server] ${data}`)
+    },
+    onStderr: (data: string) => {
+      console.error(`[opencode:server] ${data}`)
+    },
   })
 
+  console.log(`[opencode:${sandboxId}] Server process started, PID check: ${proc ? 'yes' : 'no'}`)
+
+  // Wait a moment for server to initialize
+  await new Promise((r) => setTimeout(r, 2000))
+
   // Wait for server to be ready
-  await waitForOpenCodeServer(sandbox, 4096)
-  console.log('[opencode] Server is ready')
+  await waitForOpenCodeServer(sandbox, 4096, 60, sandboxId)
+  console.log(`[opencode:${sandboxId}] Server is ready`)
 
   // Get public URL for the OpenCode server
   const host = sandbox.getHost(4096)
+  const url = `https://${host}`
+  console.log(`[opencode:${sandboxId}] Server URL: ${url}`)
 
-  return { url: `https://${host}`, process: proc }
+  return { url, process: proc }
 }
 
 /**
@@ -325,23 +365,81 @@ export async function startOpenCodeServer(
  * @param sandbox - E2B sandbox instance
  * @param port - Port to check
  * @param maxAttempts - Maximum number of attempts (default 60 = 60 seconds)
+ * @param sandboxId - Sandbox ID for logging
  */
-async function waitForOpenCodeServer(sandbox: Sandbox, port: number, maxAttempts = 60): Promise<void> {
-  console.log(`[opencode] Waiting for server on port ${port}...`)
+async function waitForOpenCodeServer(
+  sandbox: Sandbox,
+  port: number,
+  maxAttempts = 60,
+  sandboxId?: string,
+): Promise<void> {
+  const logPrefix = sandboxId ? `[opencode:${sandboxId}]` : '[opencode]'
+  console.log(`${logPrefix} Waiting for server on port ${port}...`)
+
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const result = await sandbox.commands.run(`curl -s http://localhost:${port}/health`)
-      if (result.exitCode === 0 && result.stdout) {
+      // Method 1: Try health endpoint
+      const result = await sandbox.commands.run(
+        `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/health`,
+      )
+      if (result.stdout.trim() === '200') {
+        console.log(`${logPrefix} Health check passed on attempt ${i + 1}`)
         return
       }
-    } catch {
-      // Ignore errors, keep retrying
+
+      // Log non-200 responses for debugging
+      if (result.stdout.trim() && result.stdout.trim() !== '000') {
+        console.log(`${logPrefix} Health check attempt ${i + 1}: HTTP ${result.stdout.trim()}`)
+      }
+    } catch (err) {
+      // Log error every 5 attempts
+      if (i % 5 === 0) {
+        console.log(`${logPrefix} Health check attempt ${i + 1}: ${err instanceof Error ? err.message : 'error'}`)
+      }
     }
+
+    // Every 10 seconds, log status and check if process is running
     if (i > 0 && i % 10 === 0) {
-      console.log(`[opencode] Still waiting for server... (${i}s)`)
+      console.log(`${logPrefix} Still waiting for server... (${i}s)`)
+
+      // Check what's listening on the port
+      try {
+        const netstatResult = await sandbox.commands.run(
+          `netstat -tlnp 2>/dev/null | grep ${port} || ss -tlnp 2>/dev/null | grep ${port} || echo "No process on port ${port}"`,
+        )
+        console.log(`${logPrefix} Port ${port} status: ${netstatResult.stdout.trim()}`)
+      } catch {
+        // Ignore netstat errors
+      }
+
+      // Check if opencode process is running
+      try {
+        const psResult = await sandbox.commands.run(
+          `ps aux | grep opencode | grep -v grep || echo "No opencode process"`,
+        )
+        console.log(`${logPrefix} Process check: ${psResult.stdout.trim().slice(0, 100)}`)
+      } catch {
+        // Ignore ps errors
+      }
     }
+
     await new Promise((r) => setTimeout(r, 1000))
   }
+
+  // On failure, get detailed diagnostics
+  console.error(`${logPrefix} Server failed to start. Getting diagnostics...`)
+  try {
+    const psResult = await sandbox.commands.run(
+      'ps aux | grep -E "opencode|node" | grep -v grep || echo "No matching processes"',
+    )
+    console.error(`${logPrefix} Running processes: ${psResult.stdout}`)
+  } catch {}
+
+  try {
+    const logResult = await sandbox.commands.run('cat /tmp/opencode.log 2>/dev/null || echo "No log file"')
+    console.error(`${logPrefix} Log file: ${logResult.stdout.slice(0, 500)}`)
+  } catch {}
+
   throw new Error(`OpenCode server failed to start within ${maxAttempts} seconds`)
 }
 
