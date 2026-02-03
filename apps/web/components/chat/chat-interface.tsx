@@ -8,6 +8,7 @@ import { sendChatMessage, getChatMessages, stopChatStream } from '@/lib/api'
 import type { AgentStatus } from '@/components/session/status-indicator'
 import { aggregateCosts, type CostBreakdown } from '@/lib/cost-tracker'
 import { CostBreakdown as CostBreakdownComponent } from '@/components/cost/cost-breakdown'
+import { ThinkingIndicator, type ToolPart } from './thinking-indicator'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
@@ -37,6 +38,9 @@ export function ChatInterface({
   const [messageQueue, setMessageQueue] = useState<string[]>([])
   const [wsStatus, setWsStatus] = useState<WebSocketStatus>('disconnected')
   const [hasMore, setHasMore] = useState(false)
+  const [thinkingParts, setThinkingParts] = useState<ToolPart[]>([])
+  const [thinkingReasoning, setThinkingReasoning] = useState<string>('')
+  const [thinkingExpanded, setThinkingExpanded] = useState(true)
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
@@ -153,6 +157,9 @@ export function ChatInterface({
       setIsStreaming(true)
       onStatusChange?.('planning')
       assistantTextRef.current = ''
+      setThinkingParts([])
+      setThinkingReasoning('')
+      setThinkingExpanded(true)
 
       // Optimistically add user message
       const userMessage: Message = {
@@ -248,6 +255,7 @@ export function ChatInterface({
                 if (data.type === 'message.part.updated') {
                   const part = data.properties?.part
                   const delta = data.properties?.delta
+                  
                   if (part?.type === 'text') {
                     if (typeof delta === 'string') {
                       assistantTextRef.current += delta
@@ -261,18 +269,54 @@ export function ChatInterface({
                       ),
                     )
                   } else if (part?.type === 'tool') {
-                    // Handle tool parts - show tool activity
+                    // Extract tool information
                     const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
+                    const callID = part.callID || part.id || `tool-${Date.now()}-${Math.random()}`
+                    
                     if (toolName) {
+                      // Update status
                       let status: AgentStatus = 'coding'
-                      if (toolName.includes('read') || toolName.includes('search')) {
+                      if (toolName.includes('read') || toolName.includes('search') || toolName.includes('glob') || toolName.includes('grep')) {
                         status = 'planning'
                       } else if (toolName.includes('write') || toolName.includes('edit')) {
                         status = 'coding'
-                      } else if (toolName.includes('run') || toolName.includes('exec')) {
+                      } else if (toolName.includes('run') || toolName.includes('exec') || toolName.includes('bash')) {
                         status = 'executing'
                       }
                       onStatusChange?.(status, toolName)
+                      
+                      // Add to thinking parts for display
+                      const toolPart: ToolPart = {
+                        type: 'tool',
+                        callID,
+                        tool: toolName,
+                        state: {
+                          title: part.state?.title || part.title || toolName,
+                          status: part.state?.status || (part.output ? 'complete' : part.input ? 'running' : 'pending'),
+                        },
+                        input: part.input,
+                        output: part.output,
+                      }
+                      
+                      setThinkingParts((prev) => {
+                        const existing = prev.findIndex((p) => p.callID === toolPart.callID)
+                        if (existing >= 0) {
+                          // Update existing part
+                          return prev.map((p, i) => (i === existing ? toolPart : p))
+                        }
+                        // Add new part
+                        return [...prev, toolPart]
+                      })
+                    }
+                  } else if (part?.type === 'reasoning') {
+                    // Handle reasoning parts
+                    const reasoningText = part.reasoning || part.text || ''
+                    if (reasoningText) {
+                      setThinkingReasoning((prev) => {
+                        // Append reasoning, separated by newlines
+                        return prev ? `${prev}\n\n${reasoningText}` : reasoningText
+                      })
+                      onStatusChange?.('planning', 'Reasoning...')
                     }
                   }
                 }
@@ -340,6 +384,11 @@ export function ChatInterface({
                   costEventsRef.current = []
                   setIsStreaming(false)
                   streamingMessageRef.current = null
+                  // Keep thinking parts visible for a moment, then clear
+                  setTimeout(() => {
+                    setThinkingParts([])
+                    setThinkingReasoning('')
+                  }, 2000)
                   onStatusChange?.('idle')
                 }
 
@@ -480,34 +529,49 @@ export function ChatInterface({
       )}
 
       <div className="flex-1 overflow-y-auto">
-        <MessageList
-          className="mx-auto w-full max-w-[820px]"
-          messages={messages}
-          isStreaming={isStreaming}
-          streamingLabel={
-            isStreaming
-              ? (() => {
-                  const labelMap: Record<AgentStatus, string> = {
-                    idle: 'Thinking',
-                    planning: 'Planning',
-                    coding: 'Coding',
-                    testing: 'Testing',
-                    executing: 'Executing',
-                    stuck: 'Stuck',
-                    waiting: 'Waiting',
-                    error: 'Error',
-                  }
-                  const base = agentStatus ? labelMap[agentStatus] : 'Thinking'
-                  return currentTool ? `${base} · ${currentTool}` : `${base}...`
-                })()
-              : undefined
-          }
-          onLoadEarlier={handleLoadEarlier}
-          hasMore={hasMore}
-          onRetryError={handleRetryError}
-          onOpenVSCode={onOpenVSCode}
-          onOpenTerminal={onOpenTerminal}
-        />
+        <div className="mx-auto w-full max-w-[820px]">
+          <MessageList
+            messages={messages}
+            isStreaming={isStreaming}
+            streamingLabel={
+              isStreaming
+                ? (() => {
+                    const labelMap: Record<AgentStatus, string> = {
+                      idle: 'Thinking',
+                      planning: 'Planning',
+                      coding: 'Coding',
+                      testing: 'Testing',
+                      executing: 'Executing',
+                      stuck: 'Stuck',
+                      waiting: 'Waiting',
+                      error: 'Error',
+                    }
+                    const base = agentStatus ? labelMap[agentStatus] : 'Thinking'
+                    return currentTool ? `${base} · ${currentTool}` : `${base}...`
+                  })()
+                : undefined
+            }
+            onLoadEarlier={handleLoadEarlier}
+            hasMore={hasMore}
+            onRetryError={handleRetryError}
+            onOpenVSCode={onOpenVSCode}
+            onOpenTerminal={onOpenTerminal}
+          />
+          
+          {/* Show ThinkingIndicator when streaming to display all OpenCode activity */}
+          {isStreaming && (thinkingParts.length > 0 || thinkingReasoning) && (
+            <div className="px-6 pb-6">
+              <ThinkingIndicator
+                isThinking={isStreaming}
+                parts={thinkingParts}
+                reasoning={thinkingReasoning}
+                statusLabel={currentTool || 'Processing...'}
+                expanded={thinkingExpanded}
+                onToggle={() => setThinkingExpanded(!thinkingExpanded)}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <ChatInput
