@@ -54,6 +54,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   // Sandbox state
   const [sandboxId, setSandboxId] = useState<string | null>(null)
   const [sandboxStatus, setSandboxStatus] = useState<'provisioning' | 'ready' | 'error' | 'none'>('none')
+  const [sandboxProgress, setSandboxProgress] = useState<string | null>(null)
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
 
@@ -124,16 +125,23 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     loadSession()
     loadSandbox()
 
-    // Poll sandbox status every 2 seconds while provisioning (for faster feedback)
+    // Poll sandbox status as fallback when WebSocket is disconnected
     // Use ref to avoid stale closure - the ref always has the current value
+    // Also track wsConnected in a ref to avoid stale closure
+    const wsConnectedRef = useRef(wsConnected)
+    useEffect(() => {
+      wsConnectedRef.current = wsConnected
+    }, [wsConnected])
+
     const interval = setInterval(() => {
-      if (sandboxStatusRef.current === 'provisioning') {
+      // Only poll if WebSocket is disconnected and status is not ready
+      if (!wsConnectedRef.current && sandboxStatusRef.current !== 'ready') {
         loadSandbox()
       }
-    }, 2000)
+    }, 2000) // Poll every 2s when needed (will be skipped if WS connected)
 
     return () => clearInterval(interval)
-  }, [sessionId]) // Removed sandboxStatus from deps - using ref instead
+  }, [sessionId, wsConnected]) // Include wsConnected to recreate interval when connection changes
 
   // Pull initial prompt from sessionStorage (set on dashboard create)
   useEffect(() => {
@@ -180,6 +188,40 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
         if (data.type === 'agent-status') {
           setAgentStatus(data.status as AgentStatus)
           setCurrentTool(data.details)
+        }
+
+        // Handle sandbox status updates
+        if (data.type === 'sandbox-status') {
+          if (data.sandboxId) {
+            setSandboxId(data.sandboxId)
+          }
+          if (data.status === 'ready') {
+            setSandboxStatus('ready')
+            setSandboxProgress(null)
+          } else if (data.status === 'error') {
+            setSandboxStatus('error')
+            setSandboxProgress(null)
+          }
+        }
+
+        // Handle sandbox cloning
+        if (data.type === 'sandbox-cloning') {
+          setSandboxProgress(`Cloning repository ${data.repoOwner}/${data.repoName}...`)
+        }
+
+        // Handle sandbox ready (after cloning)
+        if (data.type === 'sandbox-ready') {
+          setSandboxStatus('ready')
+          setSandboxProgress(`Repository cloned. Branch: ${data.branchName}`)
+          // Clear progress message after 3 seconds
+          setTimeout(() => setSandboxProgress(null), 3000)
+        }
+
+        // Handle OpenCode server started
+        if (data.type === 'opencode-started') {
+          setSandboxProgress('OpenCode server started')
+          // Clear progress message after 2 seconds
+          setTimeout(() => setSandboxProgress(null), 2000)
         }
       } catch (err) {
         console.error('WebSocket message error:', err)
@@ -271,6 +313,11 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
                     <div className="mb-4 text-lg font-medium text-foreground">
                       Provisioning sandbox...
                     </div>
+                    {sandboxProgress && (
+                      <div className="mb-2 text-sm text-muted-foreground">
+                        {sandboxProgress}
+                      </div>
+                    )}
                     <div className="text-sm text-muted-foreground">
                       This usually takes 10-15 seconds
                     </div>
@@ -286,6 +333,14 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
                     <div className="text-sm text-muted-foreground">
                       Please refresh the page to try again
                     </div>
+                  </div>
+                </div>
+              )}
+              {sandboxProgress && sandboxStatus !== 'provisioning' && (
+                <div className="border-b bg-muted/50 px-4 py-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    {sandboxProgress}
                   </div>
                 </div>
               )}

@@ -243,6 +243,53 @@ export function ChatInterface({
                         m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
                       ),
                     )
+                  } else if (part?.type === 'tool') {
+                    // Handle tool parts - show tool activity
+                    const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
+                    if (toolName) {
+                      let status: AgentStatus = 'coding'
+                      if (toolName.includes('read') || toolName.includes('search')) {
+                        status = 'planning'
+                      } else if (toolName.includes('write') || toolName.includes('edit')) {
+                        status = 'coding'
+                      } else if (toolName.includes('run') || toolName.includes('exec')) {
+                        status = 'executing'
+                      }
+                      onStatusChange?.(status, toolName)
+                    }
+                  }
+                }
+
+                // Handle session status events
+                if (data.type === 'session.status') {
+                  const status = data.properties?.status
+                  if (status) {
+                    // Map OpenCode session status to agent status
+                    let agentStatus: AgentStatus = 'planning'
+                    if (status.includes('running') || status.includes('executing')) {
+                      agentStatus = 'executing'
+                    } else if (status.includes('thinking') || status.includes('planning')) {
+                      agentStatus = 'planning'
+                    }
+                    onStatusChange?.(agentStatus, status)
+                  }
+                }
+
+                // Handle file watcher updates
+                if (data.type === 'file-watcher.updated') {
+                  const event = data.properties?.event
+                  const path = data.properties?.path
+                  if (event && path) {
+                    const fileName = path.split('/').pop() || path
+                    onStatusChange?.('coding', `${event}: ${fileName}`)
+                  }
+                }
+
+                // Handle command execution
+                if (data.type === 'command.executed') {
+                  const command = data.properties?.command
+                  if (command) {
+                    onStatusChange?.('executing', `Running: ${command}`)
                   }
                 }
 
@@ -255,7 +302,7 @@ export function ChatInterface({
                   )
                 }
 
-                if (data.type === 'done') {
+                if (data.type === 'done' || data.type === 'session.idle') {
                   // Aggregate costs and store for this message
                   if (costEventsRef.current.length > 0 && streamingMessageRef.current) {
                     const breakdowns = aggregateCosts(costEventsRef.current)

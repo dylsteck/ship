@@ -70,12 +70,15 @@ app.post('/:sessionId', async (c) => {
 
   // If sandbox is still provisioning, wait for it to complete (with timeout)
   if (!sandboxId && sandboxStatus === 'provisioning' && !isDev) {
+    console.log(`[chat:${sessionId}] Waiting for sandbox provisioning...`)
     const maxWaitMs = 60000 // 60 seconds max wait
     const pollIntervalMs = 2000 // Poll every 2 seconds
     const startTime = Date.now()
+    let pollCount = 0
 
     while (Date.now() - startTime < maxWaitMs) {
       await new Promise((r) => setTimeout(r, pollIntervalMs))
+      pollCount++
 
       // Re-fetch metadata to check sandbox status
       metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
@@ -83,11 +86,39 @@ app.post('/:sessionId', async (c) => {
       sandboxId = meta.sandbox_id
       sandboxStatus = meta.sandbox_status
 
+      if (pollCount % 5 === 0) {
+        console.log(`[chat:${sessionId}] Still waiting for sandbox... (${pollCount * 2}s elapsed)`)
+      }
+
       if (sandboxId) {
+        // Broadcast sandbox ready status
+        console.log(`[chat:${sessionId}] Sandbox provisioned: ${sandboxId}`)
+        await stub.fetch(
+          new Request(`${doUrl}/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'sandbox-status',
+              sandboxId,
+              status: 'ready',
+            }),
+          }),
+        )
         break // Sandbox is ready
       }
 
       if (sandboxStatus === 'error') {
+        // Broadcast error status
+        await stub.fetch(
+          new Request(`${doUrl}/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'sandbox-status',
+              status: 'error',
+            }),
+          }),
+        )
         return c.json({ error: 'Sandbox provisioning failed. Please try again.' }, 500)
       }
     }
@@ -110,9 +141,11 @@ app.post('/:sessionId', async (c) => {
   if (sandboxId && !opencodeUrl) {
     try {
       console.log(`[chat:${sessionId}] Starting OpenCode server in sandbox ${sandboxId}...`)
+      const startTime = Date.now()
       const { url } = await startOpenCodeServer(c.env.E2B_API_KEY, sandboxId, c.env.ANTHROPIC_API_KEY)
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
       opencodeUrl = url
-      console.log(`[chat:${sessionId}] OpenCode server started at ${url}`)
+      console.log(`[chat:${sessionId}] OpenCode server started at ${url} (took ${elapsed}s)`)
 
       // Store the URL for future requests
       await stub.fetch(
@@ -120,6 +153,19 @@ app.post('/:sessionId', async (c) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ opencode_url: url }),
+        }),
+      )
+
+      // Broadcast OpenCode server started
+      console.log(`[chat:${sessionId}] Broadcasting opencode-started event`)
+      await stub.fetch(
+        new Request(`${doUrl}/broadcast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'opencode-started',
+            url,
+          }),
         }),
       )
     } catch (error) {
@@ -141,7 +187,21 @@ app.post('/:sessionId', async (c) => {
   // Clone repository if we have repo info but no repo_url yet
   if (sandboxId && meta.repo_owner && meta.repo_name && !meta.repo_url) {
     try {
-      console.log(`[chat:${sessionId}] Repository not cloned yet, cloning now...`)
+        console.log(`[chat:${sessionId}] Repository not cloned yet, cloning now...`)
+        const cloneStartTime = Date.now()
+
+        // Broadcast cloning started
+        await stub.fetch(
+          new Request(`${doUrl}/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'sandbox-cloning',
+              repoOwner: meta.repo_owner,
+              repoName: meta.repo_name,
+            }),
+          }),
+        )
 
       // Get GitHub token from accounts
       const accountRes = await c.env.DB.prepare(
@@ -191,7 +251,21 @@ app.post('/:sessionId', async (c) => {
           }),
         )
 
-        console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created`)
+        const cloneElapsed = ((Date.now() - cloneStartTime) / 1000).toFixed(1)
+        console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created (took ${cloneElapsed}s)`)
+
+        // Broadcast cloning completed
+        await stub.fetch(
+          new Request(`${doUrl}/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'sandbox-ready',
+              repoUrl,
+              branchName,
+            }),
+          }),
+        )
 
         // Initialize agent executor now that we have everything needed
         console.log(`[chat:${sessionId}] Initializing agent executor...`)
@@ -272,14 +346,15 @@ app.post('/:sessionId', async (c) => {
   // Capture opencodeUrl in closure for SSE handler
   const sandboxOpenCodeUrl = opencodeUrl
 
-  console.log(
-    `[chat:${sessionId}] Starting SSE stream, sessionId=${opencodeSessionId}, mode=${mode}, model=${selectedModel}`,
-  )
+      console.log(
+        `[chat:${sessionId}] Starting SSE stream, sessionId=${opencodeSessionId}, mode=${mode}, model=${selectedModel}`,
+      )
 
-  // Stream OpenCode events as SSE
-  return streamSSE(c, async (stream) => {
-    try {
-      console.log(`[chat:${sessionId}] Sending prompt to OpenCode...`)
+      // Stream OpenCode events as SSE
+      return streamSSE(c, async (stream) => {
+        try {
+          console.log(`[chat:${sessionId}] SSE stream connected, sending prompt to OpenCode...`)
+          const promptStartTime = Date.now()
       // Send prompt to OpenCode with retry wrapper
       await executeWithRetry(
         async () => {
@@ -305,7 +380,7 @@ app.post('/:sessionId', async (c) => {
         },
       )
 
-      console.log(`[chat:${sessionId}] Subscribing to events...`)
+      console.log(`[chat:${sessionId}] Prompt sent (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s), subscribing to events...`)
       // Subscribe to events and filter for this session
       const eventStream = await subscribeToEvents(sandboxOpenCodeUrl)
       const sessionEvents = filterSessionEvents(eventStream, opencodeSessionId!)
@@ -332,6 +407,9 @@ app.post('/:sessionId', async (c) => {
         })
 
         // Broadcast to WebSocket clients via DO
+        if (eventCount <= 5 || eventCount % 20 === 0) {
+          console.log(`[chat:${sessionId}] Broadcasting event #${eventCount} type=${event.type} to WebSocket clients`)
+        }
         await stub.fetch(
           new Request(`${doUrl}/broadcast`, {
             method: 'POST',
