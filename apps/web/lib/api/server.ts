@@ -120,7 +120,7 @@ export interface MessagePart {
 export async function sendChatMessage(
   sessionId: string,
   content: string,
-  mode?: 'build' | 'agent' | 'plan',
+  mode?: 'build' | 'plan',
 ): Promise<Response> {
   return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
     method: 'POST',

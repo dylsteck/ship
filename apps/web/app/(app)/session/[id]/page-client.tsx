@@ -26,7 +26,7 @@ interface SessionPageClientProps {
 export function SessionPageClient({ sessionId, userId, user, sessions }: SessionPageClientProps) {
   const searchParams = useSearchParams()
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null)
-  const [initialMode, setInitialMode] = useState<'build' | 'agent' | 'plan'>('build')
+  const [initialMode, setInitialMode] = useState<'build' | 'plan'>('build')
   const [searchQuery, setSearchQuery] = useState('')
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
   const [currentTool, setCurrentTool] = useState<string>()
@@ -123,7 +123,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
       const parsed = JSON.parse(stored) as { content?: string; mode?: 'build' | 'agent' | 'plan' }
       if (parsed.content) {
         setInitialPrompt(parsed.content)
-        setInitialMode(parsed.mode || 'build')
+        setInitialMode(parsed.mode === 'agent' ? 'plan' : parsed.mode || 'build')
       }
       sessionStorage.removeItem(`pendingPrompt:${sessionId}`)
     } catch {
@@ -274,7 +274,12 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
                   onOpenVSCode={handleOpenVSCode}
                   onOpenTerminal={handleOpenTerminal}
                   initialPrompt={initialPrompt ?? searchParams.get('prompt')}
-                  initialMode={(searchParams.get('mode') as 'build' | 'agent' | 'plan' | null) ?? initialMode}
+                  initialMode={(() => {
+                    const modeParam = searchParams.get('mode')
+                    if (modeParam === 'agent') return 'plan'
+                    if (modeParam === 'plan' || modeParam === 'build') return modeParam
+                    return initialMode
+                  })()}
                   agentStatus={agentStatus}
                   currentTool={currentTool}
                 />

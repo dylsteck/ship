@@ -17,7 +17,7 @@ interface ChatInterfaceProps {
   onOpenVSCode?: () => void
   onOpenTerminal?: () => void
   initialPrompt?: string | null
-  initialMode?: 'build' | 'agent' | 'plan'
+  initialMode?: 'build' | 'plan'
   agentStatus?: AgentStatus
   currentTool?: string
 }
@@ -143,7 +143,7 @@ export function ChatInterface({
   }, [isStreaming, messageQueue])
 
   const handleSend = useCallback(
-    async (content: string, modeOverride?: 'build' | 'agent' | 'plan') => {
+    async (content: string, modeOverride?: 'build' | 'plan') => {
       if (isStreaming) {
         // Queue message per CONTEXT.md: "message queuing available"
         setMessageQueue((q) => [...q, content])

@@ -28,8 +28,8 @@ type ChatComposerProps = {
   onModelSelect: (model: ModelInfo) => void
   modelsLoading: boolean
   groupedByProvider: Record<string, ModelInfo[]>
-  mode: 'build' | 'agent'
-  onModeChange: (mode: 'build' | 'agent') => void
+  mode: 'build' | 'plan'
+  onModeChange: (mode: 'build' | 'plan') => void
   onSubmit: () => void
   isCreating: boolean
 }
@@ -202,13 +202,13 @@ export function ChatComposer({
             build
           </button>
           <button
-            onClick={() => onModeChange('agent')}
+            onClick={() => onModeChange('plan')}
             className={cn(
               'transition-colors cursor-pointer',
-              mode === 'agent' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
+              mode === 'plan' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            agent
+            plan
           </button>
         </div>
       </div>

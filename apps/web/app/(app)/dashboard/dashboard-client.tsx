@@ -29,7 +29,7 @@ export function DashboardClient({ sessions, userId, user }: DashboardClientProps
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
-  const [mode, setMode] = useState<'build' | 'agent'>('build')
+  const [mode, setMode] = useState<'build' | 'plan'>('build')
   const [prompt, setPrompt] = useState('')
   const router = useRouter()
 
