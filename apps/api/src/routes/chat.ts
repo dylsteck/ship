@@ -323,10 +323,27 @@ app.post('/:sessionId', async (c) => {
         
         const repoPath = '/home/user/repo'
         let repoExists = false
+
+        const repoOwner = latestMeta.repoOwner || latestMeta.repo_owner
+        const repoName = latestMeta.repoName || latestMeta.repo_name
+        const userId = latestMeta.userId || latestMeta.user_id
+
+        if (!repoOwner || !repoName) {
+          console.error(`[chat:${sessionId}] Missing repository metadata; cannot clone repo`)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Repository metadata missing. Please refresh and try again.',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
+          return
+        }
         
         // ALWAYS check if repo exists and clone if needed
-        if (latestMeta.repo_owner && latestMeta.repo_name && currentSandboxId) {
-          console.error(`[chat:${sessionId}] Checking repo status: owner=${latestMeta.repo_owner}, name=${latestMeta.repo_name}`)
+        if (repoOwner && repoName && currentSandboxId) {
+          console.error(`[chat:${sessionId}] Checking repo status: owner=${repoOwner}, name=${repoName}`)
           
           // Check if repo directory exists in sandbox
           try {
@@ -351,23 +368,26 @@ app.post('/:sessionId', async (c) => {
               data: JSON.stringify({
                 type: 'status',
                 status: 'cloning',
-                message: `Cloning repository ${latestMeta.repo_owner}/${latestMeta.repo_name}...`,
+                message: `Cloning repository ${repoOwner}/${repoName}...`,
               }),
             })
             
             try {
               // Get GitHub token
+              if (!userId) {
+                throw new Error('User ID not found for session')
+              }
               const accountRes = await c.env.DB.prepare(
                 'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
               )
-                .bind(latestMeta.user_id, 'github')
+                .bind(userId, 'github')
                 .first<{ access_token: string }>()
 
               if (!accountRes?.access_token) {
                 throw new Error('No GitHub token found')
               }
 
-              const repoUrl = `https://github.com/${latestMeta.repo_owner}/${latestMeta.repo_name}.git`
+              const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`
               const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
 
               // Connect to sandbox and clone repo
@@ -457,7 +477,7 @@ app.post('/:sessionId', async (c) => {
         console.log(`[chat:${sessionId}] Repo cloned: ${!!latestMeta.repo_url}`)
         console.log(`[chat:${sessionId}] Repo exists in sandbox: ${repoExists}`)
 
-        if (!repoExists && latestMeta.repo_owner && latestMeta.repo_name) {
+        if (!repoExists && repoOwner && repoName) {
           console.error(`[chat:${sessionId}] ✗ CRITICAL: Repo should exist but doesn't! Cannot create OpenCode session.`)
           await stream.writeSSE({
             event: 'error',
