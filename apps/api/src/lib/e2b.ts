@@ -271,7 +271,7 @@ export class SandboxManager {
 
 /**
  * Start OpenCode server in sandbox and return public URL
- * OpenCode must be pre-installed in the sandbox template or installed on first use
+ * Installs OpenCode if not present, then starts the server
  *
  * @param apiKey - E2B API key
  * @param sandboxId - The sandbox ID to connect to
@@ -285,7 +285,24 @@ export async function startOpenCodeServer(
 ): Promise<{ url: string; process: unknown }> {
   const sandbox = await Sandbox.connect(sandboxId, { apiKey })
 
+  // Check if OpenCode is installed
+  const checkResult = await sandbox.commands.run('which opencode || echo "not-found"')
+  const isInstalled = !checkResult.stdout.includes('not-found')
+
+  if (!isInstalled) {
+    console.log('[opencode] Installing OpenCode CLI...')
+    // Install OpenCode globally using npm
+    const installResult = await sandbox.commands.run('npm install -g @opencode-ai/cli', {
+      timeoutMs: 120000, // 2 minute timeout for install
+    })
+    if (installResult.exitCode !== 0) {
+      throw new Error(`Failed to install OpenCode: ${installResult.stderr}`)
+    }
+    console.log('[opencode] OpenCode CLI installed successfully')
+  }
+
   // Start OpenCode server as background process
+  console.log('[opencode] Starting OpenCode server...')
   const proc = await sandbox.commands.run(`ANTHROPIC_API_KEY=${anthropicKey} opencode serve --port 4096`, {
     background: true,
     onStdout: (data: string) => console.log('[opencode]', data),
@@ -294,6 +311,7 @@ export async function startOpenCodeServer(
 
   // Wait for server to be ready
   await waitForOpenCodeServer(sandbox, 4096)
+  console.log('[opencode] Server is ready')
 
   // Get public URL for the OpenCode server
   const host = sandbox.getHost(4096)
@@ -306,19 +324,25 @@ export async function startOpenCodeServer(
  *
  * @param sandbox - E2B sandbox instance
  * @param port - Port to check
- * @param maxAttempts - Maximum number of attempts (default 30 = 30 seconds)
+ * @param maxAttempts - Maximum number of attempts (default 60 = 60 seconds)
  */
-async function waitForOpenCodeServer(sandbox: Sandbox, port: number, maxAttempts = 30): Promise<void> {
+async function waitForOpenCodeServer(sandbox: Sandbox, port: number, maxAttempts = 60): Promise<void> {
+  console.log(`[opencode] Waiting for server on port ${port}...`)
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const result = await sandbox.commands.run(`curl -s http://localhost:${port}/health`)
-      if (result.exitCode === 0) return
+      if (result.exitCode === 0 && result.stdout) {
+        return
+      }
     } catch {
       // Ignore errors, keep retrying
     }
+    if (i > 0 && i % 10 === 0) {
+      console.log(`[opencode] Still waiting for server... (${i}s)`)
+    }
     await new Promise((r) => setTimeout(r, 1000))
   }
-  throw new Error('OpenCode server failed to start within timeout')
+  throw new Error(`OpenCode server failed to start within ${maxAttempts} seconds`)
 }
 
 /**

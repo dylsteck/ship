@@ -42,11 +42,49 @@ app.post('/:sessionId', async (c) => {
   )
 
   // Get session metadata including OpenCode session, model preference, and sandbox info
-  const metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
-  const meta = (await metaRes.json()) as Record<string, string>
+  let metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+  let meta = (await metaRes.json()) as Record<string, string>
   let opencodeSessionId = meta.opencodeSessionId
   const selectedModel = meta.selected_model // Per-session model preference
-  const sandboxId = meta.sandbox_id
+  let sandboxId = meta.sandbox_id
+  let sandboxStatus = meta.sandbox_status
+
+  // Check if we're in development mode
+  const isDev = c.env.ENVIRONMENT === 'development'
+
+  // If sandbox is still provisioning, wait for it to complete (with timeout)
+  if (!sandboxId && sandboxStatus === 'provisioning' && !isDev) {
+    const maxWaitMs = 60000 // 60 seconds max wait
+    const pollIntervalMs = 2000 // Poll every 2 seconds
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs))
+
+      // Re-fetch metadata to check sandbox status
+      metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+      meta = (await metaRes.json()) as Record<string, string>
+      sandboxId = meta.sandbox_id
+      sandboxStatus = meta.sandbox_status
+
+      if (sandboxId) {
+        break // Sandbox is ready
+      }
+
+      if (sandboxStatus === 'error') {
+        return c.json({ error: 'Sandbox provisioning failed. Please try again.' }, 500)
+      }
+    }
+
+    if (!sandboxId) {
+      return c.json({ error: 'Sandbox provisioning timed out. Please try again.' }, 504)
+    }
+  }
+
+  // If no sandbox and not provisioning, we can't proceed in production
+  if (!sandboxId && !isDev) {
+    return c.json({ error: 'Sandbox not provisioned. Please refresh and try again.' }, 400)
+  }
 
   // In production, we need the sandbox URL for OpenCode
   // OpenCode runs INSIDE the E2B sandbox, not as a separate server
@@ -69,13 +107,6 @@ app.post('/:sessionId', async (c) => {
       console.error('Failed to start OpenCode server in sandbox:', error)
       return c.json({ error: 'Failed to start agent in sandbox. Please try again.' }, 500)
     }
-  }
-
-  // If no sandbox, we can't proceed in production
-  // (In development mode, the functions will fall back to local server)
-  const isDev = c.env.ENVIRONMENT === 'development'
-  if (!sandboxId && !isDev) {
-    return c.json({ error: 'Sandbox not provisioned. Please wait for sandbox to be ready.' }, 400)
   }
 
   if (!opencodeSessionId) {
