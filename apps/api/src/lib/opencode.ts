@@ -387,18 +387,37 @@ export async function* filterSessionEvents(
   }, 5000)
 
   try {
+    console.log(`[opencode] Starting to iterate eventStream for session ${sessionId.slice(0, 8)}...`)
+    let hasStarted = false
+    
     for await (const event of eventStream) {
+      if (!hasStarted) {
+        hasStarted = true
+        console.log(`[opencode] Event stream started yielding events! First event received.`)
+      }
+      
       clearTimeout(noEventsTimeout) // Clear timeout once we get first event
       lastEventTime = Date.now()
       count++
 
       // Debug: Log raw event structure for first few events
-      if (count <= 3) {
-        console.log(`[opencode] Raw event #${count}:`, JSON.stringify(event).slice(0, 500))
+      if (count <= 5) {
+        console.log(`[opencode] Raw event #${count}:`, JSON.stringify(event).slice(0, 800))
       }
 
       // Check if event belongs to this session
       const eventSessionId = getEventSessionId(event)
+      
+      // Log session ID extraction for first 10 events
+      if (count <= 10) {
+        console.log(`[opencode] Event #${count} session ID extraction:`, {
+          type: event.type,
+          extractedSessionId: eventSessionId?.slice(0, 8),
+          targetSessionId: sessionId.slice(0, 8),
+          propertiesKeys: event.properties ? Object.keys(event.properties) : [],
+          partKeys: event.properties?.part ? Object.keys(event.properties.part) : [],
+        })
+      }
 
       if (count <= 10 || count % 20 === 0) {
         console.log(
@@ -406,14 +425,16 @@ export async function* filterSessionEvents(
         )
       }
 
-      // If event has a session ID and it doesn't match, skip it
-      // If event has no session ID, include it (global events like server.connected)
+      // TEMPORARY: Include ALL events to debug what's actually coming through
+      // TODO: Re-enable filtering once we confirm events are coming
       if (eventSessionId) {
         if (eventSessionId !== sessionId) {
-          if (count <= 10) {
-            console.log(`[opencode] Skipping event #${count} - session mismatch: ${eventSessionId.slice(0, 8)} !== ${sessionId.slice(0, 8)}, type=${event.type}`)
+          // Log mismatched events but still yield them for debugging
+          if (count <= 20) {
+            console.log(`[opencode] Event #${count} session mismatch but INCLUDING for debug: ${eventSessionId.slice(0, 8)} !== ${sessionId.slice(0, 8)}, type=${event.type}`)
           }
-          continue
+          // TEMPORARILY INCLUDING ALL EVENTS - REMOVE THIS AFTER DEBUGGING
+          // continue
         } else {
           if (count <= 5) {
             console.log(`[opencode] Event #${count} matches session ${sessionId.slice(0, 8)}, type=${event.type}`)
@@ -424,6 +445,17 @@ export async function* filterSessionEvents(
         if (count <= 5) {
           console.log(`[opencode] Event #${count} has no session ID (global event), including it, type=${event.type}`)
         }
+      }
+
+      // Log event structure for first 10 events to debug
+      if (count <= 10) {
+        console.log(`[opencode] Yielding event #${count}:`, {
+          type: event.type,
+          hasProperties: !!event.properties,
+          propertiesKeys: event.properties ? Object.keys(event.properties) : [],
+          sessionId: eventSessionId,
+          targetSessionId: sessionId.slice(0, 8),
+        })
       }
 
       yield event
@@ -444,32 +476,52 @@ export async function* filterSessionEvents(
 
 /**
  * Extract session ID from event
+ * Tries multiple possible locations since OpenCode SDK structure may vary
  */
 function getEventSessionId(event: Event): string | undefined {
+  // Try common locations first
+  if (event.properties?.sessionID) {
+    return event.properties.sessionID
+  }
+  
+  if (event.properties?.session?.id) {
+    return event.properties.session.id
+  }
+  
   switch (event.type) {
-    case 'message.part.updated':
-      return event.properties.part.sessionID
+    case 'message.part.updated': {
+      const part = event.properties?.part
+      if (!part) return undefined
+      // Try multiple possible locations for session ID in part
+      return (
+        part.sessionID ||
+        (part as any).sessionId ||
+        (part as any).session?.id ||
+        event.properties?.sessionID ||
+        event.properties?.messageID // Sometimes messageID contains session info
+      )
+    }
     case 'message.part.removed':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     case 'permission.updated':
     case 'permission.replied':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     case 'session.status':
     case 'session.idle':
     case 'session.compacted':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     case 'session.created':
     case 'session.updated':
     case 'session.deleted':
-      return event.properties.info.id
+      return event.properties?.info?.id || event.properties?.sessionID || event.properties?.session?.id
     case 'session.error':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     case 'session.diff':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     case 'todo.updated':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     case 'command.executed':
-      return event.properties.sessionID
+      return event.properties?.sessionID || event.properties?.session?.id
     default:
       return undefined
   }
