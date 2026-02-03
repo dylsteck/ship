@@ -59,6 +59,13 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
 
+  // Debug: Log when opencodeUrl changes
+  useEffect(() => {
+    if (opencodeUrl) {
+      console.log('[page-client] opencodeUrl state updated to:', opencodeUrl)
+    }
+  }, [opencodeUrl])
+
   // Ref to track current sandbox status (avoids stale closure in interval)
   const sandboxStatusRef = useRef(sandboxStatus)
   useEffect(() => {
@@ -224,13 +231,18 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
         // Handle OpenCode server started
         if (data.type === 'opencode-started') {
-          console.log('[page-client] Received opencode-started event:', data)
+          console.log('[page-client] Received opencode-started event:', JSON.stringify(data, null, 2))
           setSandboxProgress('OpenCode server started')
           // Try multiple possible URL field names
-          const url = data.url || data.opencodeUrl || data.serverUrl
+          const url = data.url || data.opencodeUrl || data.serverUrl || (data as any).opencode_url
+          console.log('[page-client] Extracted URL:', url, 'from fields:', { url: data.url, opencodeUrl: data.opencodeUrl, serverUrl: data.serverUrl })
           if (url) {
-            console.log('[page-client] Setting opencodeUrl to:', url)
+            console.log('[page-client] Setting opencodeUrl state to:', url)
             setOpencodeUrl(url)
+            // Force a re-render check
+            setTimeout(() => {
+              console.log('[page-client] opencodeUrl state after 100ms:', opencodeUrl)
+            }, 100)
           } else {
             console.warn('[page-client] opencode-started event missing url field. Full data:', JSON.stringify(data))
           }

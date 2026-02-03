@@ -55,8 +55,11 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
 
   // Debug: Log when opencodeUrl changes
   useEffect(() => {
+    console.log('[SessionPanel] opencodeUrl prop value:', opencodeUrl)
     if (opencodeUrl) {
-      console.log('[SessionPanel] opencodeUrl received:', opencodeUrl)
+      console.log('[SessionPanel] opencodeUrl received, will render URL section')
+    } else {
+      console.log('[SessionPanel] opencodeUrl is null/undefined, URL section will not render')
     }
   }, [opencodeUrl])
 
