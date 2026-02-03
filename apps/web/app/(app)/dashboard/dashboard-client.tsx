@@ -153,6 +153,32 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           }
           setMessages((prev) => [...prev, prMessage])
         }
+
+        // Handle sandbox status updates
+        if (event.type === 'sandbox-status') {
+          const status = (event as { status?: string }).status
+          if (status === 'ready') {
+            setThinkingStatus('Sandbox ready')
+          } else if (status === 'error') {
+            setThinkingStatus('Sandbox error')
+          }
+        }
+
+        // Handle OpenCode server started
+        if (event.type === 'opencode-started') {
+          setThinkingStatus('OpenCode started')
+        }
+
+        // Handle OpenCode events for real-time activity
+        if (event.type === 'opencode-event') {
+          const payload = (event as { event?: { payload?: { type?: string } } }).event?.payload
+          if (payload?.type === 'server.connected') {
+            setThinkingStatus('Connected to agent')
+          } else if (payload?.type) {
+            // Show the event type as status
+            setThinkingStatus(payload.type.replace(/\./g, ' '))
+          }
+        }
       },
       onStatusChange: setWsStatus,
     })
@@ -376,6 +402,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                     createdAt: Math.floor(Date.now() / 1000),
                   }
                   setMessages((prev) => [...prev, errorMessage])
+                  // Stop streaming on error
+                  setIsStreaming(false)
+                  setThinkingStatus('')
+                  streamingMessageRef.current = null
                 }
 
                 if (data.prUrl) {

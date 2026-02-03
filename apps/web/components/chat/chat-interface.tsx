@@ -377,6 +377,9 @@ export function ChatInterface({
                     createdAt: Math.floor(Date.now() / 1000),
                   }
                   setMessages((prev) => [...prev, errorMessage])
+                  // Stop streaming on error
+                  setIsStreaming(false)
+                  streamingMessageRef.current = null
                   onStatusChange?.('error')
                 }
 

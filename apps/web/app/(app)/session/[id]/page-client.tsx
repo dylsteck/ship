@@ -223,6 +223,15 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           // Clear progress message after 2 seconds
           setTimeout(() => setSandboxProgress(null), 2000)
         }
+
+        // Handle OpenCode events for real-time activity
+        if (data.type === 'opencode-event') {
+          const payload = data.event?.payload
+          if (payload?.type === 'server.connected') {
+            setSandboxProgress('Connected to agent')
+            setTimeout(() => setSandboxProgress(null), 2000)
+          }
+        }
       } catch (err) {
         console.error('WebSocket message error:', err)
       }
