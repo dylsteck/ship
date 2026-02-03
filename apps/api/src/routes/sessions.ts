@@ -109,25 +109,10 @@ sessions.post('/', async (c) => {
       await doStub.setSessionMeta('model', input.model)
     }
 
-    // Auto-provision E2B sandbox for this session
-    let sandboxId: string | null = null
-    try {
-      const sandboxResponse = await doStub.fetch(`http://do/sandbox/provision`, {
-        method: 'POST',
-      })
+    // Set initial sandbox status to provisioning
+    await doStub.setSessionMeta('sandbox_status', 'provisioning')
 
-      if (sandboxResponse.ok) {
-        const sandboxInfo = (await sandboxResponse.json()) as { id: string; status: string }
-        sandboxId = sandboxInfo.id
-      } else {
-        console.error('Failed to provision sandbox during session creation')
-      }
-    } catch (sandboxError) {
-      console.error('Error provisioning sandbox:', sandboxError)
-      // Continue session creation even if sandbox provisioning fails
-    }
-
-    // Store session record in D1
+    // Store session record in D1 FIRST (don't block on sandbox)
     await c.env.DB.prepare(
       `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at)
        VALUES (?, ?, ?, ?, 'active', ?, ?)`
@@ -135,8 +120,17 @@ sessions.post('/', async (c) => {
       .bind(sessionId, input.userId, input.repoOwner, input.repoName, now, now)
       .run()
 
-    // Return session object with sandbox ID
-    const session: SessionDTO & { sandboxId?: string | null } = {
+    // Start sandbox provisioning in background (don't block session creation)
+    c.executionCtx.waitUntil(
+      doStub.fetch(`http://do/sandbox/provision`, {
+        method: 'POST',
+      }).catch((err) => {
+        console.error('Background sandbox provisioning failed:', err)
+      })
+    )
+
+    // Return session object immediately with provisioning status
+    const session: SessionDTO & { sandboxId?: string | null; sandboxStatus?: string } = {
       id: sessionId,
       userId: input.userId,
       repoOwner: input.repoOwner,
@@ -145,7 +139,8 @@ sessions.post('/', async (c) => {
       lastActivity: now,
       createdAt: now,
       archivedAt: null,
-      sandboxId,
+      sandboxId: null,
+      sandboxStatus: 'provisioning',
     }
 
     return c.json(session, 201)

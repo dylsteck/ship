@@ -28,6 +28,8 @@ interface SessionPanelProps {
   sessionInfo: SessionInfo
   agentStatus: AgentStatus
   currentTool?: string
+  sandboxId?: string | null
+  sandboxStatus?: 'provisioning' | 'ready' | 'error' | 'none'
 }
 
 interface GitState {
@@ -42,7 +44,7 @@ interface GitState {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
-export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool }: SessionPanelProps) {
+export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool, sandboxId, sandboxStatus }: SessionPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showStatusDetails, setShowStatusDetails] = useState(false)
   const [gitState, setGitState] = useState<GitState | null>(null)
@@ -170,6 +172,32 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool 
         <div className="p-4 border-b dark:border-gray-800">
           <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">AI Model</h3>
           <ModelBadge modelId={sessionInfo.model} modelName={sessionInfo.modelName} />
+        </div>
+      )}
+
+      {/* Sandbox Info */}
+      {sandboxStatus && sandboxStatus !== 'none' && (
+        <div className="p-4 border-b dark:border-gray-800">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">Sandbox</h3>
+          <div className="flex items-center gap-2">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                sandboxStatus === 'ready'
+                  ? 'bg-green-500'
+                  : sandboxStatus === 'provisioning'
+                    ? 'bg-yellow-500 animate-pulse'
+                    : 'bg-red-500'
+              }`}
+            />
+            <span className="text-sm capitalize dark:text-gray-200">
+              {sandboxStatus === 'ready' ? 'Active' : sandboxStatus}
+            </span>
+          </div>
+          {sandboxId && (
+            <div className="mt-1 text-xs font-mono text-gray-500 dark:text-gray-400 truncate" title={sandboxId}>
+              {sandboxId.slice(0, 8)}...
+            </div>
+          )}
         </div>
       )}
 

@@ -104,12 +104,12 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
     loadSession()
     loadSandbox()
 
-    // Poll sandbox status every 5 seconds while provisioning
+    // Poll sandbox status every 2 seconds while provisioning (for faster feedback)
     const interval = setInterval(() => {
       if (sandboxStatus === 'provisioning') {
         loadSandbox()
       }
-    }, 5000)
+    }, 2000)
 
     return () => clearInterval(interval)
   }, [sessionId, sandboxStatus])
@@ -292,6 +292,8 @@ export function SessionPageClient({ sessionId, userId, user, sessions }: Session
               sessionInfo={sessionInfo}
               agentStatus={agentStatus}
               currentTool={currentTool}
+              sandboxId={sandboxId}
+              sandboxStatus={sandboxStatus}
             />
           </div>
 
