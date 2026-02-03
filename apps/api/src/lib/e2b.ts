@@ -291,8 +291,8 @@ export async function startOpenCodeServer(
 
   if (!isInstalled) {
     console.log('[opencode] Installing OpenCode CLI...')
-    // Install OpenCode globally using npm
-    const installResult = await sandbox.commands.run('npm install -g @opencode-ai/cli', {
+    // Install OpenCode using the official install script
+    const installResult = await sandbox.commands.run('curl -fsSL https://opencode.ai/install | bash', {
       timeoutMs: 120000, // 2 minute timeout for install
     })
     if (installResult.exitCode !== 0) {
