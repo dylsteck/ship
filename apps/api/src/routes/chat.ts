@@ -477,6 +477,18 @@ app.post('/:sessionId', async (c) => {
         return
       }
 
+      if (!currentOpencodeUrl) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'OpenCode server URL not available',
+            category: 'persistent',
+            retryable: true,
+          }),
+        })
+        return
+      }
+
       console.log(`[chat:${sessionId}] SSE stream connected, sending prompt to OpenCode...`)
       await stream.writeSSE({
         event: 'status',
@@ -490,7 +502,7 @@ app.post('/:sessionId', async (c) => {
       // Send prompt to OpenCode with retry wrapper
       await executeWithRetry(
         async () => {
-          await promptOpenCode(currentOpencodeSessionId!, content, { mode, model: selectedModel }, currentOpencodeUrl)
+          await promptOpenCode(currentOpencodeSessionId!, content, { mode, model: selectedModel }, currentOpencodeUrl!)
         },
         {
           operationName: 'Send prompt to OpenCode',
