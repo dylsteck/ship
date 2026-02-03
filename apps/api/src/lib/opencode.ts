@@ -171,7 +171,10 @@ export async function promptOpenCode(
  */
 export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncIterable<Event>> {
   const client = await getOpenCodeClient(sandboxUrl)
+  console.log(`[opencode] Subscribing to events at ${sandboxUrl}...`)
+
   const eventStream = await client.global.event()
+  console.log(`[opencode] Got event stream, type: ${typeof eventStream}, has stream: ${'stream' in eventStream}`)
 
   // The SDK returns a ServerSentEventsResult with a .stream property
   // The stream is an AsyncGenerator that yields events
@@ -298,9 +301,21 @@ export async function* filterSessionEvents(
   eventStream: AsyncIterable<Event>,
   sessionId: string,
 ): AsyncGenerator<Event> {
+  console.log(`[opencode] Starting to filter events for session ${sessionId.slice(0, 8)}...`)
+  let count = 0
+
   for await (const event of eventStream) {
+    count++
+
     // Check if event belongs to this session
     const eventSessionId = getEventSessionId(event)
+
+    if (count <= 5 || count % 10 === 0) {
+      console.log(
+        `[opencode] Event #${count}: type=${event.type}, session=${eventSessionId?.slice(0, 8) || 'none'}, target=${sessionId.slice(0, 8)}`,
+      )
+    }
+
     if (eventSessionId && eventSessionId !== sessionId) {
       continue
     }
@@ -309,9 +324,12 @@ export async function* filterSessionEvents(
 
     // Stop when session becomes idle or errors
     if (event.type === 'session.idle' || event.type === 'session.error') {
+      console.log(`[opencode] Stopping event stream: ${event.type}`)
       break
     }
   }
+
+  console.log(`[opencode] Event stream ended after ${count} events`)
 }
 
 /**
