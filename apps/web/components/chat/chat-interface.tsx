@@ -178,6 +178,33 @@ export function ChatInterface({
       try {
         const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
 
+        // Check for non-OK responses (500, etc.) before trying to read stream
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('Chat request failed:', errorData)
+
+          // Add error message to chat
+          const errorMessage: Message = {
+            id: `error-${Date.now()}`,
+            role: 'system',
+            content: errorData.error || 'Failed to start agent',
+            type: 'error',
+            errorCategory: 'persistent',
+            retryable: false,
+            createdAt: Math.floor(Date.now() / 1000),
+          }
+          setMessages((prev) => {
+            // Remove the empty assistant placeholder
+            const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
+            return [...filtered, errorMessage]
+          })
+
+          setIsStreaming(false)
+          streamingMessageRef.current = null
+          onStatusChange?.('error')
+          return
+        }
+
         if (!response.body) {
           throw new Error('No response body')
         }
@@ -213,9 +240,7 @@ export function ChatInterface({
 
                     setMessages((prev) =>
                       prev.map((m) =>
-                        m.id === streamingMessageRef.current
-                          ? { ...m, content: assistantTextRef.current }
-                          : m,
+                        m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
                       ),
                     )
                   }
@@ -242,7 +267,7 @@ export function ChatInterface({
                       setMessages((prev) =>
                         prev.map((m) =>
                           m.id === messageId
-                            ? { ...m, costBreakdown: breakdowns[0] } as Message & { costBreakdown?: CostBreakdown }
+                            ? ({ ...m, costBreakdown: breakdowns[0] } as Message & { costBreakdown?: CostBreakdown })
                             : m,
                         ),
                       )
@@ -276,9 +301,9 @@ export function ChatInterface({
                   onStatusChange?.(status, data.toolName)
                 }
 
-        if (data.error) {
-          // Error from SSE stream
-          const errorMessage: Message = {
+                if (data.error) {
+                  // Error from SSE stream
+                  const errorMessage: Message = {
                     id: `error-${Date.now()}`,
                     role: 'system',
                     content: data.error,

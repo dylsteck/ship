@@ -12,6 +12,5 @@
   },
   "tools": {
     "vercel*": true
-  },
-  "_comment": "Note: The Vercel MCP server requires userId for authentication. Currently, userId must be passed via X-User-Id header or X-Session-Id header. Future enhancement: extract userId from OpenCode session context automatically."
+  }
 }

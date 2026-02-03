@@ -316,21 +316,53 @@ export async function startOpenCodeServer(
     }
   }
 
-  // Get the actual path to opencode binary
-  const opencodePathResult = await sandbox.commands.run('which opencode')
-  const opencodePath = opencodePathResult.stdout.trim()
-  console.log(`[opencode:${sandboxId}] Using opencode at: ${opencodePath}`)
+  // Get the actual path to opencode binary (check multiple locations)
+  let opencodePath = ''
+  const possiblePaths = [
+    '$HOME/.opencode/bin/opencode',
+    '/home/user/.opencode/bin/opencode',
+    '~/.opencode/bin/opencode',
+    'opencode', // fallback to PATH
+  ]
+
+  for (const testPath of possiblePaths) {
+    try {
+      const testResult = await sandbox.commands.run(`ls -la ${testPath} 2>/dev/null || echo "NOT_FOUND"`)
+      if (!testResult.stdout.includes('NOT_FOUND') && !testResult.stdout.includes('No such file')) {
+        opencodePath =
+          testPath.startsWith('$') || testPath.startsWith('~') ? testPath.replace(/^\$HOME|^~/, '/home/user') : testPath
+        console.log(`[opencode:${sandboxId}] Found opencode at: ${opencodePath}`)
+        break
+      }
+    } catch {
+      // Try next path
+    }
+  }
+
+  if (!opencodePath) {
+    // Last resort: try which command
+    try {
+      const whichResult = await sandbox.commands.run('which opencode || echo "NOT_FOUND"')
+      if (!whichResult.stdout.includes('NOT_FOUND')) {
+        opencodePath = whichResult.stdout.trim()
+        console.log(`[opencode:${sandboxId}] Found opencode via which: ${opencodePath}`)
+      }
+    } catch {
+      // Will fail below
+    }
+  }
+
+  if (!opencodePath) {
+    throw new Error('Could not find opencode binary after installation')
+  }
 
   // Set up environment and start server
   console.log(`[opencode:${sandboxId}] Starting OpenCode server on port 4096...`)
 
-  // Export env var first, then start server (more reliable than inline env in sandbox)
-  const setupCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="$HOME/.opencode/bin:$PATH"`
-  await sandbox.commands.run(setupCmd)
-
   // Start the server as background process with full output capture
-  const serverCmd = `cd /home/user && ANTHROPIC_API_KEY="${anthropicKey}" opencode serve --port 4096 --host 0.0.0.0 2>&1`
-  console.log(`[opencode:${sandboxId}] Running: ${serverCmd}`)
+  // Use full path to binary and explicit environment
+  const serverCmd = `export ANTHROPIC_API_KEY="${anthropicKey}" && export PATH="/home/user/.opencode/bin:$PATH" && cd /home/user && ${opencodePath} serve --port 4096 --host 0.0.0.0 2>&1`
+  console.log(`[opencode:${sandboxId}] Running: ${serverCmd.replace(anthropicKey, '[REDACTED]')}`)
 
   const proc = await sandbox.commands.run(serverCmd, {
     background: true,
