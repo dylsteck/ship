@@ -94,7 +94,9 @@ export async function getOpenCodeClient(sandboxUrl?: string): Promise<OpencodeCl
 
   // Production mode - must have sandbox URL
   if (!sandboxUrl) {
-    throw new Error('OpenCode sandbox URL required in production. Ensure sandbox is provisioned and OpenCode server is started.')
+    throw new Error(
+      'OpenCode sandbox URL required in production. Ensure sandbox is provisioned and OpenCode server is started.',
+    )
   }
 
   return createOpenCodeClientForSandbox(sandboxUrl)
@@ -171,8 +173,9 @@ export async function subscribeToEvents(sandboxUrl?: string): Promise<AsyncItera
   const client = await getOpenCodeClient(sandboxUrl)
   const eventStream = await client.global.event()
 
-  // The SDK returns a ServerSentEventsResult which is async iterable
-  return eventStream as unknown as AsyncIterable<Event>
+  // The SDK returns a ServerSentEventsResult with a .stream property
+  // The stream is an AsyncGenerator that yields events
+  return eventStream.stream as AsyncIterable<Event>
 }
 
 /**
@@ -220,7 +223,9 @@ export function cleanupOpenCode(): void {
  * Get available models from OpenCode providers
  * Returns a flat list of all models across all configured providers
  */
-export async function getAvailableModels(): Promise<Array<{ id: string; name: string; provider: string; description?: string }>> {
+export async function getAvailableModels(): Promise<
+  Array<{ id: string; name: string; provider: string; description?: string }>
+> {
   const client = await getOpenCodeClient()
   const response = await client.config.providers()
 
