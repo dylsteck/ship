@@ -369,8 +369,27 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         }
       } catch (err) {
         console.error('Chat error:', err)
+
+        // Add error message to chat
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          role: 'system',
+          content: err instanceof Error ? err.message : 'Connection lost. Please refresh and try again.',
+          type: 'error',
+          errorCategory: 'transient',
+          retryable: true,
+          createdAt: Math.floor(Date.now() / 1000),
+        }
+
+        setMessages((prev) => {
+          // Remove the empty assistant placeholder and add error
+          const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
+          return [...filtered, errorMessage]
+        })
+
         setIsStreaming(false)
         setThinkingStatus('') // Clear "Starting" status on error
+        setThinkingParts([]) // Clear thinking parts
         streamingMessageRef.current = null
       }
     },
