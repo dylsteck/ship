@@ -304,37 +304,49 @@ export async function switchModel(_sessionId: string, newModel: string): Promise
 
 /**
  * Filter events for a specific session
+ * Includes timeout to prevent hanging forever
  */
 export async function* filterSessionEvents(
   eventStream: AsyncIterable<Event>,
   sessionId: string,
+  timeoutMs: number = 120000, // 2 minutes default
 ): AsyncGenerator<Event> {
   console.log(`[opencode] Starting to filter events for session ${sessionId.slice(0, 8)}...`)
   let count = 0
+  let lastEventTime = Date.now()
 
-  for await (const event of eventStream) {
-    count++
+  const timeout = setTimeout(() => {
+    console.error(`[opencode] Event stream timeout after ${timeoutMs / 1000}s for session ${sessionId.slice(0, 8)}`)
+  }, timeoutMs)
 
-    // Check if event belongs to this session
-    const eventSessionId = getEventSessionId(event)
+  try {
+    for await (const event of eventStream) {
+      lastEventTime = Date.now()
+      count++
 
-    if (count <= 5 || count % 10 === 0) {
-      console.log(
-        `[opencode] Event #${count}: type=${event.type}, session=${eventSessionId?.slice(0, 8) || 'none'}, target=${sessionId.slice(0, 8)}`,
-      )
+      // Check if event belongs to this session
+      const eventSessionId = getEventSessionId(event)
+
+      if (count <= 5 || count % 10 === 0) {
+        console.log(
+          `[opencode] Event #${count}: type=${event.type}, session=${eventSessionId?.slice(0, 8) || 'none'}, target=${sessionId.slice(0, 8)}`,
+        )
+      }
+
+      if (eventSessionId && eventSessionId !== sessionId) {
+        continue
+      }
+
+      yield event
+
+      // Stop when session becomes idle or errors
+      if (event.type === 'session.idle' || event.type === 'session.error') {
+        console.log(`[opencode] Stopping event stream: ${event.type}`)
+        break
+      }
     }
-
-    if (eventSessionId && eventSessionId !== sessionId) {
-      continue
-    }
-
-    yield event
-
-    // Stop when session becomes idle or errors
-    if (event.type === 'session.idle' || event.type === 'session.error') {
-      console.log(`[opencode] Stopping event stream: ${event.type}`)
-      break
-    }
+  } finally {
+    clearTimeout(timeout)
   }
 
   console.log(`[opencode] Event stream ended after ${count} events`)

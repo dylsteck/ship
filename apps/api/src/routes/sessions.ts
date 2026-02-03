@@ -124,9 +124,38 @@ sessions.post('/', async (c) => {
     c.executionCtx.waitUntil(
       doStub.fetch(`http://do/sandbox/provision`, {
         method: 'POST',
-      }).catch((err) => {
-        console.error('Background sandbox provisioning failed:', err)
       })
+        .then(async (res) => {
+          if (!res.ok) {
+            const error = await res.json().catch(() => ({ error: 'Unknown error' }))
+            console.error(`[sessions] Sandbox provisioning failed for ${sessionId}:`, error)
+            // Set error status so chat endpoint knows
+            await doStub.setSessionMeta('sandbox_status', 'error')
+            await doStub.fetch(`http://do/broadcast`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'sandbox-status',
+                status: 'error',
+                error: error.error || 'Sandbox provisioning failed',
+              }),
+            })
+          }
+        })
+        .catch(async (err) => {
+          console.error(`[sessions] Sandbox provisioning error for ${sessionId}:`, err)
+          // Set error status
+          await doStub.setSessionMeta('sandbox_status', 'error')
+          await doStub.fetch(`http://do/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'sandbox-status',
+              status: 'error',
+              error: err instanceof Error ? err.message : 'Sandbox provisioning failed',
+            }),
+          })
+        })
     )
 
     // Return session object immediately with provisioning status

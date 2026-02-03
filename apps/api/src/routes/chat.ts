@@ -109,8 +109,8 @@ app.post('/:sessionId', async (c) => {
           }),
         })
 
-        const maxWaitMs = 60000 // 60 seconds max wait
-        const pollIntervalMs = 2000 // Poll every 2 seconds
+        const maxWaitMs = 30000 // 30 seconds max wait (reduced from 60s)
+        const pollIntervalMs = 1000 // Poll every 1 second (faster)
         const startTime = Date.now()
         let pollCount = 0
         let currentSandboxId = sandboxId
@@ -126,8 +126,9 @@ app.post('/:sessionId', async (c) => {
           currentSandboxId = meta.sandbox_id
           currentSandboxStatus = meta.sandbox_status
 
-          if (pollCount % 5 === 0) {
-            const elapsed = pollCount * 2
+          // Update progress every 3 seconds
+          if (pollCount % 3 === 0) {
+            const elapsed = pollCount
             console.log(`[chat:${sessionId}] Still waiting for sandbox... (${elapsed}s elapsed)`)
             await stream.writeSSE({
               event: 'status',
@@ -162,8 +163,8 @@ app.post('/:sessionId', async (c) => {
               }),
             })
             // Update variables for rest of function
-            sandboxId = currentSandboxId
-            sandboxStatus = 'ready'
+            currentSandboxId = currentSandboxId
+            currentSandboxStatus = 'ready'
             break
           }
 
@@ -192,6 +193,7 @@ app.post('/:sessionId', async (c) => {
         }
 
         if (!currentSandboxId) {
+          console.error(`[chat:${sessionId}] Sandbox provisioning timed out after ${maxWaitMs / 1000}s`)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
@@ -510,6 +512,29 @@ app.post('/:sessionId', async (c) => {
       )
 
       console.log(`[chat:${sessionId}] Prompt sent (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s), subscribing to events...`)
+      
+      // Verify OpenCode server is still healthy before subscribing
+      try {
+        const { Sandbox } = await import('../lib/e2b')
+        const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+        const healthCheck = await sandbox.commands.run('curl -s -o /dev/null -w "%{http_code}" http://localhost:4096/health')
+        if (healthCheck.stdout.trim() !== '200') {
+          throw new Error(`OpenCode server health check failed: ${healthCheck.stdout.trim()}`)
+        }
+        console.log(`[chat:${sessionId}] OpenCode server health check passed`)
+      } catch (healthError) {
+        console.error(`[chat:${sessionId}] OpenCode health check failed:`, healthError)
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'OpenCode server is not responding. Please try again.',
+            category: 'persistent',
+            retryable: true,
+          }),
+        })
+        return
+      }
+
       // Subscribe to events and filter for this session
       const eventStream = await subscribeToEvents(currentOpencodeUrl)
       const sessionEvents = filterSessionEvents(eventStream, currentOpencodeSessionId!)
@@ -530,9 +555,44 @@ app.post('/:sessionId', async (c) => {
       let currentMessageId: string | undefined
       let hasChanges = false
       let eventCount = 0
+      let lastEventTime = Date.now()
+      const EVENT_TIMEOUT_MS = 120000 // 2 minutes max wait for events
+      const HEARTBEAT_INTERVAL_MS = 10000 // Send heartbeat every 10s if no events
 
-      // Process events
-      for await (const event of sessionEvents) {
+      // Set up heartbeat timer
+      const heartbeatInterval = setInterval(async () => {
+        const timeSinceLastEvent = Date.now() - lastEventTime
+        if (timeSinceLastEvent > HEARTBEAT_INTERVAL_MS) {
+          await stream.writeSSE({
+            event: 'heartbeat',
+            data: JSON.stringify({
+              type: 'heartbeat',
+              message: 'Waiting for agent response...',
+              eventCount,
+              timeSinceLastEvent: Math.floor(timeSinceLastEvent / 1000),
+            }),
+          })
+        }
+      }, HEARTBEAT_INTERVAL_MS)
+
+      try {
+        // Process events with timeout
+        const eventTimeout = setTimeout(async () => {
+          console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s, no events received`)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Agent did not respond in time. The request may have timed out.',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
+        }, EVENT_TIMEOUT_MS)
+
+        // Process events
+        for await (const event of sessionEvents) {
+          clearTimeout(eventTimeout) // Reset timeout on each event
+          lastEventTime = Date.now()
         eventCount++
         if (eventCount <= 10 || eventCount % 50 === 0) {
           console.log(`[chat:${sessionId}] Event #${eventCount}: type=${event.type}`)
@@ -674,11 +734,17 @@ app.post('/:sessionId', async (c) => {
           }
         }
 
-        // Stop when session becomes idle
-        if (event.type === 'session.idle') {
-          console.log(`[chat:${sessionId}] Session idle, stopping event loop after ${eventCount} events`)
-          break
+          // Stop when session becomes idle
+          if (event.type === 'session.idle') {
+            console.log(`[chat:${sessionId}] Session idle, stopping event loop after ${eventCount} events`)
+            clearTimeout(eventTimeout)
+            break
+          }
         }
+
+        clearTimeout(eventTimeout) // Clear timeout if we exit normally
+      } finally {
+        clearInterval(heartbeatInterval) // Always clear heartbeat
       }
 
       console.log(
@@ -711,6 +777,24 @@ app.post('/:sessionId', async (c) => {
       // Classify and report error
       const details = classifyError(error)
       const sanitized = sanitizeError(error)
+
+      // Broadcast error to WebSocket clients too
+      try {
+        await stub.fetch(
+          new Request(`${doUrl}/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'error',
+              error: sanitized,
+              category: details.category,
+              retryable: details.retryable,
+            }),
+          }),
+        )
+      } catch (broadcastError) {
+        console.error(`[chat:${sessionId}] Failed to broadcast error:`, broadcastError)
+      }
 
       await stream.writeSSE({
         event: 'error',
