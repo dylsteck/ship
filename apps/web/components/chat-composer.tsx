@@ -153,11 +153,11 @@ export function ChatComposer({
       </div>
 
       {/* Attached sub bar for model + mode */}
-      <div className="px-3 py-1.5 flex items-center justify-between border-t border-border/60 bg-muted/40">
+      <div className="px-3 py-1 flex items-center justify-between border-t border-border/60 bg-muted/40">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" className="h-6 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground">
                 {modelsLoading ? 'Loading...' : (selectedModel?.name || 'Select model')}
                 <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />
               </Button>
@@ -185,7 +185,7 @@ export function ChatComposer({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="flex items-center gap-3 text-[11px]">
+        <div className="flex items-center gap-2 text-[10px]">
           <button
             onClick={() => onModeChange('build')}
             className={cn(
