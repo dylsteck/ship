@@ -561,7 +561,9 @@ app.post('/:sessionId', async (c) => {
       }
 
       // Subscribe to events and filter for this session
+      console.log(`[chat:${sessionId}] Subscribing to events from ${currentOpencodeUrl} for session ${currentOpencodeSessionId}`)
       const eventStream = await subscribeToEvents(currentOpencodeUrl)
+      console.log(`[chat:${sessionId}] Got event stream, filtering for session ${currentOpencodeSessionId}`)
       const sessionEvents = filterSessionEvents(eventStream, currentOpencodeSessionId!)
       console.log(`[chat:${sessionId}] Event subscription started, waiting for events...`)
       
@@ -615,6 +617,7 @@ app.post('/:sessionId', async (c) => {
         }, EVENT_TIMEOUT_MS)
 
         // Process events
+        console.log(`[chat:${sessionId}] Starting event loop, waiting for events from OpenCode...`)
         for await (const event of sessionEvents) {
           clearTimeout(eventTimeout) // Reset timeout on each event
           lastEventTime = Date.now()

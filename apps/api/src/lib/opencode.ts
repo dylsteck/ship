@@ -154,16 +154,35 @@ export async function promptOpenCode(
   }
   console.log(`[opencode:prompt] Sending prompt with ${content.length} chars...`)
 
+  const promptBody: { parts: TextPartInput[]; mode?: 'build' | 'plan'; model?: string } = {
+    parts: [textPart],
+  }
+  
+  // Add mode if provided
+  if (options?.mode) {
+    promptBody.mode = options.mode
+    console.log(`[opencode:prompt] Using mode: ${options.mode}`)
+  }
+  
+  // Add model if provided
+  if (options?.model) {
+    promptBody.model = options.model
+    console.log(`[opencode:prompt] Using model: ${options.model}`)
+  }
+
   const response = await client.session.prompt({
     path: { id: sessionId },
-    body: {
-      parts: [textPart],
-    },
+    body: promptBody,
   })
   console.log(
     `[opencode:prompt] Prompt sent, response:`,
     response.error ? `Error: ${JSON.stringify(response.error)}` : 'Success',
   )
+  
+  // Log response data if available
+  if (response.data && typeof response.data === 'object') {
+    console.log(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
+  }
 
   if (response.error) {
     throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
@@ -360,13 +379,18 @@ export async function* filterSessionEvents(
       // Check if event belongs to this session
       const eventSessionId = getEventSessionId(event)
 
-      if (count <= 5 || count % 10 === 0) {
+      if (count <= 10 || count % 20 === 0) {
         console.log(
-          `[opencode] Event #${count}: type=${event.type}, session=${eventSessionId?.slice(0, 8) || 'none'}, target=${sessionId.slice(0, 8)}`,
+          `[opencode] Event #${count}: type=${event.type}, session=${eventSessionId?.slice(0, 8) || 'none'}, target=${sessionId.slice(0, 8)}, match=${eventSessionId === sessionId || !eventSessionId}`,
         )
       }
 
+      // If event has a session ID and it doesn't match, skip it
+      // If event has no session ID, include it (global events)
       if (eventSessionId && eventSessionId !== sessionId) {
+        if (count <= 5) {
+          console.log(`[opencode] Skipping event #${count} - session mismatch: ${eventSessionId.slice(0, 8)} !== ${sessionId.slice(0, 8)}`)
+        }
         continue
       }
 
