@@ -214,18 +214,29 @@ app.post('/:sessionId', async (c) => {
 
   if (!opencodeSessionId) {
     // Create new OpenCode session
+    console.log(`[chat:${sessionId}] Creating OpenCode session...`)
     const projectPath = meta.repoPath || '/home/user/repo'
-    const ocSession = await createOpenCodeSession(projectPath, opencodeUrl)
-    opencodeSessionId = ocSession.id
+    console.log(`[chat:${sessionId}] Project path: ${projectPath}`)
 
-    // Save to session meta
-    await stub.fetch(
-      new Request(`${doUrl}/meta`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ opencodeSessionId }),
-      }),
-    )
+    try {
+      const ocSession = await createOpenCodeSession(projectPath, opencodeUrl)
+      opencodeSessionId = ocSession.id
+      console.log(`[chat:${sessionId}] OpenCode session created: ${opencodeSessionId}`)
+
+      // Save to session meta
+      await stub.fetch(
+        new Request(`${doUrl}/meta`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ opencodeSessionId }),
+        }),
+      )
+    } catch (sessionError) {
+      console.error(`[chat:${sessionId}] Failed to create OpenCode session:`, sessionError)
+      throw sessionError
+    }
+  } else {
+    console.log(`[chat:${sessionId}] Using existing OpenCode session: ${opencodeSessionId}`)
   }
 
   // Detect if this is a task intent (starts with action verbs or contains task keywords)
@@ -250,9 +261,14 @@ app.post('/:sessionId', async (c) => {
   // Capture opencodeUrl in closure for SSE handler
   const sandboxOpenCodeUrl = opencodeUrl
 
+  console.log(
+    `[chat:${sessionId}] Starting SSE stream, sessionId=${opencodeSessionId}, mode=${mode}, model=${selectedModel}`,
+  )
+
   // Stream OpenCode events as SSE
   return streamSSE(c, async (stream) => {
     try {
+      console.log(`[chat:${sessionId}] Sending prompt to OpenCode...`)
       // Send prompt to OpenCode with retry wrapper
       await executeWithRetry(
         async () => {
@@ -278,18 +294,26 @@ app.post('/:sessionId', async (c) => {
         },
       )
 
+      console.log(`[chat:${sessionId}] Subscribing to events...`)
       // Subscribe to events and filter for this session
       const eventStream = await subscribeToEvents(sandboxOpenCodeUrl)
       const sessionEvents = filterSessionEvents(eventStream, opencodeSessionId!)
+      console.log(`[chat:${sessionId}] Event subscription started, waiting for events...`)
 
       // Accumulate assistant message content
       let assistantContent = ''
       const parts: Part[] = []
       let currentMessageId: string | undefined
       let hasChanges = false
+      let eventCount = 0
 
       // Process events
       for await (const event of sessionEvents) {
+        eventCount++
+        if (eventCount <= 10 || eventCount % 50 === 0) {
+          console.log(`[chat:${sessionId}] Event #${eventCount}: type=${event.type}`)
+        }
+
         // Stream event to client
         await stream.writeSSE({
           event: 'event',
@@ -425,9 +449,14 @@ app.post('/:sessionId', async (c) => {
 
         // Stop when session becomes idle
         if (event.type === 'session.idle') {
+          console.log(`[chat:${sessionId}] Session idle, stopping event loop after ${eventCount} events`)
           break
         }
       }
+
+      console.log(
+        `[chat:${sessionId}] Event loop ended, total events: ${eventCount}, assistantContent length: ${assistantContent.length}, parts: ${parts.length}`,
+      )
 
       // Persist assistant message with accumulated content and parts
       if (assistantContent || parts.length > 0) {
@@ -448,8 +477,11 @@ app.post('/:sessionId', async (c) => {
         event: 'done',
         data: JSON.stringify({ type: 'done' }),
       })
+      console.log(`[chat:${sessionId}] SSE stream completed successfully`)
     } catch (error) {
-      console.error('OpenCode error:', error)
+      console.error(`[chat:${sessionId}] OpenCode error:`, error)
+
+      // Classify and report error
       const details = classifyError(error)
       const sanitized = sanitizeError(error)
 
