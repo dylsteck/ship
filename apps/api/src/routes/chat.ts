@@ -64,6 +64,7 @@ app.post('/:sessionId', async (c) => {
   const selectedModel = meta.selected_model // Per-session model preference
   let sandboxId = meta.sandbox_id
   let sandboxStatus = meta.sandbox_status
+  let opencodeUrl = meta.opencode_url // Get initial opencode URL from meta
 
   // Check if we're in development mode
   const isDev = c.env.ENVIRONMENT === 'development'
@@ -95,8 +96,8 @@ app.post('/:sessionId', async (c) => {
       // If sandbox is still provisioning, wait for it WITH progress updates via SSE
       let currentSandboxId = sandboxId
       let currentSandboxStatus = sandboxStatus
-      let currentOpencodeUrl = opencodeUrl
-      let currentOpencodeSessionId = opencodeSessionId
+      let currentOpencodeUrl = opencodeUrl || undefined
+      let currentOpencodeSessionId = opencodeSessionId || undefined
 
       if (needsSandboxWait) {
         console.log(`[chat:${sessionId}] Waiting for sandbox provisioning...`)
