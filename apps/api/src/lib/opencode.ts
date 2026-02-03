@@ -144,12 +144,15 @@ export async function promptOpenCode(
   options?: { mode?: 'build' | 'plan'; model?: string },
   sandboxUrl?: string,
 ): Promise<void> {
+  console.log(`[opencode:prompt] Starting prompt send for session ${sessionId.slice(0, 8)}...`)
   const client = await getOpenCodeClient(sandboxUrl)
+  console.log(`[opencode:prompt] Got client for ${sandboxUrl}`)
 
   const textPart: TextPartInput = {
     type: 'text',
     text: content,
   }
+  console.log(`[opencode:prompt] Sending prompt with ${content.length} chars...`)
 
   const response = await client.session.prompt({
     path: { id: sessionId },
@@ -157,10 +160,15 @@ export async function promptOpenCode(
       parts: [textPart],
     },
   })
+  console.log(
+    `[opencode:prompt] Prompt sent, response:`,
+    response.error ? `Error: ${JSON.stringify(response.error)}` : 'Success',
+  )
 
   if (response.error) {
     throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
   }
+  console.log(`[opencode:prompt] Prompt completed successfully`)
 }
 
 /**

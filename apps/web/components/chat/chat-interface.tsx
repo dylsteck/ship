@@ -228,6 +228,23 @@ export function ChatInterface({
               try {
                 const data = JSON.parse(line.slice(6))
 
+                // Handle status events for progress updates
+                if (data.type === 'status') {
+                  const statusMessage = data.message || 'Processing...'
+                  onStatusChange?.('planning', statusMessage)
+                  // Update streaming label to show progress
+                  if (data.status === 'provisioning') {
+                    onStatusChange?.('planning', `Provisioning sandbox... ${statusMessage}`)
+                  } else if (data.status === 'starting-opencode') {
+                    onStatusChange?.('planning', 'Starting OpenCode server...')
+                  } else if (data.status === 'cloning') {
+                    onStatusChange?.('planning', statusMessage)
+                  } else if (data.status === 'repo-ready') {
+                    onStatusChange?.('planning', statusMessage)
+                  }
+                  continue
+                }
+
                 if (data.type === 'message.part.updated') {
                   const part = data.properties?.part
                   const delta = data.properties?.delta

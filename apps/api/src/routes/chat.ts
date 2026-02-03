@@ -69,296 +69,425 @@ app.post('/:sessionId', async (c) => {
   const isDev = c.env.ENVIRONMENT === 'development'
 
   // If sandbox is still provisioning, wait for it to complete (with timeout)
-  if (!sandboxId && sandboxStatus === 'provisioning' && !isDev) {
-    console.log(`[chat:${sessionId}] Waiting for sandbox provisioning...`)
-    const maxWaitMs = 60000 // 60 seconds max wait
-    const pollIntervalMs = 2000 // Poll every 2 seconds
-    const startTime = Date.now()
-    let pollCount = 0
+  // BUT: We need to start the SSE stream FIRST so UI gets updates
+  // So we'll handle this inside the SSE stream handler instead
+  const needsSandboxWait = !sandboxId && sandboxStatus === 'provisioning' && !isDev
 
-    while (Date.now() - startTime < maxWaitMs) {
-      await new Promise((r) => setTimeout(r, pollIntervalMs))
-      pollCount++
+  // All sandbox setup will happen INSIDE the SSE stream handler
+  // so UI gets immediate feedback via SSE events
+  console.log(
+    `[chat:${sessionId}] Starting SSE stream immediately, mode=${mode}, model=${selectedModel}`,
+  )
 
-      // Re-fetch metadata to check sandbox status
-      metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
-      meta = (await metaRes.json()) as Record<string, string>
-      sandboxId = meta.sandbox_id
-      sandboxStatus = meta.sandbox_status
-
-      if (pollCount % 5 === 0) {
-        console.log(`[chat:${sessionId}] Still waiting for sandbox... (${pollCount * 2}s elapsed)`)
-      }
-
-      if (sandboxId) {
-        // Broadcast sandbox ready status
-        console.log(`[chat:${sessionId}] Sandbox provisioned: ${sandboxId}`)
-        await stub.fetch(
-          new Request(`${doUrl}/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'sandbox-status',
-              sandboxId,
-              status: 'ready',
-            }),
-          }),
-        )
-        break // Sandbox is ready
-      }
-
-      if (sandboxStatus === 'error') {
-        // Broadcast error status
-        await stub.fetch(
-          new Request(`${doUrl}/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'sandbox-status',
-              status: 'error',
-            }),
-          }),
-        )
-        return c.json({ error: 'Sandbox provisioning failed. Please try again.' }, 500)
-      }
-    }
-
-    if (!sandboxId) {
-      return c.json({ error: 'Sandbox provisioning timed out. Please try again.' }, 504)
-    }
-  }
-
-  // If no sandbox and not provisioning, we can't proceed in production
-  if (!sandboxId && !isDev) {
-    return c.json({ error: 'Sandbox not provisioned. Please refresh and try again.' }, 400)
-  }
-
-  // In production, we need the sandbox URL for OpenCode
-  // OpenCode runs INSIDE the E2B sandbox, not as a separate server
-  let opencodeUrl = meta.opencode_url
-
-  // If we have a sandbox but no OpenCode URL, start the OpenCode server
-  if (sandboxId && !opencodeUrl) {
+  // Stream OpenCode events as SSE
+  return streamSSE(c, async (stream) => {
     try {
-      console.log(`[chat:${sessionId}] Starting OpenCode server in sandbox ${sandboxId}...`)
-      const startTime = Date.now()
-      const { url } = await startOpenCodeServer(c.env.E2B_API_KEY, sandboxId, c.env.ANTHROPIC_API_KEY)
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-      opencodeUrl = url
-      console.log(`[chat:${sessionId}] OpenCode server started at ${url} (took ${elapsed}s)`)
-
-      // Store the URL for future requests
-      await stub.fetch(
-        new Request(`${doUrl}/meta`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ opencode_url: url }),
+      // Send initial status event so UI knows we're working
+      await stream.writeSSE({
+        event: 'status',
+        data: JSON.stringify({
+          type: 'status',
+          status: 'initializing',
+          message: 'Preparing sandbox and agent...',
         }),
-      )
+      })
 
-      // Broadcast OpenCode server started
-      console.log(`[chat:${sessionId}] Broadcasting opencode-started event`)
-      await stub.fetch(
-        new Request(`${doUrl}/broadcast`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'opencode-started',
-            url,
+      // If sandbox is still provisioning, wait for it WITH progress updates via SSE
+      let currentSandboxId = sandboxId
+      let currentSandboxStatus = sandboxStatus
+      let currentOpencodeUrl = opencodeUrl
+      let currentOpencodeSessionId = opencodeSessionId
+
+      if (needsSandboxWait) {
+        console.log(`[chat:${sessionId}] Waiting for sandbox provisioning...`)
+        await stream.writeSSE({
+          event: 'status',
+          data: JSON.stringify({
+            type: 'status',
+            status: 'provisioning',
+            message: 'Provisioning sandbox...',
           }),
-        }),
-      )
-    } catch (error) {
-      console.error(`[chat:${sessionId}] Failed to start OpenCode server in sandbox:`, error)
+        })
 
-      // Return error immediately - don't try to stream
-      return c.json(
-        {
-          error: 'Failed to start agent server',
-          details: error instanceof Error ? error.message : 'Unknown error',
-          sandboxId,
-          suggestion: 'The sandbox may need more time to initialize. Please refresh and try again.',
-        },
-        500,
-      )
-    }
-  }
+        const maxWaitMs = 60000 // 60 seconds max wait
+        const pollIntervalMs = 2000 // Poll every 2 seconds
+        const startTime = Date.now()
+        let pollCount = 0
+        let currentSandboxId = sandboxId
+        let currentSandboxStatus = sandboxStatus
 
-  // Clone repository if we have repo info but no repo_url yet
-  if (sandboxId && meta.repo_owner && meta.repo_name && !meta.repo_url) {
-    try {
-        console.log(`[chat:${sessionId}] Repository not cloned yet, cloning now...`)
-        const cloneStartTime = Date.now()
+        while (Date.now() - startTime < maxWaitMs) {
+          await new Promise((r) => setTimeout(r, pollIntervalMs))
+          pollCount++
 
-        // Broadcast cloning started
-        await stub.fetch(
-          new Request(`${doUrl}/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'sandbox-cloning',
-              repoOwner: meta.repo_owner,
-              repoName: meta.repo_name,
-            }),
-          }),
-        )
+          // Re-fetch metadata to check sandbox status
+          const metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+          const meta = (await metaRes.json()) as Record<string, string>
+          currentSandboxId = meta.sandbox_id
+          currentSandboxStatus = meta.sandbox_status
 
-      // Get GitHub token from accounts
-      const accountRes = await c.env.DB.prepare(
-        'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
-      )
-        .bind(meta.user_id, 'github')
-        .first<{ access_token: string }>()
+          if (pollCount % 5 === 0) {
+            const elapsed = pollCount * 2
+            console.log(`[chat:${sessionId}] Still waiting for sandbox... (${elapsed}s elapsed)`)
+            await stream.writeSSE({
+              event: 'status',
+              data: JSON.stringify({
+                type: 'status',
+                status: 'provisioning',
+                message: `Provisioning sandbox... (${elapsed}s)`,
+              }),
+            })
+          }
 
-      if (!accountRes?.access_token) {
-        console.error(`[chat:${sessionId}] No GitHub token found for user`)
-      } else {
-        const repoUrl = `https://github.com/${meta.repo_owner}/${meta.repo_name}.git`
-        const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
+          if (currentSandboxId) {
+            // Broadcast sandbox ready status
+            console.log(`[chat:${sessionId}] Sandbox provisioned: ${currentSandboxId}`)
+            await stub.fetch(
+              new Request(`${doUrl}/broadcast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'sandbox-status',
+                  sandboxId: currentSandboxId,
+                  status: 'ready',
+                }),
+              }),
+            )
+            await stream.writeSSE({
+              event: 'status',
+              data: JSON.stringify({
+                type: 'status',
+                status: 'sandbox-ready',
+                message: 'Sandbox ready, starting OpenCode server...',
+              }),
+            })
+            // Update variables for rest of function
+            sandboxId = currentSandboxId
+            sandboxStatus = 'ready'
+            break
+          }
 
-        // Connect to sandbox and clone repo
-        const { Sandbox } = await import('../lib/e2b')
-        const sandbox = await Sandbox.connect(sandboxId, { apiKey: c.env.E2B_API_KEY })
-
-        // Clone the repository
-        const repoPath = '/home/user/repo'
-        const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
-
-        console.log(`[chat:${sessionId}] Cloning ${repoUrl}...`)
-        const cloneResult = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
-
-        if (cloneResult.exitCode !== 0) {
-          throw new Error(`Git clone failed: ${cloneResult.stderr}`)
+          if (currentSandboxStatus === 'error') {
+            // Broadcast error status
+            await stub.fetch(
+              new Request(`${doUrl}/broadcast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'sandbox-status',
+                  status: 'error',
+                }),
+              }),
+            )
+            await stream.writeSSE({
+              event: 'error',
+              data: JSON.stringify({
+                error: 'Sandbox provisioning failed. Please try again.',
+                category: 'persistent',
+                retryable: true,
+              }),
+            })
+            return
+          }
         }
 
-        // Configure git user
-        await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
-        await sandbox.commands.run(`cd ${repoPath} && git config user.email "agent@ship.dylansteck.com"`)
-
-        // Create and checkout branch
-        await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
-
-        // Store repo info in session meta
-        await stub.fetch(
-          new Request(`${doUrl}/meta`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repo_url: repoUrl,
-              current_branch: branchName,
-              repo_path: repoPath,
+        if (!currentSandboxId) {
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Sandbox provisioning timed out. Please try again.',
+              category: 'persistent',
+              retryable: true,
             }),
+          })
+          return
+        }
+      }
+
+      // Update variables after sandbox wait
+      if (needsSandboxWait) {
+        const metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+        const updatedMeta = (await metaRes.json()) as Record<string, string>
+        currentSandboxId = updatedMeta.sandbox_id || currentSandboxId
+        currentSandboxStatus = updatedMeta.sandbox_status || currentSandboxStatus
+        currentOpencodeUrl = updatedMeta.opencode_url || currentOpencodeUrl
+        currentOpencodeSessionId = updatedMeta.opencodeSessionId || currentOpencodeSessionId
+      }
+
+      // If no sandbox and not provisioning, we can't proceed in production
+      if (!currentSandboxId && !isDev) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'Sandbox not provisioned. Please refresh and try again.',
+            category: 'persistent',
+            retryable: false,
           }),
-        )
+        })
+        return
+      }
 
-        const cloneElapsed = ((Date.now() - cloneStartTime) / 1000).toFixed(1)
-        console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created (took ${cloneElapsed}s)`)
-
-        // Broadcast cloning completed
-        await stub.fetch(
-          new Request(`${doUrl}/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'sandbox-ready',
-              repoUrl,
-              branchName,
-            }),
-          }),
-        )
-
-        // Initialize agent executor now that we have everything needed
-        console.log(`[chat:${sessionId}] Initializing agent executor...`)
-
+      // If we have a sandbox but no OpenCode URL, start the OpenCode server
+      if (currentSandboxId && !currentOpencodeUrl) {
         try {
+          console.log(`[chat:${sessionId}] Starting OpenCode server in sandbox ${currentSandboxId}...`)
+          await stream.writeSSE({
+            event: 'status',
+            data: JSON.stringify({
+              type: 'status',
+              status: 'starting-opencode',
+              message: 'Starting OpenCode server...',
+            }),
+          })
+          const startTime = Date.now()
+          const { url } = await startOpenCodeServer(c.env.E2B_API_KEY, currentSandboxId, c.env.ANTHROPIC_API_KEY)
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+          currentOpencodeUrl = url
+          console.log(`[chat:${sessionId}] OpenCode server started at ${url} (took ${elapsed}s)`)
+
+          // Store the URL for future requests
           await stub.fetch(
-            new Request(`${doUrl}/agent/init`, {
+            new Request(`${doUrl}/meta`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ opencode_url: url }),
+            }),
+          )
+
+          // Broadcast OpenCode server started
+          console.log(`[chat:${sessionId}] Broadcasting opencode-started event`)
+          await stub.fetch(
+            new Request(`${doUrl}/broadcast`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                githubToken: accountRes.access_token,
-                gitUser: {
-                  name: 'Ship Agent',
-                  email: 'agent@ship.dylansteck.com',
-                },
+                type: 'opencode-started',
+                url,
               }),
             }),
           )
-          console.log(`[chat:${sessionId}] Agent executor initialized successfully`)
-        } catch (initError) {
-          console.error(`[chat:${sessionId}] Failed to initialize agent executor:`, initError)
-          // Don't fail - chat can still work without agent executor
+        } catch (error) {
+          console.error(`[chat:${sessionId}] Failed to start OpenCode server in sandbox:`, error)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Failed to start agent server',
+              details: error instanceof Error ? error.message : 'Unknown error',
+              sandboxId,
+              suggestion: 'The sandbox may need more time to initialize. Please refresh and try again.',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
+          return
         }
       }
-    } catch (error) {
-      console.error(`[chat:${sessionId}] Failed to clone repository:`, error)
-      // Don't fail the chat - just log the error and continue
-      // The agent can still work without a cloned repo
-    }
-  }
 
-  if (!opencodeSessionId) {
-    // Create new OpenCode session
-    console.log(`[chat:${sessionId}] Creating OpenCode session...`)
-    const projectPath = meta.repoPath || '/home/user/repo'
-    console.log(`[chat:${sessionId}] Project path: ${projectPath}`)
-
-    try {
-      const ocSession = await createOpenCodeSession(projectPath, opencodeUrl)
-      opencodeSessionId = ocSession.id
-      console.log(`[chat:${sessionId}] OpenCode session created: ${opencodeSessionId}`)
-
-      // Save to session meta
-      await stub.fetch(
-        new Request(`${doUrl}/meta`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ opencodeSessionId }),
-        }),
-      )
-    } catch (sessionError) {
-      console.error(`[chat:${sessionId}] Failed to create OpenCode session:`, sessionError)
-      throw sessionError
-    }
-  } else {
-    console.log(`[chat:${sessionId}] Using existing OpenCode session: ${opencodeSessionId}`)
-  }
-
-  // Detect if this is a task intent (starts with action verbs or contains task keywords)
-  const isTask = /^(build|create|add|fix|implement|refactor|update|write)/i.test(content.trim())
-
-  // If this is a task and agent executor is ready, start task workflow
-  if (isTask && meta.sandbox_id && meta.repo_url) {
-    try {
-      await stub.fetch(
-        new Request(`${doUrl}/task/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskDescription: content }),
-        }),
-      )
-    } catch (error) {
-      // Log but don't fail - continue with normal chat
-      console.error('Failed to start task workflow:', error)
-    }
-  }
-
-  // Capture opencodeUrl in closure for SSE handler
-  const sandboxOpenCodeUrl = opencodeUrl
-
-      console.log(
-        `[chat:${sessionId}] Starting SSE stream, sessionId=${opencodeSessionId}, mode=${mode}, model=${selectedModel}`,
-      )
-
-      // Stream OpenCode events as SSE
-      return streamSSE(c, async (stream) => {
+      // Clone repository if we have repo info but no repo_url yet
+      // Re-fetch meta to get latest repo info
+      const latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+      const latestMeta = (await latestMetaRes.json()) as Record<string, string>
+      
+      if (currentSandboxId && latestMeta.repo_owner && latestMeta.repo_name && !latestMeta.repo_url) {
         try {
-          console.log(`[chat:${sessionId}] SSE stream connected, sending prompt to OpenCode...`)
-          const promptStartTime = Date.now()
+          console.log(`[chat:${sessionId}] Repository not cloned yet, cloning now...`)
+          const cloneStartTime = Date.now()
+
+          await stream.writeSSE({
+            event: 'status',
+            data: JSON.stringify({
+              type: 'status',
+              status: 'cloning',
+              message: `Cloning repository ${latestMeta.repo_owner}/${latestMeta.repo_name}...`,
+            }),
+          })
+
+          // Broadcast cloning started
+          await stub.fetch(
+            new Request(`${doUrl}/broadcast`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'sandbox-cloning',
+                repoOwner: latestMeta.repo_owner,
+                repoName: latestMeta.repo_name,
+              }),
+            }),
+          )
+
+          // Get GitHub token from accounts
+          const accountRes = await c.env.DB.prepare(
+            'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
+          )
+            .bind(latestMeta.user_id, 'github')
+            .first<{ access_token: string }>()
+
+          if (!accountRes?.access_token) {
+            console.error(`[chat:${sessionId}] No GitHub token found for user`)
+          } else {
+            const repoUrl = `https://github.com/${latestMeta.repo_owner}/${latestMeta.repo_name}.git`
+            const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
+
+            // Connect to sandbox and clone repo
+            const { Sandbox } = await import('../lib/e2b')
+            const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+
+            // Clone the repository
+            const repoPath = '/home/user/repo'
+            const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
+
+            console.log(`[chat:${sessionId}] Cloning ${repoUrl}...`)
+            const cloneResult = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
+
+            if (cloneResult.exitCode !== 0) {
+              throw new Error(`Git clone failed: ${cloneResult.stderr}`)
+            }
+
+            // Configure git user
+            await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
+            await sandbox.commands.run(`cd ${repoPath} && git config user.email "agent@ship.dylansteck.com"`)
+
+            // Create and checkout branch
+            await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
+
+            // Store repo info in session meta
+            await stub.fetch(
+              new Request(`${doUrl}/meta`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  repo_url: repoUrl,
+                  current_branch: branchName,
+                  repo_path: repoPath,
+                }),
+              }),
+            )
+
+            const cloneElapsed = ((Date.now() - cloneStartTime) / 1000).toFixed(1)
+            console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created (took ${cloneElapsed}s)`)
+
+            // Broadcast cloning completed
+            await stub.fetch(
+              new Request(`${doUrl}/broadcast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'sandbox-ready',
+                  repoUrl,
+                  branchName,
+                }),
+              }),
+            )
+
+            await stream.writeSSE({
+              event: 'status',
+              data: JSON.stringify({
+                type: 'status',
+                status: 'repo-ready',
+                message: `Repository cloned. Branch: ${branchName}`,
+              }),
+            })
+
+            // Initialize agent executor now that we have everything needed
+            console.log(`[chat:${sessionId}] Initializing agent executor...`)
+
+            try {
+              await stub.fetch(
+                new Request(`${doUrl}/agent/init`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    githubToken: accountRes.access_token,
+                    gitUser: {
+                      name: 'Ship Agent',
+                      email: 'agent@ship.dylansteck.com',
+                    },
+                  }),
+                }),
+              )
+              console.log(`[chat:${sessionId}] Agent executor initialized successfully`)
+            } catch (initError) {
+              console.error(`[chat:${sessionId}] Failed to initialize agent executor:`, initError)
+              // Don't fail - chat can still work without agent executor
+            }
+          }
+        } catch (error) {
+          console.error(`[chat:${sessionId}] Failed to clone repository:`, error)
+          await stream.writeSSE({
+            event: 'status',
+            data: JSON.stringify({
+              type: 'status',
+              status: 'warning',
+              message: 'Repository cloning failed, continuing without repo...',
+            }),
+          })
+          // Don't fail the chat - just log the error and continue
+          // The agent can still work without a cloned repo
+        }
+      }
+
+      if (!currentOpencodeSessionId) {
+        // Create new OpenCode session
+        console.log(`[chat:${sessionId}] Creating OpenCode session...`)
+        const projectPath = latestMeta.repoPath || latestMeta.repo_path || '/home/user/repo'
+        console.log(`[chat:${sessionId}] Project path: ${projectPath}`)
+
+        try {
+          const ocSession = await createOpenCodeSession(projectPath, currentOpencodeUrl)
+          currentOpencodeSessionId = ocSession.id
+          console.log(`[chat:${sessionId}] OpenCode session created: ${currentOpencodeSessionId}`)
+
+          // Save to session meta
+          await stub.fetch(
+            new Request(`${doUrl}/meta`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ opencodeSessionId }),
+            }),
+          )
+        } catch (sessionError) {
+          console.error(`[chat:${sessionId}] Failed to create OpenCode session:`, sessionError)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Failed to create OpenCode session',
+              details: sessionError instanceof Error ? sessionError.message : 'Unknown error',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
+          return
+        }
+      } else {
+        console.log(`[chat:${sessionId}] Using existing OpenCode session: ${currentOpencodeSessionId}`)
+      }
+
+      if (!currentOpencodeSessionId) {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: 'Failed to create OpenCode session',
+            category: 'persistent',
+            retryable: true,
+          }),
+        })
+        return
+      }
+
+      console.log(`[chat:${sessionId}] SSE stream connected, sending prompt to OpenCode...`)
+      await stream.writeSSE({
+        event: 'status',
+        data: JSON.stringify({
+          type: 'status',
+          status: 'sending-prompt',
+          message: 'Sending prompt to agent...',
+        }),
+      })
+      const promptStartTime = Date.now()
       // Send prompt to OpenCode with retry wrapper
       await executeWithRetry(
         async () => {
-          await promptOpenCode(opencodeSessionId!, content, { mode, model: selectedModel }, sandboxOpenCodeUrl)
+          await promptOpenCode(currentOpencodeSessionId!, content, { mode, model: selectedModel }, currentOpencodeUrl)
         },
         {
           operationName: 'Send prompt to OpenCode',
@@ -382,9 +511,18 @@ app.post('/:sessionId', async (c) => {
 
       console.log(`[chat:${sessionId}] Prompt sent (took ${((Date.now() - promptStartTime) / 1000).toFixed(2)}s), subscribing to events...`)
       // Subscribe to events and filter for this session
-      const eventStream = await subscribeToEvents(sandboxOpenCodeUrl)
-      const sessionEvents = filterSessionEvents(eventStream, opencodeSessionId!)
+      const eventStream = await subscribeToEvents(currentOpencodeUrl)
+      const sessionEvents = filterSessionEvents(eventStream, currentOpencodeSessionId!)
       console.log(`[chat:${sessionId}] Event subscription started, waiting for events...`)
+      
+      await stream.writeSSE({
+        event: 'status',
+        data: JSON.stringify({
+          type: 'status',
+          status: 'agent-active',
+          message: 'Agent is processing your request...',
+        }),
+      })
 
       // Accumulate assistant message content
       let assistantContent = ''
