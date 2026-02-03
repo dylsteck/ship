@@ -30,6 +30,7 @@ interface SessionPanelProps {
   currentTool?: string
   sandboxId?: string | null
   sandboxStatus?: 'provisioning' | 'ready' | 'error' | 'none'
+  opencodeUrl?: string | null
 }
 
 interface GitState {
@@ -44,7 +45,7 @@ interface GitState {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
-export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool, sandboxId, sandboxStatus }: SessionPanelProps) {
+export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool, sandboxId, sandboxStatus, opencodeUrl }: SessionPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showStatusDetails, setShowStatusDetails] = useState(false)
   const [gitState, setGitState] = useState<GitState | null>(null)
@@ -204,6 +205,34 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
               {sandboxId.slice(0, 8)}...
             </div>
           )}
+        </div>
+      )}
+
+      {/* OpenCode Server URL */}
+      {opencodeUrl && (
+        <div className="p-4 border-b dark:border-gray-800">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">OpenCode Server</h3>
+          <a
+            href={opencodeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline break-all"
+          >
+            {opencodeUrl}
+          </a>
+          <div className="mt-2">
+            <a
+              href={opencodeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Open in new tab
+            </a>
+          </div>
         </div>
       )}
 

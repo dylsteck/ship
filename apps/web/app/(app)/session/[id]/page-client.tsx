@@ -55,6 +55,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   const [sandboxId, setSandboxId] = useState<string | null>(null)
   const [sandboxStatus, setSandboxStatus] = useState<'provisioning' | 'ready' | 'error' | 'none'>('none')
   const [sandboxProgress, setSandboxProgress] = useState<string | null>(null)
+  const [opencodeUrl, setOpencodeUrl] = useState<string | null>(null)
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
 
@@ -220,6 +221,9 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
         // Handle OpenCode server started
         if (data.type === 'opencode-started') {
           setSandboxProgress('OpenCode server started')
+          if (data.url) {
+            setOpencodeUrl(data.url)
+          }
           // Clear progress message after 2 seconds
           setTimeout(() => setSandboxProgress(null), 2000)
         }
@@ -433,6 +437,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               currentTool={currentTool}
               sandboxId={sandboxId}
               sandboxStatus={sandboxStatus}
+              opencodeUrl={opencodeUrl}
             />
           </div>
 
