@@ -46,7 +46,7 @@ export function SettingsClient({ userId }: { userId: string }) {
       <div className="min-h-screen bg-muted/30">
         <header className="h-11 border-b border-border bg-background">
           <div className="h-full flex items-center px-4">
-            <Link href="/dashboard" className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-2">
               <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
                 <svg className="w-3 h-3 text-background" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
@@ -67,7 +67,7 @@ export function SettingsClient({ userId }: { userId: string }) {
     <div className="min-h-screen bg-muted/30">
       <header className="h-11 border-b border-border bg-background">
         <div className="h-full flex items-center justify-between px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
               <svg className="w-3 h-3 text-background" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
@@ -82,7 +82,7 @@ export function SettingsClient({ userId }: { userId: string }) {
       </header>
 
       <div className="mx-auto max-w-xl px-4 py-6">
-        <Link href="/dashboard" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-4">
+        <Link href="/" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-4">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
           </svg>

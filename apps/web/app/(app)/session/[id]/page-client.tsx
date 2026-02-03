@@ -9,17 +9,25 @@ import { VSCodeDrawer } from '@/components/sandbox/vscode-drawer'
 import { TerminalDrawer } from '@/components/sandbox/terminal-drawer'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { AppSidebar } from '@/components/app-sidebar'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@ship/ui'
+import type { ChatSession, User } from '@/lib/api'
+import { DashboardBackground } from '@/components/dashboard-background'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
 interface SessionPageClientProps {
   sessionId: string
+  userId: string
+  user: User
+  sessions: ChatSession[]
 }
 
-export function SessionPageClient({ sessionId }: SessionPageClientProps) {
+export function SessionPageClient({ sessionId, userId, user, sessions }: SessionPageClientProps) {
   const searchParams = useSearchParams()
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null)
   const [initialMode, setInitialMode] = useState<'build' | 'agent' | 'plan'>('build')
+  const [searchQuery, setSearchQuery] = useState('')
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
   const [currentTool, setCurrentTool] = useState<string>()
   const [sessionInfo, setSessionInfo] = useState({
@@ -190,99 +198,111 @@ export function SessionPageClient({ sessionId }: SessionPageClientProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard"
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-          >
-            ← Back
-          </Link>
-          <div>
-            <h1 className="font-semibold dark:text-white">
-              {sessionInfo.repoOwner && sessionInfo.repoName
-                ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
-                : 'Session'}
-            </h1>
-            {sessionInfo.model && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Model: {sessionInfo.model}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Sandbox Toolbar */}
-        <SandboxToolbar
-          sandboxId={sandboxId}
-          sandboxStatus={sandboxStatus}
-          onOpenVSCode={() => setVscodeOpen(true)}
-          onOpenTerminal={() => setTerminalOpen(true)}
-        />
-      </header>
-
-      {/* Main content: Chat + Side Panel */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Chat Interface */}
-        <div className="flex-1 overflow-hidden">
-          {sandboxStatus === 'provisioning' && (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <div className="mb-4 text-lg font-medium dark:text-white">
-                  Provisioning sandbox...
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  This usually takes 10-15 seconds
-                </div>
+    <SidebarProvider defaultOpen={true}>
+      <AppSidebar
+        sessions={sessions}
+        user={user}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        currentSessionId={sessionId}
+      />
+      <SidebarInset>
+        <div className="flex h-screen flex-col relative">
+          <DashboardBackground />
+          {/* Header */}
+          <header className="flex items-center justify-between border-b bg-background/80 px-4 py-3 relative z-10">
+            <div className="flex items-center gap-3">
+              <SidebarTrigger className="cursor-pointer" />
+              <Link href="/" className="text-muted-foreground hover:text-foreground">
+                ← Back
+              </Link>
+              <div>
+                <h1 className="font-semibold text-foreground">
+                  {sessionInfo.repoOwner && sessionInfo.repoName
+                    ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
+                    : 'Session'}
+                </h1>
+                {sessionInfo.model && (
+                  <p className="text-xs text-muted-foreground">
+                    Model: {sessionInfo.model}
+                  </p>
+                )}
               </div>
             </div>
-          )}
-          {sandboxStatus === 'error' && (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <div className="mb-4 text-lg font-medium text-red-600 dark:text-red-400">
-                  Failed to provision sandbox
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Please refresh the page to try again
-                </div>
-              </div>
-            </div>
-          )}
-          {(sandboxStatus === 'ready' || sandboxStatus === 'none') && (
-            <ChatInterface
-              sessionId={sessionId}
-              onStatusChange={handleStatusChange}
-              onOpenVSCode={handleOpenVSCode}
-              onOpenTerminal={handleOpenTerminal}
-              initialPrompt={initialPrompt ?? searchParams.get('prompt')}
-              initialMode={(searchParams.get('mode') as 'build' | 'agent' | 'plan' | null) ?? initialMode}
+
+            {/* Sandbox Toolbar */}
+            <SandboxToolbar
+              sandboxId={sandboxId}
+              sandboxStatus={sandboxStatus}
+              onOpenVSCode={() => setVscodeOpen(true)}
+              onOpenTerminal={() => setTerminalOpen(true)}
             />
-          )}
+          </header>
+
+          {/* Main content: Chat + Side Panel */}
+          <div className="flex flex-1 overflow-hidden bg-background/70 relative z-10">
+            {/* Chat Interface */}
+            <div className="flex-1 overflow-hidden">
+              {sandboxStatus === 'provisioning' && (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center">
+                    <div className="mb-4 text-lg font-medium text-foreground">
+                      Provisioning sandbox...
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      This usually takes 10-15 seconds
+                    </div>
+                  </div>
+                </div>
+              )}
+              {sandboxStatus === 'error' && (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center">
+                    <div className="mb-4 text-lg font-medium text-destructive">
+                      Failed to provision sandbox
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Please refresh the page to try again
+                    </div>
+                  </div>
+                </div>
+              )}
+              {(sandboxStatus === 'ready' || sandboxStatus === 'none') && (
+                <ChatInterface
+                  sessionId={sessionId}
+                  onStatusChange={handleStatusChange}
+                  onOpenVSCode={handleOpenVSCode}
+                  onOpenTerminal={handleOpenTerminal}
+                  initialPrompt={initialPrompt ?? searchParams.get('prompt')}
+                  initialMode={(searchParams.get('mode') as 'build' | 'agent' | 'plan' | null) ?? initialMode}
+                  agentStatus={agentStatus}
+                  currentTool={currentTool}
+                />
+              )}
+            </div>
+
+            {/* Side Panel */}
+            <SessionPanel
+              sessionId={sessionId}
+              sessionInfo={sessionInfo}
+              agentStatus={agentStatus}
+              currentTool={currentTool}
+            />
+          </div>
+
+          {/* Sandbox Drawers */}
+          <VSCodeDrawer
+            sandboxId={sandboxId}
+            isOpen={vscodeOpen}
+            onOpenChange={setVscodeOpen}
+          />
+          <TerminalDrawer
+            sandboxId={sandboxId}
+            isOpen={terminalOpen}
+            onOpenChange={setTerminalOpen}
+          />
         </div>
-
-        {/* Side Panel */}
-        <SessionPanel
-          sessionId={sessionId}
-          sessionInfo={sessionInfo}
-          agentStatus={agentStatus}
-          currentTool={currentTool}
-        />
-      </div>
-
-      {/* Sandbox Drawers */}
-      <VSCodeDrawer
-        sandboxId={sandboxId}
-        isOpen={vscodeOpen}
-        onOpenChange={setVscodeOpen}
-      />
-      <TerminalDrawer
-        sandboxId={sandboxId}
-        isOpen={terminalOpen}
-        onOpenChange={setTerminalOpen}
-      />
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

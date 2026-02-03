@@ -39,6 +39,7 @@ interface AppSidebarProps {
   user: User
   searchQuery: string
   onSearchChange: (value: string) => void
+  currentSessionId?: string
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -49,7 +50,7 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(seconds / 86400)}d`
 }
 
-export function AppSidebar({ sessions, user, searchQuery, onSearchChange }: AppSidebarProps) {
+export function AppSidebar({ sessions, user, searchQuery, onSearchChange, currentSessionId }: AppSidebarProps) {
   const router = useRouter()
   const { deleteSession } = useDeleteSession()
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
@@ -70,6 +71,10 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange }: AppS
     try {
       setDeletingSessionId(session.id)
       await deleteSession({ sessionId: session.id })
+      if (currentSessionId === session.id) {
+        router.push('/')
+        return
+      }
       router.refresh()
     } catch (error) {
       console.error('Failed to delete session:', error)

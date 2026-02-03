@@ -25,7 +25,7 @@ export default async function OnboardingPage() {
         </p>
 
         <div className="mt-6">
-          <Link href="/dashboard">
+          <Link href="/">
             <Button>Get Started</Button>
           </Link>
         </div>

@@ -18,6 +18,8 @@ interface ChatInterfaceProps {
   onOpenTerminal?: () => void
   initialPrompt?: string | null
   initialMode?: 'build' | 'agent' | 'plan'
+  agentStatus?: AgentStatus
+  currentTool?: string
 }
 
 export function ChatInterface({
@@ -27,6 +29,8 @@ export function ChatInterface({
   onOpenTerminal,
   initialPrompt,
   initialMode = 'build',
+  agentStatus,
+  currentTool,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -35,6 +39,7 @@ export function ChatInterface({
   const [hasMore, setHasMore] = useState(false)
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
+  const assistantTextRef = useRef<string>('')
   const initialPromptSentRef = useRef(false)
   const costEventsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([])
   const messageCostsRef = useRef<Map<string, CostBreakdown>>(new Map())
@@ -147,6 +152,7 @@ export function ChatInterface({
 
       setIsStreaming(true)
       onStatusChange?.('planning')
+      assistantTextRef.current = ''
 
       // Optimistically add user message
       const userMessage: Message = {
@@ -194,6 +200,26 @@ export function ChatInterface({
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6))
+
+                if (data.type === 'message.part.updated') {
+                  const part = data.properties?.part
+                  const delta = data.properties?.delta
+                  if (part?.type === 'text') {
+                    if (typeof delta === 'string') {
+                      assistantTextRef.current += delta
+                    } else if (typeof part.text === 'string') {
+                      assistantTextRef.current = part.text
+                    }
+
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === streamingMessageRef.current
+                          ? { ...m, content: assistantTextRef.current }
+                          : m,
+                      ),
+                    )
+                  }
+                }
 
                 if (data.type === 'assistant') {
                   // Update assistant message with final content
@@ -250,9 +276,9 @@ export function ChatInterface({
                   onStatusChange?.(status, data.toolName)
                 }
 
-                if (data.error) {
-                  // Error from SSE stream
-                  const errorMessage: Message = {
+        if (data.error) {
+          // Error from SSE stream
+          const errorMessage: Message = {
                     id: `error-${Date.now()}`,
                     role: 'system',
                     content: data.error,
@@ -350,7 +376,7 @@ export function ChatInterface({
   )
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-gray-900">
+    <div className="flex h-full flex-col bg-background">
       {/* Connection status indicator */}
       {wsStatus !== 'connected' && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200">
@@ -361,17 +387,43 @@ export function ChatInterface({
         </div>
       )}
 
-      <MessageList
-        messages={messages}
-        isStreaming={isStreaming}
-        onLoadEarlier={handleLoadEarlier}
-        hasMore={hasMore}
-        onRetryError={handleRetryError}
-        onOpenVSCode={onOpenVSCode}
-        onOpenTerminal={onOpenTerminal}
-      />
+      <div className="flex-1 overflow-y-auto">
+        <MessageList
+          className="mx-auto w-full max-w-[820px]"
+          messages={messages}
+          isStreaming={isStreaming}
+          streamingLabel={
+            isStreaming
+              ? (() => {
+                  const labelMap: Record<AgentStatus, string> = {
+                    idle: 'Thinking',
+                    planning: 'Planning',
+                    coding: 'Coding',
+                    testing: 'Testing',
+                    executing: 'Executing',
+                    stuck: 'Stuck',
+                    waiting: 'Waiting',
+                    error: 'Error',
+                  }
+                  const base = agentStatus ? labelMap[agentStatus] : 'Thinking'
+                  return currentTool ? `${base} · ${currentTool}` : `${base}...`
+                })()
+              : undefined
+          }
+          onLoadEarlier={handleLoadEarlier}
+          hasMore={hasMore}
+          onRetryError={handleRetryError}
+          onOpenVSCode={onOpenVSCode}
+          onOpenTerminal={onOpenTerminal}
+        />
+      </div>
 
-      <ChatInput onSend={(content) => handleSend(content)} onStop={handleStop} isStreaming={isStreaming} queueCount={messageQueue.length} />
+      <ChatInput
+        onSend={(content) => handleSend(content)}
+        onStop={handleStop}
+        isStreaming={isStreaming}
+        queueCount={messageQueue.length}
+      />
     </div>
   )
 }

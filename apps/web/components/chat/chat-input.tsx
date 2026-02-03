@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, type KeyboardEvent } from 'react'
+import { Button, cn } from '@ship/ui'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowUp02Icon, AttachmentIcon } from '@hugeicons/core-free-icons'
 
 interface ChatInputProps {
   onSend: (content: string) => void
@@ -27,48 +30,60 @@ export function ChatInput({ onSend, onStop, isStreaming, queueCount = 0, disable
   }
 
   return (
-    <div className="border-t bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex gap-3">
-        <div className="flex-1 relative">
+    <div className="border-t border-border/60 bg-background/80 p-4">
+      <div className="rounded-3xl border border-border/60 bg-card shadow-sm overflow-hidden transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-foreground/10">
+        <div className="p-4 pb-3">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={isStreaming ? 'Message will be queued...' : 'Type a message...'}
             disabled={disabled}
-            className="w-full resize-none rounded-lg border border-gray-300 px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-400 dark:disabled:bg-gray-800/50 transition-colors"
+            className="w-full min-h-[72px] resize-none bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none"
             rows={2}
           />
-        </div>
 
-        <div className="flex flex-col gap-2">
-          {isStreaming ? (
-            <button
-              onClick={onStop}
-              className="rounded-lg bg-red-600 px-6 py-3 text-sm font-medium text-white shadow-sm transition-all hover:bg-red-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={disabled || !input.trim()}
-              className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white shadow-sm transition-all hover:bg-blue-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-blue-600 disabled:hover:shadow-sm dark:focus:ring-offset-gray-900"
-            >
-              Send
-            </button>
-          )}
+          <div className="mt-3 flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" className="rounded-full">
+                <HugeiconsIcon icon={AttachmentIcon} strokeWidth={2} />
+              </Button>
+              {queueCount > 0 && (
+                <span className="text-[11px] text-muted-foreground">
+                  {queueCount} queued
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1">
+              {isStreaming ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="rounded-full px-3"
+                  onClick={onStop}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSubmit}
+                  disabled={disabled || !input.trim()}
+                  size="icon-sm"
+                  className={cn(
+                    'rounded-full',
+                    input.trim()
+                      ? 'bg-foreground text-background hover:bg-foreground/90'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  <HugeiconsIcon icon={ArrowUp02Icon} strokeWidth={2} />
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-
-      {queueCount > 0 && (
-        <div className="mt-2 flex items-center gap-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {queueCount} message{queueCount > 1 ? 's' : ''} queued
-          </span>
-        </div>
-      )}
     </div>
   )
 }

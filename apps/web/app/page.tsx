@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
+import DashboardPage from './(app)/dashboard/page'
 
 export default async function HomePage() {
   const session = await getSession()
@@ -8,5 +9,5 @@ export default async function HomePage() {
     redirect('/login')
   }
 
-  redirect('/dashboard')
+  return <DashboardPage />
 }
