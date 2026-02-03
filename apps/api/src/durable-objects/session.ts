@@ -631,7 +631,11 @@ export class SessionDO extends DurableObject<Env> {
    * @param gitUser - Git user info for commit attribution
    * @returns AgentExecutor instance
    */
-  async initializeAgentExecutor(sandbox: Sandbox, githubToken: string, gitUser: { name: string; email: string }): Promise<AgentExecutor> {
+  async initializeAgentExecutor(
+    sandbox: Sandbox,
+    githubToken: string,
+    gitUser: { name: string; email: string },
+  ): Promise<AgentExecutor> {
     const repoUrl = await this.getRepoUrl()
     if (!repoUrl) {
       throw new Error('Repository URL not set')
@@ -894,6 +898,37 @@ export class SessionDO extends DurableObject<Env> {
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : 'Failed to handle agent response' },
+          { status: 500 },
+        )
+      }
+    }
+
+    // RPC: Initialize agent executor
+    if (url.pathname.endsWith('/agent/init') && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { githubToken: string; gitUser: { name: string; email: string } }
+
+        // Get sandbox info
+        const sandboxInfo = await this.getSandboxStatus()
+        if (!sandboxInfo.sandboxId) {
+          return Response.json({ error: 'Sandbox not provisioned' }, { status: 400 })
+        }
+
+        // Get repo URL
+        const repoUrl = await this.getRepoUrl()
+        if (!repoUrl) {
+          return Response.json({ error: 'Repository URL not set' }, { status: 400 })
+        }
+
+        // Connect to sandbox and initialize agent executor
+        const { Sandbox } = await import('../lib/e2b')
+        const sandbox = await Sandbox.connect(sandboxInfo.sandboxId, { apiKey: this.env.E2B_API_KEY })
+
+        await this.initializeAgentExecutor(sandbox, body.githubToken, body.gitUser)
+        return Response.json({ success: true })
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : 'Failed to initialize agent executor' },
           { status: 500 },
         )
       }

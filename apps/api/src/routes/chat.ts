@@ -18,10 +18,14 @@ const app = new Hono<{ Bindings: Env }>()
 // POST /chat/:sessionId - Send message and receive streaming response
 app.post('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId')
+  console.log(`[chat:${sessionId}] ===== CHAT REQUEST STARTED =====`)
+
   const { content, mode = 'build' } = await c.req.json<{
     content: string
     mode?: 'build' | 'plan'
   }>()
+
+  console.log(`[chat:${sessionId}] Mode: ${mode}, Content length: ${content?.length || 0}`)
 
   if (!content?.trim()) {
     return c.json({ error: 'Message content required' }, 400)
@@ -30,6 +34,7 @@ app.post('/:sessionId', async (c) => {
   // Get DO stub
   const id = c.env.SESSION_DO.idFromName(sessionId)
   const stub = c.env.SESSION_DO.get(id)
+  console.log(`[chat:${sessionId}] Got DO stub`)
 
   // Persist user message
   const doUrl = 'https://do'
@@ -176,6 +181,29 @@ app.post('/:sessionId', async (c) => {
         )
 
         console.log(`[chat:${sessionId}] Repository cloned and branch ${branchName} created`)
+
+        // Initialize agent executor now that we have everything needed
+        console.log(`[chat:${sessionId}] Initializing agent executor...`)
+
+        try {
+          await stub.fetch(
+            new Request(`${doUrl}/agent/init`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                githubToken: accountRes.access_token,
+                gitUser: {
+                  name: 'Ship Agent',
+                  email: 'agent@ship.dylansteck.com',
+                },
+              }),
+            }),
+          )
+          console.log(`[chat:${sessionId}] Agent executor initialized successfully`)
+        } catch (initError) {
+          console.error(`[chat:${sessionId}] Failed to initialize agent executor:`, initError)
+          // Don't fail - chat can still work without agent executor
+        }
       }
     } catch (error) {
       console.error(`[chat:${sessionId}] Failed to clone repository:`, error)
