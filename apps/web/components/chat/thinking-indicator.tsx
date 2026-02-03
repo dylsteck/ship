@@ -88,8 +88,9 @@ export function ThinkingIndicator({
   onToggle,
   statusLabel = 'Considering next steps',
 }: ThinkingIndicatorProps) {
-  const [internalExpanded, setInternalExpanded] = useState(false)
+  const [internalExpanded, setInternalExpanded] = useState(true) // Start expanded by default
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [visibleParts, setVisibleParts] = useState<ToolPart[]>([])
   const startTimeRef = useRef<number | null>(null)
 
   // Track elapsed time when thinking
@@ -119,8 +120,25 @@ export function ThinkingIndicator({
     if (isThinking && parts.length === 0) {
       startTimeRef.current = Date.now()
       setElapsedSeconds(0)
+      setVisibleParts([])
     }
   }, [isThinking, parts.length])
+
+  // Animate parts appearing
+  useEffect(() => {
+    if (parts.length > visibleParts.length) {
+      // New parts added - show them with a slight delay for animation
+      const newParts = parts.slice(visibleParts.length)
+      let delay = 0
+
+      newParts.forEach((part, index) => {
+        setTimeout(() => {
+          setVisibleParts((prev) => [...prev, part])
+        }, delay)
+        delay += 150 // Stagger animations
+      })
+    }
+  }, [parts, visibleParts.length])
 
   // Use controlled or internal state
   const expanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded
@@ -132,6 +150,10 @@ export function ThinkingIndicator({
 
   const hasContent = parts.length > 0 || reasoning
 
+  // Get the most recent active part
+  const activePart = parts.find((p) => p.state?.status === 'running')
+  const activeToolInfo = activePart ? getToolInfo(activePart.tool) : null
+
   return (
     <div className="flex justify-start mb-4">
       <div className="w-full max-w-[600px]">
@@ -139,33 +161,42 @@ export function ThinkingIndicator({
         <button
           onClick={handleToggle}
           className={cn(
-            'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left',
-            'hover:bg-muted/50',
-            expanded && hasContent && 'rounded-b-none bg-muted/30'
+            'flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-colors w-full text-left',
+            'hover:bg-muted/50 bg-muted/20 border border-border/30',
+            expanded && hasContent && 'rounded-b-none border-b-0',
           )}
         >
-          {/* Sparkle indicator */}
-          <span
-            className={cn(
-              'text-base',
-              isThinking && 'animate-pulse'
-            )}
-          >
-            ✦
+          {/* Animated sparkles */}
+          <span className="relative flex h-3 w-3 mr-1">
+            <span
+              className={cn(
+                'animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75',
+                !isThinking && 'hidden',
+              )}
+            />
+            <span
+              className={cn(
+                'relative inline-flex rounded-full h-3 w-3',
+                isThinking ? 'bg-blue-500' : 'bg-muted-foreground/50',
+              )}
+            />
           </span>
 
           {/* Status label */}
-          <span className="text-muted-foreground">
-            {statusLabel}
+          <span className="font-medium text-foreground/90">
+            {activeToolInfo ? `${activeToolInfo.label}...` : statusLabel}
           </span>
+
+          {/* Active tool name */}
+          {activePart?.state?.title && (
+            <span className="text-muted-foreground truncate max-w-[200px]">{activePart.state.title}</span>
+          )}
 
           {/* Elapsed time */}
           {(isThinking || elapsedSeconds > 0) && (
             <>
               <span className="text-muted-foreground/50">·</span>
-              <span className="text-muted-foreground/70 text-xs">
-                {formatElapsedTime(elapsedSeconds)}
-              </span>
+              <span className="text-muted-foreground/70 text-xs tabular-nums">{formatElapsedTime(elapsedSeconds)}</span>
             </>
           )}
 
@@ -179,52 +210,94 @@ export function ThinkingIndicator({
           )}
         </button>
 
-        {/* Expanded content */}
-        {expanded && hasContent && (
-          <div className="bg-muted/20 border border-t-0 border-border/40 rounded-b-lg px-4 py-3 space-y-3">
+        {/* Expanded content - Always show activity feed */}
+        {expanded && (
+          <div className="bg-muted/10 border border-t-0 border-border/30 rounded-b-xl px-3 py-3">
+            {/* Live activity feed */}
+            <div className="space-y-2">
+              {visibleParts.length === 0 && isThinking && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  Initializing...
+                </div>
+              )}
+
+              {visibleParts.map((part, index) => {
+                const toolInfo = getToolInfo(part.tool)
+                const title = part.state?.title || ''
+                const isRunning = part.state?.status === 'running'
+                const isComplete = part.state?.status === 'complete'
+                const isError = part.state?.status === 'error'
+
+                return (
+                  <div
+                    key={part.callID}
+                    className={cn(
+                      'flex items-center gap-2.5 text-sm p-2 rounded-lg transition-all duration-300',
+                      isRunning && 'bg-blue-500/10 border border-blue-500/20',
+                      isComplete && 'bg-green-500/5 border border-green-500/10 opacity-70',
+                      isError && 'bg-red-500/10 border border-red-500/20',
+                      !isRunning && !isComplete && !isError && 'bg-muted/30',
+                    )}
+                    style={{
+                      animation: 'slideIn 0.3s ease-out forwards',
+                      animationDelay: `${index * 50}ms`,
+                    }}
+                  >
+                    {/* Status indicator */}
+                    <span className="relative flex h-2 w-2">
+                      {isRunning && (
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                      )}
+                      <span
+                        className={cn(
+                          'relative inline-flex rounded-full h-2 w-2',
+                          isRunning && 'bg-blue-500',
+                          isComplete && 'bg-green-500',
+                          isError && 'bg-red-500',
+                          !isRunning && !isComplete && !isError && 'bg-muted-foreground/30',
+                        )}
+                      />
+                    </span>
+
+                    {/* Tool icon */}
+                    <span className="text-base">{toolInfo.icon}</span>
+
+                    {/* Tool info */}
+                    <div className="flex-1 min-w-0">
+                      <span
+                        className={cn(
+                          'font-medium',
+                          isRunning ? 'text-blue-600 dark:text-blue-400' : 'text-foreground/80',
+                        )}
+                      >
+                        {toolInfo.label}
+                      </span>
+                      {title && <span className="text-muted-foreground ml-2 truncate block text-xs">{title}</span>}
+                    </div>
+
+                    {/* Status text */}
+                    <span
+                      className={cn(
+                        'text-xs font-medium',
+                        isRunning && 'text-blue-500',
+                        isComplete && 'text-green-500',
+                        isError && 'text-red-500',
+                      )}
+                    >
+                      {isRunning && 'Running'}
+                      {isComplete && 'Done'}
+                      {isError && 'Error'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
             {/* Reasoning text */}
             {reasoning && (
-              <p className="text-sm text-foreground/80 leading-relaxed">
-                {reasoning}
-              </p>
-            )}
-
-            {/* Tool calls list */}
-            {parts.length > 0 && (
-              <div className="space-y-1.5">
-                {parts.map((part) => {
-                  const toolInfo = getToolInfo(part.tool)
-                  const title = part.state?.title || ''
-
-                  return (
-                    <div
-                      key={part.callID}
-                      className="flex items-start gap-2 text-sm"
-                    >
-                      {/* Tool icon */}
-                      <span className="text-muted-foreground/70 mt-0.5">
-                        {toolInfo.icon}
-                      </span>
-
-                      {/* Tool name + description */}
-                      <div className="flex-1 min-w-0">
-                        <span className="font-medium text-foreground/70">
-                          {toolInfo.label}
-                        </span>
-                        {title && (
-                          <span className="text-muted-foreground ml-2 truncate">
-                            {title}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Status indicator */}
-                      {part.state?.status === 'running' && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mt-2" />
-                      )}
-                    </div>
-                  )
-                })}
+              <div className="mt-3 pt-3 border-t border-border/30">
+                <p className="text-sm text-foreground/70 leading-relaxed">{reasoning}</p>
               </div>
             )}
           </div>
