@@ -93,11 +93,11 @@ app.post('/:sessionId', async (c) => {
         }),
       })
 
-      // If sandbox is still provisioning, wait for it WITH progress updates via SSE
-      let currentSandboxId = sandboxId
-      let currentSandboxStatus = sandboxStatus
-      let currentOpencodeUrl = opencodeUrl || undefined
-      let currentOpencodeSessionId = opencodeSessionId || undefined
+      // Initialize variables safely - ensure all are defined
+      let currentSandboxId: string | undefined = sandboxId || undefined
+      let currentSandboxStatus: string | undefined = sandboxStatus || undefined
+      let currentOpencodeUrl: string | undefined = opencodeUrl || undefined
+      let currentOpencodeSessionId: string | undefined = opencodeSessionId || undefined
 
       if (needsSandboxWait) {
         console.log(`[chat:${sessionId}] Waiting for sandbox provisioning...`)
@@ -798,10 +798,12 @@ app.post('/:sessionId', async (c) => {
       console.log(`[chat:${sessionId}] SSE stream completed successfully`)
     } catch (error) {
       console.error(`[chat:${sessionId}] OpenCode error:`, error)
+      console.error(`[chat:${sessionId}] Error stack:`, error instanceof Error ? error.stack : 'No stack trace')
 
       // Classify and report error
       const details = classifyError(error)
       const sanitized = sanitizeError(error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
 
       // Broadcast error to WebSocket clients too
       try {
@@ -812,6 +814,7 @@ app.post('/:sessionId', async (c) => {
             body: JSON.stringify({
               type: 'error',
               error: sanitized,
+              message: errorMessage,
               category: details.category,
               retryable: details.retryable,
             }),
@@ -821,14 +824,21 @@ app.post('/:sessionId', async (c) => {
         console.error(`[chat:${sessionId}] Failed to broadcast error:`, broadcastError)
       }
 
-      await stream.writeSSE({
-        event: 'error',
-        data: JSON.stringify({
-          error: sanitized,
-          category: details.category,
-          retryable: details.retryable,
-        }),
-      })
+      // Always try to send error via SSE, even if stream might be broken
+      try {
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({
+            error: sanitized,
+            message: errorMessage,
+            category: details.category,
+            retryable: details.retryable,
+          }),
+        })
+      } catch (sseError) {
+        console.error(`[chat:${sessionId}] Failed to send error via SSE:`, sseError)
+        // If SSE fails, at least we logged it and broadcasted to WebSocket
+      }
     }
   })
 })
