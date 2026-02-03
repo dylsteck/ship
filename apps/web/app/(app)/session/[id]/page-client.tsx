@@ -190,10 +190,13 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data)
+        const rawData = event.data
+        console.log('[page-client] Raw WebSocket message received:', typeof rawData, rawData?.slice?.(0, 100))
+        const data = JSON.parse(rawData)
+        console.log('[page-client] Parsed WebSocket data:', data)
         // Debug: Log all WebSocket messages
         if (data.type === 'opencode-started' || data.type === 'sandbox-status' || data.type === 'opencode-event') {
-          console.log('[page-client] WebSocket message:', data.type, data)
+          console.log('[page-client] WebSocket message:', data.type, JSON.stringify(data, null, 2))
         }
 
         // Handle agent status updates
@@ -238,13 +241,15 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           console.log('[page-client] Extracted URL:', url, 'from fields:', { url: data.url, opencodeUrl: data.opencodeUrl, serverUrl: data.serverUrl })
           if (url && typeof url === 'string') {
             console.log('[page-client] Setting opencodeUrl state to:', url)
-            // Use functional update to ensure we're setting the latest value
-            setOpencodeUrl((prev) => {
-              console.log('[page-client] setOpencodeUrl called, prev:', prev, 'new:', url)
-              return url
-            })
+            // Force immediate state update
+            setOpencodeUrl(url)
+            // Double-check after a tick to ensure it was set
+            setTimeout(() => {
+              console.log('[page-client] opencodeUrl state check after 100ms - should be:', url)
+            }, 100)
           } else {
             console.warn('[page-client] opencode-started event missing url field. Full data:', JSON.stringify(data))
+            console.warn('[page-client] Available keys in data:', Object.keys(data))
           }
           // Clear progress message after 2 seconds
           setTimeout(() => setSandboxProgress(null), 2000)
@@ -453,6 +458,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
             {/* Side Panel */}
             <SessionPanel
+              key={`session-panel-${opencodeUrl || 'no-url'}`}
               sessionId={sessionId}
               sessionInfo={sessionInfo}
               agentStatus={agentStatus}

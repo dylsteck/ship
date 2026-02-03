@@ -218,8 +218,8 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
         </div>
       )}
 
-      {/* OpenCode Server URL */}
-      {opencodeUrl ? (
+      {/* OpenCode Server URL - Always show section, hide content if no URL */}
+      {opencodeUrl && (
         <div className="p-4 border-b dark:border-gray-800">
           <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 dark:text-gray-400">OpenCode Server</h3>
           <a
@@ -244,7 +244,7 @@ export function SessionPanel({ sessionId, sessionInfo, agentStatus, currentTool,
             </a>
           </div>
         </div>
-      ) : null}
+      )}
 
       {/* Pull Request Panel */}
       <PRPanel
