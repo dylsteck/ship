@@ -75,12 +75,15 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
       await deleteSession({ sessionId: session.id })
       // Update local state for immediate UI feedback
       onSessionDeleted?.(session.id)
-      // If we deleted the currently viewed session, redirect to home
+      // If we deleted the currently viewed session, redirect to home and refresh
       if (currentSessionId === session.id) {
         router.push('/')
+        // Force a full page refresh to ensure clean state
+        window.location.href = '/'
+      } else {
+        // Refresh server state to ensure consistency
+        router.refresh()
       }
-      // Refresh server state to ensure consistency
-      router.refresh()
     } catch (error) {
       console.error('Failed to delete session:', error)
       // Refresh to get correct state

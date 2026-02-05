@@ -170,42 +170,14 @@ export function DashboardMessages({
 
       {/* Streaming activity: tools + reasoning */}
       {isStreaming && (activityTools.length > 0 || thinkingReasoning || chainSteps.length > 0) && (
-        <Message role="assistant">
-          {/* Chain of Thought - shows step-by-step progress */}
-          {chainSteps.length > 0 && <ChainOfThought steps={chainSteps} />}
-
-          {/* Reasoning */}
-          {thinkingReasoning && (
-            <Reasoning isStreaming={isStreaming}>
-              {thinkingReasoning}
-            </Reasoning>
-          )}
-
-          {/* Active tools - show each unique tool once */}
-          {activityTools.length > 0 && (
-            <div className="space-y-1">
-              {activityTools.map((tool) => (
-                <Tool
-                  key={tool.callID}
-                  name={tool.tool}
-                  status={mapToolStatus(tool.state.status)}
-                  input={tool.state.input || {}}
-                  output={tool.state.output}
-                  duration={
-                    tool.state.time?.start && tool.state.time?.end
-                      ? tool.state.time.end - tool.state.time.start
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Current status label */}
-          {!thinkingReasoning && activityTools.length === 0 && thinkingStatus && (
-            <Loader message={thinkingStatus} />
-          )}
-        </Message>
+        <SubagentActivity
+          activityTools={activityTools}
+          chainSteps={chainSteps}
+          thinkingReasoning={thinkingReasoning}
+          thinkingStatus={thinkingStatus}
+          isStreaming={isStreaming}
+          streamStartTime={streamStartTime}
+        />
       )}
 
       {/* Permission Requests */}
@@ -413,4 +385,166 @@ function useElapsed(startTime: number) {
     return () => clearInterval(interval)
   }, [startTime])
   return elapsed
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes}m, ${secs}s`
+}
+
+interface SubagentActivityProps {
+  activityTools: SSEToolPart[]
+  chainSteps: ReturnType<typeof buildChainOfThoughtSteps>
+  thinkingReasoning: string
+  thinkingStatus: string
+  isStreaming: boolean
+  streamStartTime: number | null
+}
+
+function SubagentActivity({
+  activityTools,
+  chainSteps,
+  thinkingReasoning,
+  thinkingStatus,
+  isStreaming,
+  streamStartTime,
+}: SubagentActivityProps) {
+  const [expanded, setExpanded] = useState(false)
+  
+  // Get unique tool names for pill display
+  const uniqueTools = Array.from(new Set(activityTools.map((t) => t.tool)))
+  
+  // Calculate duration
+  const duration = streamStartTime ? Math.floor((Date.now() - streamStartTime) / 1000) : 0
+  const durationText = duration > 0 ? formatDuration(duration) : null
+  
+  // Determine activity summary from status or tool names
+  const activitySummary = thinkingStatus || (uniqueTools.length > 0 ? uniqueTools[0] : 'Working...')
+  
+  // Group tools by name for display
+  const toolsByType = activityTools.reduce((acc, tool) => {
+    if (!acc[tool.tool]) {
+      acc[tool.tool] = []
+    }
+    acc[tool.tool].push(tool)
+    return acc
+  }, {} as Record<string, SSEToolPart[]>)
+
+  return (
+    <Message role="assistant">
+      {/* Tools displayed above as pills */}
+      {uniqueTools.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {uniqueTools.map((toolName) => {
+            const tools = toolsByType[toolName]
+            const latestTool = tools[tools.length - 1]
+            const status = mapToolStatus(latestTool.state.status)
+            const isActive = status === 'in_progress' || status === 'pending'
+            
+            return (
+              <div
+                key={toolName}
+                className={`
+                  inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                  ${isActive 
+                    ? 'bg-primary/10 text-primary border border-primary/20' 
+                    : 'bg-muted text-muted-foreground border border-border'
+                  }
+                `}
+              >
+                {isActive && (
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+                  </span>
+                )}
+                <span>{toolName}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Activity summary with expandable steps */}
+      {(chainSteps.length > 0 || activityTools.length > 0 || thinkingReasoning) && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          {/* Summary header - clickable to expand */}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 bg-foreground text-background rounded-full text-xs font-medium">
+                {activitySummary}
+              </span>
+              {durationText && (
+                <span className="text-xs text-muted-foreground ml-1">{durationText}</span>
+              )}
+            </div>
+            <svg
+              className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* Expanded content */}
+          {expanded && (
+            <div className="px-4 pb-4 space-y-3 border-t border-border">
+              {/* Chain of Thought steps */}
+              {chainSteps.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Steps</div>
+                  <ChainOfThought steps={chainSteps} />
+                </div>
+              )}
+
+              {/* Reasoning */}
+              {thinkingReasoning && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Reasoning</div>
+                  <Reasoning isStreaming={isStreaming}>
+                    {thinkingReasoning}
+                  </Reasoning>
+                </div>
+              )}
+
+              {/* Detailed tool calls */}
+              {activityTools.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Tool Calls</div>
+                  <div className="space-y-2">
+                    {activityTools.map((tool) => (
+                      <Tool
+                        key={tool.callID}
+                        name={tool.tool}
+                        status={mapToolStatus(tool.state.status)}
+                        input={tool.state.input || {}}
+                        output={tool.state.output}
+                        duration={
+                          tool.state.time?.start && tool.state.time?.end
+                            ? tool.state.time.end - tool.state.time.start
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Status when no tools/reasoning yet */}
+      {!thinkingReasoning && activityTools.length === 0 && chainSteps.length === 0 && thinkingStatus && (
+        <Loader message={thinkingStatus} />
+      )}
+    </Message>
+  )
 }

@@ -52,7 +52,7 @@ export function PromptInput({
           placeholder={placeholder}
           disabled={disabled || isStreaming}
           rows={1}
-          className="flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none disabled:opacity-50 min-h-[48px] max-h-[200px] overflow-y-auto"
+          className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-foreground outline-none disabled:opacity-50 min-h-[48px] max-h-[200px] overflow-y-auto placeholder:text-muted-foreground"
           style={{ height: 'auto' }}
         />
         <div className="flex items-center gap-2 px-3 py-2">

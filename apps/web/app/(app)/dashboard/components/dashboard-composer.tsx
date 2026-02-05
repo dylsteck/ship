@@ -104,7 +104,7 @@ export function DashboardComposer({
               onKeyDown={onKeyDown}
               rows={activeSessionId ? 2 : 3}
               className={cn(
-                'w-full resize-none bg-transparent text-[15px] placeholder:text-muted-foreground/60 focus:outline-none transition-all duration-300',
+                'w-full resize-none bg-transparent text-foreground text-[15px] placeholder:text-muted-foreground/60 focus:outline-none transition-all duration-300',
                 activeSessionId ? 'min-h-[56px]' : 'min-h-[88px]',
               )}
             />

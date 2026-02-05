@@ -8,7 +8,7 @@ import { SandboxToolbar } from '@/components/sandbox/sandbox-toolbar'
 import { VSCodeDrawer } from '@/components/sandbox/vscode-drawer'
 import { TerminalDrawer } from '@/components/sandbox/terminal-drawer'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@ship/ui'
 import type { ChatSession, User } from '@/lib/api'
@@ -23,11 +23,19 @@ interface SessionPageClientProps {
 }
 
 // Hook to manage sessions locally with optimistic updates
-function useLocalSessions(initialSessions: ChatSession[]) {
+function useLocalSessions(initialSessions: ChatSession[], currentSessionId: string) {
+  const router = useRouter()
   const [sessions, setSessions] = useState(initialSessions)
 
   const removeSession = (sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+    
+    // If we deleted the currently viewed session, redirect to home and refresh
+    if (currentSessionId === sessionId) {
+      router.push('/')
+      // Force a full page refresh to ensure clean state
+      window.location.href = '/'
+    }
   }
 
   return { sessions, removeSession }
@@ -42,7 +50,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   const [currentTool, setCurrentTool] = useState<string>()
 
   // Local session state for optimistic updates on delete
-  const { sessions, removeSession } = useLocalSessions(initialSessions)
+  const { sessions, removeSession } = useLocalSessions(initialSessions, sessionId)
   const [sessionInfo, setSessionInfo] = useState({
     repoOwner: '',
     repoName: '',
@@ -355,9 +363,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           <header className="flex items-center justify-between border-b bg-white dark:bg-background/95 px-4 py-3 relative z-10">
             <div className="flex items-center gap-3">
               <SidebarTrigger className="cursor-pointer" />
-              <Link href="/" className="text-muted-foreground hover:text-foreground">
-                ← Back
-              </Link>
               <div>
                 <h1 className="font-semibold text-foreground">
                   {sessionTitle
