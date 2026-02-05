@@ -19,6 +19,10 @@ import { CreateSessionDialog } from '@/components/session/create-session-dialog'
 import { SidebarProvider, SidebarInset, SidebarTrigger, cn, Button } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
 import { ThinkingIndicator, type ToolPart } from '@/components/chat/thinking-indicator'
+import { parseSSEEvent, extractCostInfo, getEventStatus } from '@/lib/sse-parser'
+import type { ToolPart as SSEToolPart, StepFinishPart, ReasoningPart } from '@/lib/sse-types'
+import { ActivityFeed } from '@/components/chat/activity-feed'
+import { SessionPanel } from '@/components/chat/session-panel'
 import { DashboardStats } from '@/components/dashboard-stats'
 import { DashboardBackground } from '@/components/dashboard-background'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -71,6 +75,23 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
   const [wsStatus, setWsStatus] = useState<WebSocketStatus>('disconnected')
   const [messageQueue, setMessageQueue] = useState<string[]>([])
+
+  // New typed SSE state for rich activity display
+  const [activityTools, setActivityTools] = useState<SSEToolPart[]>([])
+  const [reasoningParts, setReasoningParts] = useState<ReasoningPart[]>([])
+  const [lastStepCost, setLastStepCost] = useState<{ cost: number; tokens: StepFinishPart['tokens'] } | null>(null)
+  const [sessionTodos, setSessionTodos] = useState<
+    Array<{
+      id: string
+      content: string
+      status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+      priority: 'high' | 'medium' | 'low'
+    }>
+  >([])
+  const [fileDiffs, setFileDiffs] = useState<Array<{ filename: string; additions: number; deletions: number }>>([])
+  const [contextTokens, setContextTokens] = useState<number>(0)
+  const [totalCost, setTotalCost] = useState<number>(0)
+  const [streamStartTime, setStreamStartTime] = useState<number | null>(null)
 
   // Refs
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
@@ -310,6 +331,12 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
       setThinkingStatus('Starting')
       assistantTextRef.current = ''
 
+      // Reset new typed SSE state
+      setActivityTools([])
+      setReasoningParts([])
+      setLastStepCost(null)
+      setStreamStartTime(Date.now())
+
       // Optimistically add user message
       const userMessage: Message = {
         id: `temp-${Date.now()}`,
@@ -380,187 +407,206 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
-                const data = JSON.parse(line.slice(6))
+                const rawData = JSON.parse(line.slice(6))
+                const event = parseSSEEvent(rawData)
+                if (!event) continue
 
-                if (data.type === 'message.part.updated') {
-                  const part = data.properties?.part
-                  const delta = data.properties?.delta
+                // Handle based on event type using typed parser
+                switch (event.type) {
+                  case 'message.part.updated': {
+                    const part = event.properties.part
+                    const delta = event.properties.delta
 
-                  if (part?.type === 'text') {
-                    if (typeof delta === 'string') {
-                      assistantTextRef.current += delta
-                    } else if (typeof part.text === 'string') {
-                      assistantTextRef.current = part.text
-                    }
-
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
-                      ),
-                    )
-                  }
-
-                  if (part?.type === 'tool') {
-                    setThinkingParts((prev) => {
-                      const existing = prev.findIndex((p) => p.callID === part.callID)
-                      if (existing >= 0) {
-                        return prev.map((p, i) => (i === existing ? part : p))
+                    // Handle text parts
+                    if (part.type === 'text') {
+                      if (typeof delta === 'string') {
+                        assistantTextRef.current += delta
+                      } else if (part.text) {
+                        assistantTextRef.current = part.text
                       }
-                      return [...prev, part]
-                    })
-                    const toolName = part.tool?.toLowerCase() || ''
-                    const toolTitle = part.state?.title || ''
-
-                    if (toolName.includes('read') || toolName.includes('glob') || toolName.includes('grep')) {
-                      setThinkingStatus(`Reading: ${toolTitle.slice(0, 40) || 'files...'}`)
-                    } else if (toolName.includes('write') || toolName.includes('edit')) {
-                      setThinkingStatus(`Writing: ${toolTitle.slice(0, 40) || 'code...'}`)
-                    } else if (toolName.includes('bash') || toolName.includes('run')) {
-                      setThinkingStatus(`Running: ${toolTitle.slice(0, 40) || 'command...'}`)
-                    } else if (toolName.includes('task') || toolName.includes('agent')) {
-                      setThinkingStatus(`Creating task...`)
-                    } else {
-                      setThinkingStatus(`${toolName}: ${toolTitle.slice(0, 30)}`)
+                      setMessages((prev) =>
+                        prev.map((m) =>
+                          m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
+                        ),
+                      )
                     }
+
+                    // Handle tool parts - update both old and new state for backward compatibility
+                    if (part.type === 'tool') {
+                      const toolPart: SSEToolPart = {
+                        id: part.id,
+                        sessionID: part.sessionID,
+                        messageID: part.messageID,
+                        type: 'tool',
+                        callID: part.callID,
+                        tool: part.tool,
+                        state: part.state,
+                      }
+
+                      // Update new typed activity tools
+                      setActivityTools((prev) => {
+                        const existing = prev.findIndex((t) => t.callID === toolPart.callID)
+                        if (existing >= 0) {
+                          return prev.map((t, i) => (i === existing ? toolPart : t))
+                        }
+                        return [...prev, toolPart]
+                      })
+
+                      // Also update old thinkingParts for backward compatibility
+                      const oldToolPart: ToolPart = {
+                        type: 'tool',
+                        callID: part.callID,
+                        tool: part.tool,
+                        state: {
+                          title: part.state.title || '',
+                          status: part.state.status === 'completed' ? 'complete' : part.state.status,
+                        },
+                      }
+                      setThinkingParts((prev) => {
+                        const existing = prev.findIndex((p) => p.callID === oldToolPart.callID)
+                        if (existing >= 0) {
+                          return prev.map((p, i) => (i === existing ? oldToolPart : p))
+                        }
+                        return [...prev, oldToolPart]
+                      })
+
+                      // Update status label using typed helper
+                      const statusInfo = getEventStatus(event)
+                      if (statusInfo) {
+                        setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
+                      }
+                    }
+
+                    // Handle reasoning parts
+                    if (part.type === 'reasoning' && part.text) {
+                      setThinkingReasoning((prev) => (prev ? `${prev}\n\n${part.text}` : part.text))
+                      setThinkingStatus('💭 Reasoning...')
+
+                      // Add to reasoningParts array for ActivityFeed
+                      const reasoningPart: ReasoningPart = {
+                        id: part.id,
+                        sessionID: part.sessionID,
+                        messageID: part.messageID,
+                        type: 'reasoning',
+                        text: part.text,
+                      }
+                      setReasoningParts((prev) => [...prev, reasoningPart])
+                    }
+
+                    // Handle step-finish for cost tracking
+                    if (part.type === 'step-finish') {
+                      const costInfo = extractCostInfo(event)
+                      if (costInfo) {
+                        setLastStepCost({
+                          cost: costInfo.cost,
+                          tokens: {
+                            input: costInfo.tokens.input,
+                            output: costInfo.tokens.output,
+                            reasoning: costInfo.tokens.reasoning,
+                            cache: { read: costInfo.tokens.cacheRead, write: costInfo.tokens.cacheWrite },
+                          },
+                        })
+                        setTotalCost((prev) => prev + costInfo.cost)
+                        setContextTokens(costInfo.tokens.input + costInfo.tokens.output + costInfo.tokens.reasoning)
+                      }
+                    }
+                    break
                   }
 
-                  if (part?.type === 'reasoning') {
-                    const reasoningText = part.reasoning || part.text || ''
-                    if (reasoningText) {
-                      setThinkingReasoning(reasoningText)
-                      setThinkingStatus('Considering next steps')
+                  case 'status': {
+                    const statusInfo = getEventStatus(event)
+                    if (statusInfo) {
+                      setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
                     }
+                    break
+                  }
+
+                  case 'session.status': {
+                    const statusInfo = getEventStatus(event)
+                    if (statusInfo) {
+                      setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
+                    }
+                    break
+                  }
+
+                  case 'todo.updated': {
+                    const todos = event.properties.todos
+                    setSessionTodos(todos)
+                    if (todos.length > 0) {
+                      setThinkingStatus(`📋 Task: ${todos[0].content.slice(0, 40)}`)
+                    }
+                    break
+                  }
+
+                  case 'session.diff': {
+                    setFileDiffs(event.properties.diff)
+                    break
+                  }
+
+                  case 'file-watcher.updated': {
+                    const { event: fileEvent, path } = event.properties
+                    setThinkingStatus(`📝 ${fileEvent}: ${path.split('/').pop()}`)
+                    break
+                  }
+
+                  case 'heartbeat': {
+                    const statusInfo = getEventStatus(event)
+                    if (statusInfo) {
+                      setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
+                    }
+                    break
+                  }
+
+                  case 'done':
+                  case 'session.idle': {
+                    setIsStreaming(false)
+                    setThinkingStatus('')
+                    streamingMessageRef.current = null
+                    // Don't clear activity tools immediately - let user see them
+                    setTimeout(() => {
+                      setActivityTools([])
+                      setThinkingParts([])
+                      setLastStepCost(null)
+                      setReasoningParts([])
+                    }, 3000)
+                    break
+                  }
+
+                  case 'error': {
+                    const errorMessage: Message = {
+                      id: `error-${Date.now()}`,
+                      role: 'system',
+                      content: event.error,
+                      type: 'error',
+                      errorCategory: event.category || 'persistent',
+                      retryable: event.retryable || false,
+                      createdAt: Math.floor(Date.now() / 1000),
+                    }
+                    setMessages((prev) => [...prev, errorMessage])
+                    setIsStreaming(false)
+                    setThinkingStatus('')
+                    streamingMessageRef.current = null
+                    break
                   }
                 }
 
-                if (data.type === 'assistant') {
+                // Handle assistant message (non-typed event)
+                if (rawData.type === 'assistant') {
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === streamingMessageRef.current ? { ...m, content: data.content, id: data.id || m.id } : m,
+                      m.id === streamingMessageRef.current
+                        ? { ...m, content: rawData.content, id: rawData.id || m.id }
+                        : m,
                     ),
                   )
                 }
 
-                // Handle session status events for real-time updates
-                if (data.type === 'session.status') {
-                  const status = data.properties?.status
-                  if (status) {
-                    setThinkingStatus(status)
-                  }
-                }
-
-                // Handle todo updates (tasks created by agent)
-                if (data.type === 'todo.updated') {
-                  const todoTitle = data.properties?.todo?.title || 'New task'
-                  setThinkingStatus(`Task: ${todoTitle.slice(0, 40)}`)
-                }
-
-                // Handle file watcher updates (files changed)
-                if (data.type === 'file-watcher.updated') {
-                  const event = data.properties?.event
-                  const path = data.properties?.path
-                  if (event && path) {
-                    setThinkingStatus(`${event}: ${path.split('/').pop()}`)
-                  }
-                }
-
-                if (data.type === 'done' || data.type === 'session.idle') {
-                  setIsStreaming(false)
-                  setThinkingStatus('')
-                  setThinkingParts([])
-                  streamingMessageRef.current = null
-                }
-
-                // Handle heartbeat events - show waiting status
-                if (data.type === 'heartbeat') {
-                  const waitTime = data.timeSinceLastEvent || 0
-                  setThinkingStatus(`Waiting for agent... (${waitTime}s)`)
-                }
-
-                // Handle raw SSE event wrapper (server sends event inside 'event' field)
-                if (data.event && typeof data.event === 'object') {
-                  const innerEvent = data.event
-                  // Process the inner event if it has tool parts
-                  if (innerEvent.type === 'message.part.updated') {
-                    const part = innerEvent.properties?.part
-                    if (part?.type === 'tool') {
-                      const toolName = typeof part.tool === 'string' ? part.tool : part.tool?.name
-                      const toolTitle = part.state?.title || ''
-                      const toolStatus = part.state?.status
-
-                      if (toolName && part.callID) {
-                        const toolPart: ToolPart = {
-                          type: 'tool',
-                          callID: part.callID,
-                          tool: toolName,
-                          state: {
-                            title: toolTitle,
-                            status: toolStatus as 'pending' | 'running' | 'complete' | 'error' | undefined,
-                          },
-                        }
-                        setThinkingParts((prev) => {
-                          const existing = prev.findIndex((p) => p.callID === toolPart.callID)
-                          if (existing >= 0) {
-                            return prev.map((p, i) => (i === existing ? toolPart : p))
-                          }
-                          return [...prev, toolPart]
-                        })
-                      }
-
-                      if (toolName) {
-                        const name = toolName.toLowerCase()
-                        if (name.includes('read') || name.includes('glob') || name.includes('grep')) {
-                          setThinkingStatus(`Reading: ${toolTitle.slice(0, 40) || 'files...'}`)
-                        } else if (name.includes('write') || name.includes('edit')) {
-                          setThinkingStatus(`Writing: ${toolTitle.slice(0, 40) || 'code...'}`)
-                        } else if (name.includes('bash') || name.includes('run') || name.includes('shell')) {
-                          setThinkingStatus(`Running: ${toolTitle.slice(0, 40) || 'command...'}`)
-                        } else {
-                          setThinkingStatus(`${toolName}: ${toolTitle.slice(0, 30)}`)
-                        }
-                      }
-                    }
-                  }
-                }
-
-                if (data.type === 'tool-call' && data.toolName) {
-                  const toolPart: ToolPart = {
-                    type: 'tool',
-                    callID: data.callId || `tool-${Date.now()}`,
-                    tool: data.toolName,
-                    state: { title: data.toolName, status: 'running' },
-                  }
-                  setThinkingParts((prev) => {
-                    const existing = prev.findIndex((p) => p.callID === toolPart.callID)
-                    if (existing >= 0) {
-                      return prev.map((p, i) => (i === existing ? toolPart : p))
-                    }
-                    return [...prev, toolPart]
-                  })
-                }
-
-                if (data.error) {
-                  const errorMessage: Message = {
-                    id: `error-${Date.now()}`,
-                    role: 'system',
-                    content: data.error,
-                    type: 'error',
-                    errorCategory: data.category || 'persistent',
-                    retryable: data.retryable || false,
-                    createdAt: Math.floor(Date.now() / 1000),
-                  }
-                  setMessages((prev) => [...prev, errorMessage])
-                  // Stop streaming on error
-                  setIsStreaming(false)
-                  setThinkingStatus('')
-                  streamingMessageRef.current = null
-                }
-
-                if (data.prUrl) {
+                // Handle PR created (non-typed event)
+                if (rawData.prUrl) {
                   const prMessage: Message = {
                     id: `pr-${Date.now()}`,
                     role: 'system',
-                    content: `Draft PR created: ${data.prUrl}`,
+                    content: `Draft PR created: ${rawData.prUrl}`,
                     type: 'pr-notification',
                     createdAt: Math.floor(Date.now() / 1000),
                   }
@@ -595,6 +641,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         setIsStreaming(false)
         setThinkingStatus('') // Clear "Starting" status on error
         setThinkingParts([]) // Clear thinking parts
+        setActivityTools([]) // Clear activity tools
         streamingMessageRef.current = null
       }
     },
@@ -786,8 +833,22 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       )
                     })}
 
-                    {/* Thinking indicator - show when streaming and we have messages */}
-                    {isStreaming && messages.length > 0 && (
+                    {/* Activity feed - show when streaming and we have activity */}
+                    {isStreaming && (activityTools.length > 0 || thinkingStatus) && (
+                      <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+                        <ActivityFeed
+                          tools={activityTools}
+                          reasoning={reasoningParts}
+                          tokenInfo={lastStepCost?.tokens}
+                          cost={lastStepCost?.cost}
+                          isStreaming={isStreaming}
+                          startTime={streamStartTime || undefined}
+                        />
+                      </div>
+                    )}
+
+                    {/* Fallback to ThinkingIndicator when no typed tools but still streaming */}
+                    {isStreaming && messages.length > 0 && activityTools.length === 0 && thinkingParts.length > 0 && (
                       <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
                         <ThinkingIndicator
                           isThinking={isStreaming}
@@ -1029,53 +1090,34 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
               </div>
             </div>
 
-            {/* Right panel - Ramp-style (only in chat mode, lg+ screens) */}
+            {/* Right panel - SessionPanel (only in chat mode, lg+ screens) */}
             {activeSessionId && (
-              <div className="w-56 border-l border-border/40 bg-background/60 backdrop-blur-sm p-4 space-y-5 hidden lg:block">
-                <div>
-                  <h3 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                    Repository
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <HugeiconsIcon icon={GithubIcon} strokeWidth={2} className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium truncate">{selectedRepo?.name || 'Unknown'}</span>
-                  </div>
-                  {selectedRepo?.owner && (
-                    <p className="text-xs text-muted-foreground mt-0.5 ml-6">{selectedRepo.owner}</p>
-                  )}
-                </div>
-
-                {selectedModel && (
-                  <div>
-                    <h3 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      Model
-                    </h3>
-                    <p className="text-sm">{selectedModel.name}</p>
-                    <p className="text-xs text-muted-foreground">{selectedModel.provider}</p>
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Mode</h3>
-                  <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted text-xs">
-                    <span
-                      className={cn('w-1.5 h-1.5 rounded-full', mode === 'build' ? 'bg-emerald-500' : 'bg-blue-500')}
-                    />
-                    <span className="capitalize">{mode}</span>
-                  </div>
-                </div>
-
-                {isStreaming && (
-                  <div>
-                    <h3 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      Status
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                      <span className="text-xs text-muted-foreground">{thinkingStatus}</span>
-                    </div>
-                  </div>
-                )}
+              <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden lg:block overflow-y-auto">
+                <SessionPanel
+                  sessionId={activeSessionId}
+                  repo={selectedRepo ? { owner: selectedRepo.owner, name: selectedRepo.name } : undefined}
+                  model={
+                    selectedModel
+                      ? {
+                          id: selectedModel.id,
+                          name: selectedModel.name,
+                          provider: selectedModel.provider,
+                          mode: mode,
+                        }
+                      : undefined
+                  }
+                  tokens={
+                    lastStepCost?.tokens
+                      ? {
+                          ...lastStepCost.tokens,
+                          contextLimit: 200000,
+                        }
+                      : undefined
+                  }
+                  cost={totalCost > 0 ? totalCost : undefined}
+                  todos={sessionTodos}
+                  diffs={fileDiffs}
+                />
               </div>
             )}
           </div>

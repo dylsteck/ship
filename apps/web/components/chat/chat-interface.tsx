@@ -9,6 +9,9 @@ import type { AgentStatus } from '@/components/session/status-indicator'
 import { aggregateCosts, type CostBreakdown } from '@/lib/cost-tracker'
 import { CostBreakdown as CostBreakdownComponent } from '@/components/cost/cost-breakdown'
 import { ThinkingIndicator, type ToolPart } from './thinking-indicator'
+import { parseSSEEvent, extractCostInfo, getEventStatus } from '@/lib/sse-parser'
+import type { ToolPart as SSEToolPart, StepFinishPart, ReasoningPart } from '@/lib/sse-types'
+import { ActivityFeed } from './activity-feed'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
@@ -42,6 +45,12 @@ export function ChatInterface({
   const [thinkingReasoning, setThinkingReasoning] = useState<string>('')
   const [thinkingExpanded, setThinkingExpanded] = useState(true)
   const [thinkingStatus, setThinkingStatus] = useState<string>('')
+
+  // New typed SSE state for rich activity display
+  const [activityTools, setActivityTools] = useState<SSEToolPart[]>([])
+  const [reasoningParts, setReasoningParts] = useState<ReasoningPart[]>([])
+  const [lastStepCost, setLastStepCost] = useState<{ cost: number; tokens: StepFinishPart['tokens'] } | null>(null)
+  const [streamStartTime, setStreamStartTime] = useState<number | null>(null)
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
@@ -182,6 +191,12 @@ export function ChatInterface({
       setThinkingReasoning('')
       setThinkingExpanded(true)
       setThinkingStatus('🚀 Starting...') // Set initial status so ThinkingIndicator renders
+
+      // Reset new typed SSE state
+      setActivityTools([])
+      setReasoningParts([])
+      setLastStepCost(null)
+      setStreamStartTime(Date.now())
 
       // Optimistically add user message
       const userMessage: Message = {
@@ -462,6 +477,29 @@ export function ChatInterface({
                         // Add new part
                         return [...prev, toolPart]
                       })
+
+                      // Also update new typed activity tools for ActivityFeed
+                      const sseToolPart: SSEToolPart = {
+                        id: part.id || callID,
+                        sessionID: part.sessionID || sessionId,
+                        messageID: part.messageID || streamingMessageRef.current || '',
+                        type: 'tool',
+                        callID,
+                        tool: toolName,
+                        state: {
+                          status: part.state?.status === 'complete' ? 'completed' : part.state?.status || 'running',
+                          input: part.input || {},
+                          title: safeTitle,
+                          output: part.output,
+                        },
+                      }
+                      setActivityTools((prev) => {
+                        const existing = prev.findIndex((t) => t.callID === sseToolPart.callID)
+                        if (existing >= 0) {
+                          return prev.map((t, i) => (i === existing ? sseToolPart : t))
+                        }
+                        return [...prev, sseToolPart]
+                      })
                     }
                   } else if (part?.type === 'reasoning') {
                     // Handle reasoning parts - ensure text is a string
@@ -474,10 +512,37 @@ export function ChatInterface({
                       })
                       onStatusChange?.('planning', 'Reasoning...')
                       setThinkingStatus('💭 Reasoning...')
+
+                      // Add to reasoningParts array for ActivityFeed
+                      const reasoningPart: ReasoningPart = {
+                        id: part.id || `reasoning-${Date.now()}`,
+                        sessionID: part.sessionID || sessionId,
+                        messageID: part.messageID || streamingMessageRef.current || '',
+                        type: 'reasoning',
+                        text: reasoningText,
+                      }
+                      setReasoningParts((prev) => [...prev, reasoningPart])
                     }
                   } else if (part?.type === 'step-start') {
                     // Handle step-start events - just update status
                     setThinkingStatus('🚀 Starting step...')
+                  } else if (part?.type === 'step-finish') {
+                    // Handle step-finish for cost tracking
+                    const event = parseSSEEvent(data)
+                    if (event) {
+                      const costInfo = extractCostInfo(event)
+                      if (costInfo) {
+                        setLastStepCost({
+                          cost: costInfo.cost,
+                          tokens: {
+                            input: costInfo.tokens.input,
+                            output: costInfo.tokens.output,
+                            reasoning: costInfo.tokens.reasoning,
+                            cache: { read: costInfo.tokens.cacheRead, write: costInfo.tokens.cacheWrite },
+                          },
+                        })
+                      }
+                    }
                   }
                 }
 
@@ -590,6 +655,10 @@ export function ChatInterface({
                     setThinkingParts([])
                     setThinkingReasoning('')
                     setThinkingStatus('')
+                    // Also clear activity state
+                    setActivityTools([])
+                    setReasoningParts([])
+                    setLastStepCost(null)
                   }, 2000)
                   onStatusChange?.('idle')
                 }
@@ -774,19 +843,35 @@ export function ChatInterface({
             onOpenTerminal={onOpenTerminal}
           />
 
-          {/* Show ThinkingIndicator when streaming to display all OpenCode activity */}
-          {isStreaming && (thinkingParts.length > 0 || thinkingReasoning || thinkingStatus) && (
+          {/* Show ActivityFeed when streaming with typed tools */}
+          {isStreaming && (activityTools.length > 0 || thinkingStatus) && (
             <div className="px-6 pb-6">
-              <ThinkingIndicator
-                isThinking={isStreaming}
-                parts={thinkingParts}
-                reasoning={thinkingReasoning}
-                statusLabel={thinkingStatus || currentTool || 'Processing...'}
-                expanded={thinkingExpanded}
-                onToggle={() => setThinkingExpanded(!thinkingExpanded)}
+              <ActivityFeed
+                tools={activityTools}
+                reasoning={reasoningParts}
+                tokenInfo={lastStepCost?.tokens}
+                cost={lastStepCost?.cost}
+                isStreaming={isStreaming}
+                startTime={streamStartTime || undefined}
               />
             </div>
           )}
+
+          {/* Fallback to ThinkingIndicator when no typed tools but still streaming */}
+          {isStreaming &&
+            activityTools.length === 0 &&
+            (thinkingParts.length > 0 || thinkingReasoning || thinkingStatus) && (
+              <div className="px-6 pb-6">
+                <ThinkingIndicator
+                  isThinking={isStreaming}
+                  parts={thinkingParts}
+                  reasoning={thinkingReasoning}
+                  statusLabel={thinkingStatus || currentTool || 'Processing...'}
+                  expanded={thinkingExpanded}
+                  onToggle={() => setThinkingExpanded(!thinkingExpanded)}
+                />
+              </div>
+            )}
         </div>
       </div>
 

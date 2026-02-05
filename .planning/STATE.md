@@ -2,19 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-01)
-
 **Core value:** Agent works autonomously in the background on real coding tasks while you do other things
-**Current focus:** Planning next milestone (v1.1 or v2.0)
+**Current focus:** OpenCode UI Parity - Complete
 
 ## Current Position
 
 Phase: 100-opencode-ui-parity
-Plan: 02 of 4 (Typed SSE event system)
-Status: In progress
-Last activity: 2026-02-05 — Completed 100-02-PLAN.md
+Plan: 04 of 4 (SSE Integration)
+Status: Phase complete
+Last activity: 2026-02-05 — Completed 100-04-PLAN.md
 
-Progress: [████████████████████░░] 96% (v1.0 + hotfixes + UI parity 1/4)
+Progress: [██████████████████████] 100% (v1.0 + hotfixes + UI parity complete)
 
 ## Performance Metrics
 
@@ -99,6 +97,10 @@ Recent decisions affecting current work:
 - Task detection: Pattern matching on action verbs to trigger git workflow automatically
 - Dual communication: SSE for streaming responses, WebSocket for real-time status updates
 - File change tracking: Detect write/edit/create tool calls to determine if commit needed
+- SSE parsing: Use parseSSEEvent() from sse-parser for typed event handling in streaming loops
+- Activity state: Track tools, reasoning, costs separately using typed SSEToolPart for rich display
+- UI fallback: Show ActivityFeed when typed tools available, fallback to ThinkingIndicator otherwise
+- Stream cleanup: Clear activity state with 3-second delay after stream ends to let user see final state
 
 ### Pending Todos
 
@@ -120,9 +122,9 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-05
-Stopped at: Completed 100-02-PLAN.md (Typed SSE event system)
-Resume file: .planning/phases/100-opencode-ui-parity/100-02-SUMMARY.md
+Last session: 2026-02-05T03:24:40Z
+Stopped at: Completed 100-04-PLAN.md (SSE Integration - Phase complete)
+Resume file: .planning/phases/100-opencode-ui-parity/100-04-SUMMARY.md
 
 ## Phase 1 Summary
 
