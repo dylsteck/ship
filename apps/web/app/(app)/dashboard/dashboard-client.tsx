@@ -84,11 +84,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
   const { createSession, isCreating } = useCreateSession()
 
-  // Set default model once loaded - prefer Big Pickle (OpenCode's optimized coding model)
+  // Set default model once loaded - prefer Big Pickle (free stealth model via OpenCode Zen)
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
-      // Find Big Pickle as the preferred default
-      const preferredDefault = models.find((m) => m.id === 'opencode/big-pickle')
+      // Find Big Pickle as the preferred default (new ID format)
+      const preferredDefault = models.find((m) => m.id === 'big-pickle')
       // Or find any model marked as default
       const markedDefault = models.find((m) => m.isDefault)
       // Fall back to first model
@@ -620,7 +620,8 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         userId,
         repoOwner: data.repoOwner,
         repoName: data.repoName,
-        model: data.model || selectedModel?.id || 'anthropic/claude-sonnet-4',
+        // Use selected model ID directly (big-pickle, not opencode/big-pickle)
+        model: data.model || selectedModel?.id || 'big-pickle',
       })
 
       if (newSession) {
