@@ -433,10 +433,19 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
 
+          let currentEventType = ''
           for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEventType = line.slice(7).trim()
+              continue
+            }
             if (line.startsWith('data: ')) {
               try {
                 const rawData = JSON.parse(line.slice(6))
+                // Use event type from 'event:' line if data.type is not present
+                if (!rawData.type && currentEventType) {
+                  rawData.type = currentEventType
+                }
                 const event = parseSSEEvent(rawData)
                 if (!event) continue
 
