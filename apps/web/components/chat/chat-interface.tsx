@@ -205,13 +205,21 @@ export function ChatInterface({
       setMessages((prev) => [...prev, assistantMessage])
 
       try {
-        console.log('[chat-interface] Sending chat message to API...')
+        console.log('[chat-interface] ========== STARTING CHAT REQUEST ==========')
+        console.log('[chat-interface] Session ID:', sessionId)
+        console.log('[chat-interface] Content:', content.slice(0, 100))
+        console.log('[chat-interface] Mode:', modeOverride ?? initialMode)
+
         const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
-        console.log('[chat-interface] Response received:', {
-          ok: response.ok,
-          status: response.status,
-          headers: Object.fromEntries(response.headers.entries()),
-        })
+
+        console.log('[chat-interface] ========== RESPONSE RECEIVED ==========')
+        console.log('[chat-interface] Response OK:', response.ok)
+        console.log('[chat-interface] Response status:', response.status)
+        console.log('[chat-interface] Response statusText:', response.statusText)
+        console.log('[chat-interface] Response type:', response.type)
+        console.log('[chat-interface] Response headers:', Object.fromEntries(response.headers.entries()))
+        console.log('[chat-interface] Response body exists:', !!response.body)
+        console.log('[chat-interface] Response bodyUsed:', response.bodyUsed)
 
         // Check for non-OK responses (500, etc.) before trying to read stream
         if (!response.ok) {
@@ -256,29 +264,41 @@ export function ChatInterface({
         }
 
         if (!response.body) {
-          console.error('[chat-interface] No response body!')
+          console.error('[chat-interface] ❌ No response body!')
           throw new Error('No response body')
         }
 
-        console.log('[chat-interface] Starting to read SSE stream...')
+        console.log('[chat-interface] ========== STARTING SSE STREAM READ ==========')
+        console.log('[chat-interface] Getting reader from response.body...')
         const reader = response.body.getReader()
+        console.log('[chat-interface] Reader obtained:', !!reader)
+
         const decoder = new TextDecoder()
         let buffer = ''
         let chunkCount = 0
         // Reset cost events for this message
         costEventsRef.current = []
 
+        console.log('[chat-interface] Entering read loop...')
         while (true) {
+          console.log(`[chat-interface] Calling reader.read() for chunk #${chunkCount + 1}...`)
           const { done, value } = await reader.read()
           chunkCount++
-          console.log(`[chat-interface] SSE chunk #${chunkCount}:`, { done, valueLength: value?.length })
+
           if (done) {
-            console.log('[chat-interface] SSE stream ended')
+            console.log('[chat-interface] ========== SSE STREAM ENDED ==========')
+            console.log(`[chat-interface] Total chunks received: ${chunkCount}`)
             break
           }
 
+          console.log(`[chat-interface] ✅ SSE chunk #${chunkCount} received:`, {
+            done,
+            valueLength: value?.length,
+            valueType: typeof value,
+          })
+
           const chunk = decoder.decode(value, { stream: true })
-          console.log(`[chat-interface] SSE raw chunk: "${chunk.slice(0, 200)}..."`)
+          console.log(`[chat-interface] 📦 Decoded chunk (first 300 chars): "${chunk.slice(0, 300)}"`)
           buffer += chunk
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''

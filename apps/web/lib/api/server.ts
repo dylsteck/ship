@@ -133,17 +133,34 @@ export async function getChatMessages(
 
 /**
  * Send a chat message and get streaming response
+ * Uses fetch with explicit streaming configuration
  */
 export async function sendChatMessage(sessionId: string, content: string, mode?: 'build' | 'plan'): Promise<Response> {
-  console.log(`[api] Sending chat message to ${API_URL}/chat/${sessionId}`)
-  return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({ content, mode }),
-  })
+  const url = `${API_URL}/chat/${encodeURIComponent(sessionId)}`
+  console.log(`[api] Sending chat message to ${url}`)
+  console.log(`[api] Request body:`, { content: content.slice(0, 50), mode })
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify({ content, mode }),
+      // Ensure we can read the stream
+      cache: 'no-store',
+    })
+
+    console.log(`[api] Response status: ${response.status}`)
+    console.log(`[api] Response headers:`, Object.fromEntries(response.headers.entries()))
+    console.log(`[api] Response body exists: ${!!response.body}`)
+
+    return response
+  } catch (error) {
+    console.error(`[api] Fetch error:`, error)
+    throw error
+  }
 }
 
 /**
