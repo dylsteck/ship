@@ -21,6 +21,50 @@ export interface ErrorMessageProps {
 }
 
 /**
+ * Format raw error messages for better readability
+ */
+function formatErrorMessage(message: string): string {
+  // Check if it's a JSON error from API
+  try {
+    const parsed = JSON.parse(message)
+    if (parsed.message || parsed.error) {
+      message = parsed.message || parsed.error
+    }
+  } catch {
+    // Not JSON, continue with formatting
+  }
+
+  // Clean up common error patterns
+  let formatted = message
+
+  // Remove technical prefixes
+  formatted = formatted.replace(/^APIError\s*-\s*/, '')
+  formatted = formatted.replace(/^Error:\s*/, '')
+
+  // Handle Anthropic API errors specifically
+  if (formatted.includes('credit balance') || formatted.includes('Anthropic API')) {
+    return 'Your Anthropic API credit balance is too low. Please add credits to your account to continue using the agent.'
+  }
+
+  // Handle rate limiting
+  if (formatted.includes('rate limit') || formatted.includes('too many requests')) {
+    return 'Rate limit exceeded. Please wait a moment before trying again.'
+  }
+
+  // Handle network/connectivity issues
+  if (formatted.includes('network') || formatted.includes('connection') || formatted.includes('timeout')) {
+    return 'Network error. Please check your connection and try again.'
+  }
+
+  // Truncate very long errors
+  if (formatted.length > 300) {
+    formatted = formatted.slice(0, 300) + '...'
+  }
+
+  return formatted
+}
+
+/**
  * Get error title based on category
  */
 function getErrorTitle(category: ErrorCategory): string {
@@ -102,6 +146,7 @@ export function ErrorMessage({
 }: ErrorMessageProps) {
   const styles = getErrorStyles(category)
   const title = getErrorTitle(category)
+  const formattedMessage = formatErrorMessage(message)
 
   return (
     <div className={`rounded-lg border p-4 ${styles.container}`}>
@@ -109,7 +154,7 @@ export function ErrorMessage({
         <HugeiconsIcon icon={Alert01Icon} strokeWidth={2} className={`size-5 mt-0.5 flex-shrink-0 ${styles.icon}`} />
         <div className="flex-1 min-w-0">
           <p className={`font-medium ${styles.title}`}>{title}</p>
-          <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{message}</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{formattedMessage}</p>
 
           {/* Action buttons */}
           {(retryable || onOpenVSCode || onOpenTerminal) && (

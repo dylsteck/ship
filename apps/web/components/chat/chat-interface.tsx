@@ -100,13 +100,33 @@ export function ChatInterface({
 
         if (event.type === 'error') {
           // Error event from agent execution
+          let errorContent = typeof event.message === 'string' ? event.message : 'An error occurred'
+          let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
+          let retryable = event.retryable || false
+
+          // Categorize errors better
+          if (errorContent.includes('credit balance') || errorContent.includes('Anthropic API')) {
+            errorCategory = 'user-action' // User needs to add credits
+            retryable = false
+          } else if (errorContent.includes('rate limit') || errorContent.includes('too many requests')) {
+            errorCategory = 'transient' // Rate limit will reset
+            retryable = true
+          } else if (
+            errorContent.includes('network') ||
+            errorContent.includes('connection') ||
+            errorContent.includes('timeout')
+          ) {
+            errorCategory = 'transient' // Network issues are usually temporary
+            retryable = true
+          }
+
           const errorMessage: Message = {
             id: `error-${Date.now()}`,
             role: 'system',
-            content: typeof event.message === 'string' ? event.message : 'An error occurred',
+            content: errorContent,
             type: 'error',
-            errorCategory: event.category || 'persistent',
-            retryable: event.retryable || false,
+            errorCategory: event.category || errorCategory,
+            retryable: retryable,
             createdAt: Math.floor(Date.now() / 1000),
           }
           setMessages((prev) => [...prev, errorMessage])
@@ -192,14 +212,29 @@ export function ChatInterface({
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
           console.error('Chat request failed:', errorData)
 
-          // Add error message to chat
+          // Add error message to chat with better categorization
+          let errorContent = errorData.error || 'Failed to start agent'
+          let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
+          let retryable = false
+
+          // Categorize errors better
+          if (errorContent.includes('credit balance') || errorContent.includes('Anthropic API')) {
+            errorCategory = 'user-action' // User needs to add credits
+          } else if (errorContent.includes('rate limit') || errorContent.includes('too many requests')) {
+            errorCategory = 'transient' // Rate limit will reset
+            retryable = true
+          } else if (response.status >= 500) {
+            errorCategory = 'transient' // Server errors are often temporary
+            retryable = true
+          }
+
           const errorMessage: Message = {
             id: `error-${Date.now()}`,
             role: 'system',
-            content: errorData.error || 'Failed to start agent',
+            content: errorContent,
             type: 'error',
-            errorCategory: 'persistent',
-            retryable: false,
+            errorCategory: errorCategory,
+            retryable: retryable,
             createdAt: Math.floor(Date.now() / 1000),
           }
           setMessages((prev) => {
@@ -240,7 +275,7 @@ export function ChatInterface({
                 // Handle status events for progress updates
                 if (data.type === 'status') {
                   const statusMessage = data.message || 'Processing...'
-                  
+
                   // Update streaming label to show progress
                   if (data.status === 'provisioning') {
                     onStatusChange?.('planning', `Provisioning sandbox... ${statusMessage}`)
@@ -271,14 +306,15 @@ export function ChatInterface({
                 if (data.type === 'message.part.updated') {
                   const part = data.properties?.part
                   const delta = data.properties?.delta
-                  
+
                   console.log('[chat-interface] Received message.part.updated:', {
                     partType: part?.type,
-                    toolName: part?.type === 'tool' ? (typeof part.tool === 'string' ? part.tool : part.tool?.name) : undefined,
+                    toolName:
+                      part?.type === 'tool' ? (typeof part.tool === 'string' ? part.tool : part.tool?.name) : undefined,
                     hasText: !!part?.text,
                     hasDelta: !!delta,
                   })
-                  
+
                   if (part?.type === 'text') {
                     if (typeof delta === 'string') {
                       assistantTextRef.current += delta
@@ -291,7 +327,7 @@ export function ChatInterface({
                         m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
                       ),
                     )
-                    
+
                     // Update status to show agent is writing
                     onStatusChange?.('coding', 'Writing response...')
                     setThinkingStatus('✍️ Writing...')
@@ -299,15 +335,20 @@ export function ChatInterface({
                     // Extract tool information
                     const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
                     const callID = part.callID || part.id || `tool-${Date.now()}-${Math.random()}`
-                    
+
                     console.log('[chat-interface] Tool part:', { toolName, callID, status: part.state?.status })
-                    
+
                     if (toolName) {
                       // Update status with tool name
                       let status: AgentStatus = 'coding'
                       let statusLabel = toolName
-                      
-                      if (toolName.includes('read') || toolName.includes('search') || toolName.includes('glob') || toolName.includes('grep')) {
+
+                      if (
+                        toolName.includes('read') ||
+                        toolName.includes('search') ||
+                        toolName.includes('glob') ||
+                        toolName.includes('grep')
+                      ) {
                         status = 'planning'
                         statusLabel = `🔍 ${toolName}`
                       } else if (toolName.includes('write') || toolName.includes('edit')) {
@@ -317,10 +358,10 @@ export function ChatInterface({
                         status = 'executing'
                         statusLabel = `⚡ ${toolName}`
                       }
-                      
+
                       onStatusChange?.(status, toolName)
                       setThinkingStatus(statusLabel)
-                      
+
                       // Add to thinking parts for display
                       const toolPart: ToolPart = {
                         type: 'tool',
@@ -333,7 +374,7 @@ export function ChatInterface({
                         input: part.input,
                         output: part.output,
                       }
-                      
+
                       setThinkingParts((prev) => {
                         const existing = prev.findIndex((p) => p.callID === toolPart.callID)
                         if (existing >= 0) {
@@ -374,15 +415,19 @@ export function ChatInterface({
                     onStatusChange?.(agentStatus, status)
                   }
                 }
-                
+
                 // Handle ALL other event types for visibility - show them in real-time
-                if (!['status', 'message.part.updated', 'session.status', 'done', 'error', 'heartbeat'].includes(data.type)) {
+                if (
+                  !['status', 'message.part.updated', 'session.status', 'done', 'error', 'heartbeat'].includes(
+                    data.type,
+                  )
+                ) {
                   console.log('[chat-interface] 📡 Event received:', data.type, data)
-                  
+
                   // Show event type as status for visibility
                   const eventLabel = data.type.replace(/\./g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
                   setThinkingStatus(`📡 ${eventLabel}`)
-                  
+
                   // Update agent status based on event type
                   if (data.type.includes('tool') || data.type.includes('command')) {
                     onStatusChange?.('coding', eventLabel)
@@ -402,7 +447,7 @@ export function ChatInterface({
                     setThinkingStatus(`📝 ${statusLabel}`)
                   }
                 }
-                
+
                 // Handle todo updates (agent creating tasks)
                 if (data.type === 'todo.updated') {
                   const todos = data.properties?.todos || []
@@ -412,7 +457,7 @@ export function ChatInterface({
                     onStatusChange?.('planning', `Creating task: ${todoTitle.slice(0, 30)}`)
                   }
                 }
-                
+
                 // Handle command execution
                 if (data.type === 'command.executed') {
                   const command = data.properties?.command || 'command'
@@ -490,14 +535,28 @@ export function ChatInterface({
                 }
 
                 if (data.error) {
-                  // Error from SSE stream
+                  // Error from SSE stream with better categorization
+                  let errorContent = data.error
+                  let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' =
+                    data.category || 'persistent'
+                  let retryable = data.retryable || false
+
+                  // Categorize errors better
+                  if (errorContent.includes('credit balance') || errorContent.includes('Anthropic API')) {
+                    errorCategory = 'user-action' // User needs to add credits
+                    retryable = false
+                  } else if (errorContent.includes('rate limit') || errorContent.includes('too many requests')) {
+                    errorCategory = 'transient' // Rate limit will reset
+                    retryable = true
+                  }
+
                   const errorMessage: Message = {
                     id: `error-${Date.now()}`,
                     role: 'system',
-                    content: data.error,
+                    content: errorContent,
                     type: 'error',
-                    errorCategory: data.category || 'persistent',
-                    retryable: data.retryable || false,
+                    errorCategory: errorCategory,
+                    retryable: retryable,
                     createdAt: Math.floor(Date.now() / 1000),
                   }
                   setMessages((prev) => [...prev, errorMessage])
@@ -632,7 +691,7 @@ export function ChatInterface({
             onOpenVSCode={onOpenVSCode}
             onOpenTerminal={onOpenTerminal}
           />
-          
+
           {/* Show ThinkingIndicator when streaming to display all OpenCode activity */}
           {isStreaming && (thinkingParts.length > 0 || thinkingReasoning) && (
             <div className="px-6 pb-6">
