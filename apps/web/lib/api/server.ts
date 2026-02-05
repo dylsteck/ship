@@ -100,6 +100,17 @@ export interface Message {
   type?: 'error' | 'pr-notification'
   errorCategory?: 'transient' | 'persistent' | 'user-action' | 'fatal'
   retryable?: boolean
+  // AI Elements data - persisted from streaming
+  inlineTools?: Array<{
+    name: string
+    status: 'pending' | 'in_progress' | 'completed' | 'failed'
+    input: Record<string, unknown>
+    output?: unknown
+    duration?: number
+  }>
+  reasoningBlocks?: Array<{
+    text: string
+  }>
 }
 
 export interface MessagePart {

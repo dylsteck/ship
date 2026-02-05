@@ -174,6 +174,20 @@ export type SessionIdleEvent = {
   }
 }
 
+export type SessionErrorEvent = {
+  type: 'session.error'
+  properties: {
+    sessionID: string
+    error: {
+      name: string
+      data?: {
+        message?: string
+      }
+      message?: string
+    }
+  }
+}
+
 export type SessionDiffEvent = {
   type: 'session.diff'
   properties: {
@@ -243,6 +257,7 @@ export type SSEEvent =
   | SessionUpdatedEvent
   | SessionStatusEvent
   | SessionIdleEvent
+  | SessionErrorEvent
   | SessionDiffEvent
   | TodoUpdatedEvent
   | FileWatcherEvent

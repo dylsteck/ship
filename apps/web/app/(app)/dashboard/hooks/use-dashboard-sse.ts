@@ -89,6 +89,7 @@ export function useDashboardSSE({
       setActivityTools([])
       setReasoningParts([])
       setLastStepCost(null)
+      setStatusEvents([]) // Clear previous status events
       setStreamStartTime(Date.now())
 
       const userMessage: Message = {
@@ -265,14 +266,22 @@ export function useDashboardSSE({
                     const statusInfo = getEventStatus(event)
                     if (statusInfo) {
                       setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
-                      setStatusEvents((prev) => [
-                        ...prev,
-                        {
-                          status: event.status,
-                          message: event.message,
-                          time: Date.now(),
-                        },
-                      ])
+                      // Deduplicate: only add if message differs from the last entry
+                      setStatusEvents((prev) => {
+                        const last = prev[prev.length - 1]
+                        if (last && last.message === event.message) {
+                          // Same message - just update the timestamp on the last entry
+                          return prev.map((e, i) => (i === prev.length - 1 ? { ...e, time: Date.now() } : e))
+                        }
+                        return [
+                          ...prev,
+                          {
+                            status: event.status,
+                            message: event.message,
+                            time: Date.now(),
+                          },
+                        ]
+                      })
                     }
                     break
                   }
@@ -336,21 +345,144 @@ export function useDashboardSSE({
                     break
                   }
 
-                  case 'error': {
-                    const errorMessage: Message = {
+                  case 'session.error': {
+                    // Extract error message from nested structure
+                    const errorData = event.properties.error
+                    let errorMessage = 'An error occurred'
+                    let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
+                    let retryable = false
+
+                    if (errorData?.data?.message) {
+                      errorMessage = errorData.data.message
+                    } else if (errorData?.message) {
+                      errorMessage = errorData.message
+                    } else if (typeof errorData === 'string') {
+                      errorMessage = errorData
+                    }
+
+                    // Classify error type
+                    if (errorMessage.includes('credit balance') || errorMessage.includes('Anthropic API')) {
+                      errorCategory = 'user-action'
+                      retryable = false
+                    } else if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
+                      errorCategory = 'transient'
+                      retryable = true
+                    } else if (
+                      errorMessage.includes('network') ||
+                      errorMessage.includes('connection') ||
+                      errorMessage.includes('timeout')
+                    ) {
+                      errorCategory = 'transient'
+                      retryable = true
+                    }
+
+                    const message: Message = {
                       id: `error-${Date.now()}`,
                       role: 'system',
-                      content: event.error,
+                      content: errorMessage,
                       type: 'error',
-                      errorCategory: event.category || 'persistent',
-                      retryable: event.retryable || false,
+                      errorCategory,
+                      retryable,
                       createdAt: Math.floor(Date.now() / 1000),
                     }
-                    setMessages((prev) => [...prev, errorMessage])
+                    setMessages((prev) => [...prev, message])
                     setIsStreaming(false)
                     setThinkingStatus('')
                     streamingMessageRef.current = null
                     break
+                  }
+
+                  case 'error': {
+                    // Parse error - it might be a JSON string
+                    let errorMessage = event.error
+                    let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = event.category || 'persistent'
+                    let retryable = event.retryable || false
+
+                    // Try to parse if it's a JSON string
+                    if (typeof errorMessage === 'string' && errorMessage.startsWith('{')) {
+                      try {
+                        const parsed = JSON.parse(errorMessage)
+                        if (parsed.data?.message) {
+                          errorMessage = parsed.data.message
+                        } else if (parsed.message) {
+                          errorMessage = parsed.message
+                        } else if (parsed.error?.message) {
+                          errorMessage = parsed.error.message
+                        }
+                      } catch {
+                        // If parsing fails, use the string as-is
+                      }
+                    }
+
+                    // Classify error type
+                    if (typeof errorMessage === 'string') {
+                      if (errorMessage.includes('credit balance') || errorMessage.includes('Anthropic API')) {
+                        errorCategory = 'user-action'
+                        retryable = false
+                      } else if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
+                        errorCategory = 'transient'
+                        retryable = true
+                      } else if (
+                        errorMessage.includes('network') ||
+                        errorMessage.includes('connection') ||
+                        errorMessage.includes('timeout')
+                      ) {
+                        errorCategory = 'transient'
+                        retryable = true
+                      }
+                    }
+
+                    const message: Message = {
+                      id: `error-${Date.now()}`,
+                      role: 'system',
+                      content: typeof errorMessage === 'string' ? errorMessage : 'An error occurred',
+                      type: 'error',
+                      errorCategory,
+                      retryable,
+                      createdAt: Math.floor(Date.now() / 1000),
+                    }
+                    setMessages((prev) => [...prev, message])
+                    setIsStreaming(false)
+                    setThinkingStatus('')
+                    streamingMessageRef.current = null
+                    break
+                  }
+                }
+
+                // Handle events that might not be parsed correctly
+                if (rawData.type === 'event' && rawData.properties) {
+                  const innerEvent = rawData.properties as { type?: string; error?: unknown }
+                  if (innerEvent.type === 'session.error') {
+                    // Handle session.error that came through as event: event
+                    const errorData = innerEvent.error as { name?: string; data?: { message?: string }; message?: string }
+                    let errorMessage = 'An error occurred'
+                    let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
+                    let retryable = false
+
+                    if (errorData?.data?.message) {
+                      errorMessage = errorData.data.message
+                    } else if (errorData?.message) {
+                      errorMessage = errorData.message
+                    }
+
+                    if (errorMessage.includes('credit balance') || errorMessage.includes('Anthropic API')) {
+                      errorCategory = 'user-action'
+                      retryable = false
+                    }
+
+                    const message: Message = {
+                      id: `error-${Date.now()}`,
+                      role: 'system',
+                      content: errorMessage,
+                      type: 'error',
+                      errorCategory,
+                      retryable,
+                      createdAt: Math.floor(Date.now() / 1000),
+                    }
+                    setMessages((prev) => [...prev, message])
+                    setIsStreaming(false)
+                    setThinkingStatus('')
+                    streamingMessageRef.current = null
                   }
                 }
 

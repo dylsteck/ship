@@ -147,6 +147,10 @@ export async function promptOpenCode(
   }
 
   // Parse model string (format: "provider/model" or just "model")
+  // OpenCode Zen models (kimi-k2.5-free, big-pickle, glm-4.7-free) don't need a provider prefix
+  // They're accessed directly via Models.dev
+  const OPENCODE_ZEN_MODELS = ['kimi-k2.5-free', 'big-pickle', 'glm-4.7-free']
+  
   let model: { providerID: string; modelID: string } | undefined
   if (options.model) {
     const modelParts = options.model.split('/')
@@ -156,20 +160,29 @@ export async function promptOpenCode(
         modelID: modelParts[1],
       }
     } else {
-      // Assume Anthropic if no provider specified
-      model = {
-        providerID: 'anthropic',
-        modelID: options.model,
+      // Check if it's an OpenCode Zen model (accessed via Models.dev)
+      if (OPENCODE_ZEN_MODELS.includes(options.model)) {
+        // OpenCode Zen models use Models.dev provider
+        model = {
+          providerID: 'models.dev',
+          modelID: options.model,
+        }
+      } else {
+        // Default to Anthropic for other models without provider prefix
+        model = {
+          providerID: 'anthropic',
+          modelID: options.model,
+        }
       }
     }
     console.log(`[opencode:prompt] Using model: ${model.providerID}/${model.modelID}`)
   } else {
-    // Default model
+    // Default model - Kimi K2.5 Free via OpenCode Zen
     model = {
-      providerID: 'anthropic',
-      modelID: 'claude-sonnet-4-20250514',
+      providerID: 'models.dev',
+      modelID: 'kimi-k2.5-free',
     }
-    console.log(`[opencode:prompt] Using default model: anthropic/claude-sonnet-4-20250514`)
+    console.log(`[opencode:prompt] Using default model: models.dev/kimi-k2.5-free`)
   }
 
   // Determine agent based on mode

@@ -49,6 +49,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     branch: undefined as string | undefined,
     model: undefined as string | undefined,
   })
+  const [sessionTitle, setSessionTitle] = useState<string | undefined>()
 
   // Sandbox state
   const [sandboxId, setSandboxId] = useState<string | null>(null)
@@ -59,14 +60,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   const [vscodeOpen, setVscodeOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
 
-  // Debug: Log when opencodeUrl changes
-  useEffect(() => {
-    if (opencodeUrl) {
-      console.log('[page-client] opencodeUrl state updated to:', opencodeUrl)
-    }
-  }, [opencodeUrl])
-
-  // Ref to track current sandbox status (avoids stale closure in interval)
+  // Refs to track current values (avoids stale closures in intervals)
   const sandboxStatusRef = useRef(sandboxStatus)
   useEffect(() => {
     sandboxStatusRef.current = sandboxStatus
@@ -74,6 +68,10 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
   // WebSocket connection state
   const [wsConnected, setWsConnected] = useState(false)
+  const wsConnectedRef = useRef(wsConnected)
+  useEffect(() => {
+    wsConnectedRef.current = wsConnected
+  }, [wsConnected])
 
   // Fetch session info and sandbox status
   useEffect(() => {
@@ -86,7 +84,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
             repoOwner: data.repoOwner,
             repoName: data.repoName,
             branch: data.branch,
-            model: data.model, // Selected model for display
+            model: data.model,
           })
         }
       } catch (err) {
@@ -113,33 +111,19 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
     async function loadSandbox() {
       try {
-        console.log(`[page-client] Loading sandbox status for session ${sessionId}...`)
         const res = await fetch(`${API_URL}/sessions/${sessionId}/sandbox`)
         if (res.ok) {
           const data = await res.json()
-          console.log(`[page-client] Sandbox status response:`, data)
           setSandboxId(data.sandboxId || null)
           setSandboxStatus(normalizeSandboxStatus(data.status))
-          // Load opencodeUrl if available
           if (data.opencodeUrl) {
-            console.log(`[page-client] ✓ Found opencodeUrl in response: ${data.opencodeUrl}`)
             setOpencodeUrl(data.opencodeUrl)
-          } else {
-            console.log(`[page-client] ✗ No opencodeUrl in sandbox response`)
           }
-          // Load opencodeSessionId if available
           if (data.opencodeSessionId) {
-            console.log(`[page-client] ✓ Found opencodeSessionId in response: ${data.opencodeSessionId}`)
             setOpencodeSessionId(data.opencodeSessionId)
-          } else {
-            console.log(`[page-client] ✗ No opencodeSessionId in sandbox response`)
           }
         } else if (res.status === 404) {
-          // No sandbox yet - this is normal for new sessions
-          console.log(`[page-client] No sandbox found (404)`)
           setSandboxStatus('none')
-        } else {
-          console.error(`[page-client] Failed to load sandbox: ${res.status} ${res.statusText}`)
         }
       } catch (err) {
         console.error('[page-client] Failed to load sandbox:', err)
@@ -150,23 +134,14 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     loadSession()
     loadSandbox()
 
-    // Poll sandbox status as fallback when WebSocket is disconnected
-    // Use ref to avoid stale closure - the ref always has the current value
-    // Also track wsConnected in a ref to avoid stale closure
-    const wsConnectedRef = useRef(wsConnected)
-    useEffect(() => {
-      wsConnectedRef.current = wsConnected
-    }, [wsConnected])
-
     const interval = setInterval(() => {
-      // Only poll if WebSocket is disconnected and status is not ready
       if (!wsConnectedRef.current && sandboxStatusRef.current !== 'ready') {
         loadSandbox()
       }
-    }, 2000) // Poll every 2s when needed (will be skipped if WS connected)
+    }, 2000)
 
     return () => clearInterval(interval)
-  }, [sessionId, wsConnected]) // Include wsConnected to recreate interval when connection changes
+  }, [sessionId])
 
   // Pull initial prompt from sessionStorage (set on dashboard create)
   useEffect(() => {
@@ -207,14 +182,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
     ws.onmessage = (event) => {
       try {
-        const rawData = event.data
-        console.log('[page-client] Raw WebSocket message received:', typeof rawData, rawData?.slice?.(0, 100))
-        const data = JSON.parse(rawData)
-        console.log('[page-client] Parsed WebSocket data:', data)
-        // Debug: Log all WebSocket messages
-        if (data.type === 'opencode-started' || data.type === 'sandbox-status' || data.type === 'opencode-event') {
-          console.log('[page-client] WebSocket message:', data.type, JSON.stringify(data, null, 2))
-        }
+        const data = JSON.parse(event.data)
 
         // Handle agent status updates
         if (data.type === 'agent-status') {
@@ -224,9 +192,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
         // Handle sandbox status updates
         if (data.type === 'sandbox-status') {
-          if (data.sandboxId) {
-            setSandboxId(data.sandboxId)
-          }
+          if (data.sandboxId) setSandboxId(data.sandboxId)
           if (data.status === 'ready') {
             setSandboxStatus('ready')
             setSandboxProgress(null)
@@ -236,54 +202,30 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           }
         }
 
-        // Handle sandbox cloning
         if (data.type === 'sandbox-cloning') {
-          setSandboxProgress(`Cloning repository ${data.repoOwner}/${data.repoName}...`)
+          setSandboxProgress(`Cloning ${data.repoOwner}/${data.repoName}...`)
         }
 
-        // Handle sandbox ready (after cloning)
         if (data.type === 'sandbox-ready') {
           setSandboxStatus('ready')
           setSandboxProgress(`Repository cloned. Branch: ${data.branchName}`)
-          // Clear progress message after 3 seconds
           setTimeout(() => setSandboxProgress(null), 3000)
         }
 
         // Handle OpenCode server started
         if (data.type === 'opencode-started') {
-          console.log('[page-client] Received opencode-started event:', JSON.stringify(data, null, 2))
           setSandboxProgress('OpenCode server started')
-          // Extract URL - try multiple possible field names for robustness
-          const url = data.url || data.opencodeUrl || data.serverUrl || (data as any).opencode_url
-          console.log('[page-client] Extracted URL:', url, 'from fields:', {
-            url: data.url,
-            opencodeUrl: data.opencodeUrl,
-            serverUrl: data.serverUrl,
-          })
+          const url = data.url || data.opencodeUrl || data.serverUrl
           if (url && typeof url === 'string' && url.trim()) {
-            console.log('[page-client] Setting opencodeUrl state to:', url)
             setOpencodeUrl(url.trim())
-            // Also ensure sandbox status is set to ready if not already
-            if (sandboxStatus !== 'ready') {
-              console.log('[page-client] Setting sandboxStatus to ready (from opencode-started)')
-              setSandboxStatus('ready')
-            }
-          } else {
-            console.warn(
-              '[page-client] opencode-started event missing valid url field. Full data:',
-              JSON.stringify(data),
-            )
-            console.warn('[page-client] Available keys in data:', Object.keys(data))
+            if (sandboxStatus !== 'ready') setSandboxStatus('ready')
           }
-          // Clear progress message after 2 seconds
           setTimeout(() => setSandboxProgress(null), 2000)
         }
 
         // Handle OpenCode session created
         if (data.type === 'opencode-session-created') {
-          console.log('[page-client] Received opencode-session-created event:', JSON.stringify(data, null, 2))
           if (data.sessionId && typeof data.sessionId === 'string') {
-            console.log('[page-client] Setting opencodeSessionId state to:', data.sessionId)
             setOpencodeSessionId(data.sessionId)
           }
         }
@@ -292,14 +234,21 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
         if (data.type === 'opencode-event') {
           const ocEvent = data.event
 
-          // Handle server connection
           if (ocEvent?.payload?.type === 'server.connected') {
             setSandboxProgress('Connected to agent')
             setTimeout(() => setSandboxProgress(null), 2000)
             return
           }
 
-          // Handle message.part.updated events (tool calls)
+          // Handle session.updated - extract title
+          if (ocEvent?.type === 'session.updated') {
+            const info = ocEvent.properties?.info
+            if (info?.title && !info.title.startsWith('New session')) {
+              setSessionTitle(info.title)
+            }
+          }
+
+          // Handle tool calls
           if (ocEvent?.type === 'message.part.updated') {
             const part = ocEvent.properties?.part
             if (part?.type === 'tool') {
@@ -309,7 +258,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
               if (toolName) {
                 const name = toolName.toLowerCase()
-                let statusLabel = toolName
+                let statusLabel = toolTitle || toolName
 
                 if (name.includes('read') || name.includes('glob') || name.includes('grep')) {
                   statusLabel = `Reading: ${toolTitle.slice(0, 30) || 'files'}`
@@ -321,7 +270,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
                   statusLabel = `Running: ${toolTitle.slice(0, 30) || 'command'}`
                   setAgentStatus('executing')
                 } else if (name.includes('task') || name.includes('agent')) {
-                  statusLabel = 'Creating task'
+                  statusLabel = toolTitle || 'Running task'
                   setAgentStatus('planning')
                 } else if (name.includes('search') || name.includes('semantic')) {
                   statusLabel = `Searching: ${toolTitle.slice(0, 30) || ''}`
@@ -330,8 +279,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
                 setCurrentTool(statusLabel)
                 setSandboxProgress(statusLabel)
-
-                // Clear progress after tool completes
                 if (toolStatus === 'complete') {
                   setTimeout(() => setSandboxProgress(null), 1000)
                 }
@@ -342,15 +289,14 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
             }
           }
 
-          // Handle session idle
           if (ocEvent?.type === 'session.idle') {
             setAgentStatus('idle')
             setCurrentTool(undefined)
             setSandboxProgress(null)
           }
         }
-      } catch (err) {
-        console.error('WebSocket message error:', err)
+      } catch {
+        // Ignore parse errors
       }
     }
 
@@ -407,11 +353,15 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               </Link>
               <div>
                 <h1 className="font-semibold text-foreground">
-                  {sessionInfo.repoOwner && sessionInfo.repoName
-                    ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
-                    : 'Session'}
+                  {sessionTitle
+                    ? sessionTitle
+                    : sessionInfo.repoOwner && sessionInfo.repoName
+                      ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
+                      : 'Session'}
                 </h1>
-                {sessionInfo.model && <p className="text-xs text-muted-foreground">Model: {sessionInfo.model}</p>}
+                {sessionInfo.repoOwner && sessionInfo.repoName && sessionTitle && (
+                  <p className="text-xs text-muted-foreground">{sessionInfo.repoOwner}/{sessionInfo.repoName}</p>
+                )}
               </div>
             </div>
 
@@ -483,6 +433,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               sandboxStatus={sandboxStatus}
               opencodeUrl={opencodeUrl}
               opencodeSessionId={opencodeSessionId}
+              sessionTitle={sessionTitle}
             />
           </div>
 

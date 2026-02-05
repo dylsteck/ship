@@ -401,33 +401,46 @@ export function ChatInterface({
 
                 // Handle done/session.idle
                 if (data.type === 'done' || data.type === 'session.idle') {
-                  // Aggregate costs and store for this message
-                  if (costEventsRef.current.length > 0 && streamingMessageRef.current) {
-                    const breakdowns = aggregateCosts(costEventsRef.current)
-                    if (breakdowns.length > 0) {
-                      const messageId = streamingMessageRef.current
-                      messageCostsRef.current.set(messageId, breakdowns[0])
-                      setMessages((prev) =>
-                        prev.map((m) =>
-                          m.id === messageId
-                            ? ({ ...m, costBreakdown: breakdowns[0] } as Message & { costBreakdown?: CostBreakdown })
-                            : m,
-                        ),
-                      )
+                  // Persist completed tools and reasoning onto the assistant message
+                  if (streamingMessageRef.current) {
+                    const messageId = streamingMessageRef.current
+                    const completedTools = activityTools.map((t) => {
+                      const adapted = adaptToolPart(t)
+                      return adapted
+                    })
+                    const completedReasoning = reasoningParts.map((r) => adaptReasoningPart(r))
+
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === messageId
+                          ? {
+                              ...m,
+                              inlineTools: completedTools.length > 0 ? completedTools : undefined,
+                              reasoningBlocks: completedReasoning.length > 0 ? completedReasoning : undefined,
+                            }
+                          : m,
+                      ),
+                    )
+
+                    // Aggregate costs
+                    if (costEventsRef.current.length > 0) {
+                      const breakdowns = aggregateCosts(costEventsRef.current)
+                      if (breakdowns.length > 0) {
+                        messageCostsRef.current.set(messageId, breakdowns[0])
+                      }
                     }
                   }
+
                   costEventsRef.current = []
                   setIsStreaming(false)
                   streamingMessageRef.current = null
 
                   // Clear AI Elements streaming state
-                  setTimeout(() => {
-                    setStreamingText('')
-                    setCurrentReasoning('')
-                    setCurrentSteps([])
-                    setActivityTools([])
-                    setReasoningParts([])
-                  }, 2000)
+                  setStreamingText('')
+                  setCurrentReasoning('')
+                  setCurrentSteps([])
+                  setActivityTools([])
+                  setReasoningParts([])
                   onStatusChange?.('idle')
                 }
 
@@ -571,6 +584,8 @@ export function ChatInterface({
           id: m.id,
           role: m.role as 'user' | 'assistant',
           content: m.content,
+          inlineTools: m.inlineTools,
+          reasoningBlocks: m.reasoningBlocks,
           error:
             m.type === 'error'
               ? {
@@ -584,6 +599,17 @@ export function ChatInterface({
         streamingText={streamingText}
         currentReasoning={currentReasoning}
         currentSteps={currentSteps}
+        streamingTools={activityTools.map((t) => {
+          const adapted = adaptToolPart(t)
+          return {
+            callID: t.callID,
+            name: adapted.name,
+            status: adapted.status,
+            input: adapted.input,
+            output: typeof adapted.output === 'string' ? adapted.output : undefined,
+            duration: adapted.duration,
+          }
+        })}
         streamingLabel={
           isStreaming
             ? (() => {

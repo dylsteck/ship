@@ -1,24 +1,8 @@
 'use client'
 
-import * as React from 'react'
-import { useEffect, useState, useMemo } from 'react'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-  Badge,
-  Progress,
-  ScrollArea,
-  Separator,
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-  Skeleton,
-} from '@ship/ui'
+import { useState, useMemo } from 'react'
 import { cn } from '@ship/ui/utils'
-import type { SessionInfo as SSESessionInfo, SessionDiffEvent, TodoUpdatedEvent, StepFinishPart } from '@/lib/sse-types'
+import type { SessionInfo as SSESessionInfo, StepFinishPart } from '@/lib/sse-types'
 
 // ============ Types ============
 
@@ -69,333 +53,6 @@ interface SessionPanelProps {
   className?: string
 }
 
-// ============ Sub-components ============
-
-// Repository info section
-function RepoSection({ repo }: { repo: RepoInfo }) {
-  return (
-    <Card size="sm">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">📁</span>
-          <CardTitle className="text-xs uppercase text-muted-foreground">Repository</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="font-medium text-sm">
-          {repo.owner}/{repo.name}
-        </div>
-        {repo.branch && (
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-muted-foreground text-xs">🔀</span>
-            <span className="text-xs font-mono text-muted-foreground">{repo.branch}</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// Model and mode section
-function ModelSection({ model }: { model: ModelInfo }) {
-  return (
-    <Card size="sm">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🤖</span>
-          <CardTitle className="text-xs uppercase text-muted-foreground">Model</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm">{model.name || model.id}</span>
-          </div>
-          {model.mode && (
-            <Badge variant={model.mode === 'build' ? 'default' : 'outline'} className="text-[0.625rem]">
-              {model.mode}
-            </Badge>
-          )}
-        </div>
-        {model.provider && <div className="text-xs text-muted-foreground mt-1">via {model.provider}</div>}
-      </CardContent>
-    </Card>
-  )
-}
-
-// Context token usage section
-function ContextUsageSection({ tokens, cost }: { tokens: TokenInfo; cost?: number }) {
-  const totalTokens = tokens.input + tokens.output + tokens.reasoning
-  const contextLimit = tokens.contextLimit || 200000
-  const usagePercent = Math.min((totalTokens / contextLimit) * 100, 100)
-
-  return (
-    <Card size="sm">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">📊</span>
-            <CardTitle className="text-xs uppercase text-muted-foreground">Context</CardTitle>
-          </div>
-          {cost !== undefined && cost > 0 && (
-            <Badge variant="outline" className="font-mono text-[0.625rem]">
-              ${cost.toFixed(4)}
-            </Badge>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 space-y-3">
-        {/* Progress bar */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Usage</span>
-            <span className="font-mono">
-              {totalTokens.toLocaleString()} / {contextLimit.toLocaleString()}
-            </span>
-          </div>
-          <Progress
-            value={usagePercent}
-            className={cn(
-              'h-2',
-              usagePercent > 80 && '[&>div]:bg-red-500',
-              usagePercent > 60 && usagePercent <= 80 && '[&>div]:bg-yellow-500',
-            )}
-          />
-        </div>
-
-        {/* Token breakdown */}
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="text-center">
-            <div className="text-muted-foreground">Input</div>
-            <div className="font-mono font-medium">{tokens.input.toLocaleString()}</div>
-          </div>
-          <div className="text-center">
-            <div className="text-muted-foreground">Output</div>
-            <div className="font-mono font-medium">{tokens.output.toLocaleString()}</div>
-          </div>
-          <div className="text-center">
-            <div className="text-muted-foreground">Think</div>
-            <div className="font-mono font-medium">{tokens.reasoning.toLocaleString()}</div>
-          </div>
-        </div>
-
-        {/* Cache info */}
-        {(tokens.cache.read > 0 || tokens.cache.write > 0) && (
-          <div className="flex items-center justify-center gap-3 text-xs pt-1 border-t">
-            {tokens.cache.read > 0 && (
-              <span className="text-muted-foreground">
-                Cache ↓{' '}
-                <span className="text-green-600 dark:text-green-400 font-mono">
-                  {tokens.cache.read.toLocaleString()}
-                </span>
-              </span>
-            )}
-            {tokens.cache.write > 0 && (
-              <span className="text-muted-foreground">
-                Cache ↑{' '}
-                <span className="text-blue-600 dark:text-blue-400 font-mono">
-                  {tokens.cache.write.toLocaleString()}
-                </span>
-              </span>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// Todo list section
-function TodoSection({ todos }: { todos: Todo[] }) {
-  const [isOpen, setIsOpen] = useState(true)
-
-  const groupedTodos = useMemo(() => {
-    const pending = todos.filter((t) => t.status === 'pending' || t.status === 'in_progress')
-    const completed = todos.filter((t) => t.status === 'completed')
-    const cancelled = todos.filter((t) => t.status === 'cancelled')
-    return { pending, completed, cancelled }
-  }, [todos])
-
-  const priorityColors: Record<Todo['priority'], string> = {
-    high: 'text-red-600 dark:text-red-400',
-    medium: 'text-yellow-600 dark:text-yellow-400',
-    low: 'text-muted-foreground',
-  }
-
-  const statusIcons: Record<Todo['status'], string> = {
-    pending: '○',
-    in_progress: '◐',
-    completed: '●',
-    cancelled: '✕',
-  }
-
-  if (todos.length === 0) return null
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card size="sm">
-        <CollapsibleTrigger className="w-full">
-          <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">📋</span>
-                <CardTitle className="text-xs uppercase text-muted-foreground">
-                  Todos ({groupedTodos.pending.length} active)
-                </CardTitle>
-              </div>
-              <span className="text-muted-foreground text-xs">{isOpen ? '▼' : '▶'}</span>
-            </div>
-          </CardHeader>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <CardContent className="pt-0">
-            <ScrollArea className="max-h-[200px]">
-              <div className="space-y-2">
-                {/* Active todos */}
-                {groupedTodos.pending.map((todo) => (
-                  <div key={todo.id} className="flex items-start gap-2 text-xs">
-                    <span className={cn('mt-0.5', priorityColors[todo.priority])}>{statusIcons[todo.status]}</span>
-                    <span className={todo.status === 'in_progress' ? 'font-medium' : ''}>{todo.content}</span>
-                  </div>
-                ))}
-
-                {/* Completed todos */}
-                {groupedTodos.completed.length > 0 && (
-                  <>
-                    <Separator className="my-2" />
-                    <div className="text-xs text-muted-foreground mb-1">
-                      Completed ({groupedTodos.completed.length})
-                    </div>
-                    {groupedTodos.completed.slice(-3).map((todo) => (
-                      <div key={todo.id} className="flex items-start gap-2 text-xs text-muted-foreground line-through">
-                        <span className="mt-0.5 text-green-600 dark:text-green-400">●</span>
-                        <span>{todo.content}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
-  )
-}
-
-// File changes/diffs section
-function DiffSection({ diffs }: { diffs: DiffSummary[] }) {
-  const [isOpen, setIsOpen] = useState(false)
-
-  const totalChanges = useMemo(() => {
-    return diffs.reduce(
-      (acc, diff) => ({
-        additions: acc.additions + diff.additions,
-        deletions: acc.deletions + diff.deletions,
-        files: acc.files + 1,
-      }),
-      { additions: 0, deletions: 0, files: 0 },
-    )
-  }, [diffs])
-
-  if (diffs.length === 0) return null
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card size="sm">
-        <CollapsibleTrigger className="w-full">
-          <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">📝</span>
-                <CardTitle className="text-xs uppercase text-muted-foreground">Changes</CardTitle>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[0.625rem] font-mono">
-                  {totalChanges.files} files
-                </Badge>
-                <span className="text-xs text-green-600 dark:text-green-400 font-mono">+{totalChanges.additions}</span>
-                <span className="text-xs text-red-600 dark:text-red-400 font-mono">-{totalChanges.deletions}</span>
-                <span className="text-muted-foreground text-xs">{isOpen ? '▼' : '▶'}</span>
-              </div>
-            </div>
-          </CardHeader>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <CardContent className="pt-0">
-            <ScrollArea className="max-h-[200px]">
-              <div className="space-y-1">
-                {diffs.map((diff, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs py-1">
-                    <span className="font-mono truncate flex-1 mr-2" title={diff.filename}>
-                      {diff.filename.split('/').pop()}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-green-600 dark:text-green-400 font-mono">+{diff.additions}</span>
-                      <span className="text-red-600 dark:text-red-400 font-mono">-{diff.deletions}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
-  )
-}
-
-// Session info summary
-function SessionSummary({ sessionInfo }: { sessionInfo: SSESessionInfo }) {
-  return (
-    <Card size="sm" className="border-dashed">
-      <CardContent className="py-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Session</span>
-          <span className="font-mono">{sessionInfo.id.slice(0, 8)}...</span>
-        </div>
-        {sessionInfo.title && (
-          <div className="mt-1 text-sm font-medium truncate" title={sessionInfo.title}>
-            {sessionInfo.title}
-          </div>
-        )}
-        {sessionInfo.summary && (
-          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-            <span>{sessionInfo.summary.files} files</span>
-            <span className="text-green-600 dark:text-green-400">+{sessionInfo.summary.additions}</span>
-            <span className="text-red-600 dark:text-red-400">-{sessionInfo.summary.deletions}</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// OpenCode URL section
-function OpenCodeSection({ url }: { url: string }) {
-  return (
-    <Card size="sm" className="border-blue-500/30 bg-blue-500/5">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🔌</span>
-          <CardTitle className="text-xs uppercase text-muted-foreground">OpenCode Server</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all font-mono"
-        >
-          {url}
-        </a>
-        <p className="text-[10px] text-muted-foreground mt-1">Click to open agent server UI</p>
-      </CardContent>
-    </Card>
-  )
-}
-
 // ============ Main Component ============
 
 export function SessionPanel({
@@ -410,33 +67,183 @@ export function SessionPanel({
   openCodeUrl,
   className,
 }: SessionPanelProps) {
+  const totalChanges = useMemo(() => {
+    if (!diffs || diffs.length === 0) return null
+    return diffs.reduce(
+      (acc, d) => ({ add: acc.add + d.additions, del: acc.del + d.deletions }),
+      { add: 0, del: 0 },
+    )
+  }, [diffs])
+
+  const activeTodos = useMemo(
+    () => (todos || []).filter((t) => t.status !== 'completed' && t.status !== 'cancelled'),
+    [todos],
+  )
+
+  const totalTokens = tokens ? tokens.input + tokens.output + tokens.reasoning : 0
+  const contextLimit = tokens?.contextLimit || 200000
+  const usagePercent = tokens ? Math.min((totalTokens / contextLimit) * 100, 100) : 0
+
   return (
-    <div className={cn('space-y-3 p-3', className)}>
-      {/* OpenCode server URL */}
-      {openCodeUrl && <OpenCodeSection url={openCodeUrl} />}
+    <div className={cn('flex flex-col text-xs font-mono overflow-y-auto', className)}>
+      {/* Session title */}
+      {sessionInfo?.title && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">title</div>
+          <div className="text-foreground truncate" title={sessionInfo.title}>
+            {sessionInfo.title}
+          </div>
+        </div>
+      )}
 
-      {/* Repository info */}
-      {repo && <RepoSection repo={repo} />}
+      {/* Repo */}
+      {repo && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">repo</div>
+          <div className="text-foreground">
+            {repo.owner}/{repo.name}
+          </div>
+          {repo.branch && (
+            <div className="text-muted-foreground mt-0.5">{repo.branch}</div>
+          )}
+        </div>
+      )}
 
-      {/* Model info */}
-      {model && <ModelSection model={model} />}
+      {/* Model */}
+      {model && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">model</div>
+          <div className="text-foreground">{model.name || model.id}</div>
+          {model.mode && (
+            <div className="text-muted-foreground mt-0.5">mode: {model.mode}</div>
+          )}
+        </div>
+      )}
 
-      {/* Context/token usage */}
-      {tokens && <ContextUsageSection tokens={tokens} cost={cost} />}
+      {/* Context usage */}
+      {tokens && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">context</div>
+          <div className="text-foreground">
+            {usagePercent.toFixed(0)}% ({totalTokens.toLocaleString()} / {contextLimit.toLocaleString()})
+          </div>
+          <div className="mt-1 h-1 w-full bg-border/50 rounded-full overflow-hidden">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                usagePercent > 80 ? 'bg-red-500' : usagePercent > 60 ? 'bg-yellow-500' : 'bg-green-500',
+              )}
+              style={{ width: `${usagePercent}%` }}
+            />
+          </div>
+          <div className="flex gap-2 mt-1 text-muted-foreground">
+            <span>in:{tokens.input.toLocaleString()}</span>
+            <span>out:{tokens.output.toLocaleString()}</span>
+            {tokens.reasoning > 0 && <span>think:{tokens.reasoning.toLocaleString()}</span>}
+          </div>
+          {(tokens.cache.read > 0 || tokens.cache.write > 0) && (
+            <div className="flex gap-2 mt-0.5 text-muted-foreground">
+              {tokens.cache.read > 0 && (
+                <span className="text-green-500">cache-r:{tokens.cache.read.toLocaleString()}</span>
+              )}
+              {tokens.cache.write > 0 && (
+                <span className="text-blue-500">cache-w:{tokens.cache.write.toLocaleString()}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Todo list */}
-      {todos && todos.length > 0 && <TodoSection todos={todos} />}
+      {/* Cost */}
+      {cost !== undefined && cost > 0 && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">cost</div>
+          <div className="text-foreground">${cost.toFixed(4)}</div>
+        </div>
+      )}
 
-      {/* File changes */}
-      {diffs && diffs.length > 0 && <DiffSection diffs={diffs} />}
+      {/* OpenCode URL */}
+      {openCodeUrl && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">opencode</div>
+          <a
+            href={openCodeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:text-blue-400 hover:underline break-all"
+          >
+            open in browser
+          </a>
+        </div>
+      )}
+
+      {/* Changes */}
+      {diffs && diffs.length > 0 && totalChanges && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">changes</div>
+          <div className="flex gap-2">
+            <span className="text-green-500">+{totalChanges.add}</span>
+            <span className="text-red-500">-{totalChanges.del}</span>
+            <span className="text-muted-foreground">{diffs.length} files</span>
+          </div>
+          <div className="mt-1 space-y-0.5">
+            {diffs.slice(0, 8).map((d, i) => (
+              <div key={i} className="flex justify-between text-muted-foreground">
+                <span className="truncate flex-1 mr-1">{d.filename.split('/').pop()}</span>
+                <span className="shrink-0">
+                  <span className="text-green-500">+{d.additions}</span>
+                  {' '}
+                  <span className="text-red-500">-{d.deletions}</span>
+                </span>
+              </div>
+            ))}
+            {diffs.length > 8 && (
+              <div className="text-muted-foreground">...{diffs.length - 8} more</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Todos */}
+      {activeTodos.length > 0 && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">todos ({activeTodos.length})</div>
+          <div className="mt-1 space-y-0.5">
+            {activeTodos.slice(0, 5).map((t) => (
+              <div key={t.id} className="flex items-start gap-1">
+                <span className={t.status === 'in_progress' ? 'text-blue-500' : 'text-muted-foreground'}>
+                  {t.status === 'in_progress' ? '>' : '-'}
+                </span>
+                <span className={t.status === 'in_progress' ? 'text-foreground' : 'text-muted-foreground'}>
+                  {t.content.slice(0, 40)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Session summary */}
-      {sessionInfo && <SessionSummary sessionInfo={sessionInfo} />}
+      {sessionInfo && (
+        <div className="px-3 py-2 border-b border-border/30">
+          <div className="text-muted-foreground">session</div>
+          <div className="text-foreground truncate" title={sessionInfo.id}>
+            {sessionInfo.id.slice(0, 12)}...
+          </div>
+          {sessionInfo.summary && (sessionInfo.summary.files > 0 || sessionInfo.summary.additions > 0) && (
+            <div className="flex gap-2 mt-0.5 text-muted-foreground">
+              <span>{sessionInfo.summary.files} files</span>
+              <span className="text-green-500">+{sessionInfo.summary.additions}</span>
+              <span className="text-red-500">-{sessionInfo.summary.deletions}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Empty state */}
-      {!repo && !model && !tokens && !todos?.length && !diffs?.length && !sessionInfo && !openCodeUrl && (
-        <div className="text-center py-8 text-muted-foreground text-sm">
-          <p>No session data</p>
+      {!repo && !model && !tokens && !activeTodos.length && !diffs?.length && !sessionInfo && !openCodeUrl && (
+        <div className="px-3 py-4 text-muted-foreground text-center">
+          waiting for session...
         </div>
       )}
     </div>

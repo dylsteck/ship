@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
-import { Message, Reasoning, ChainOfThought, Tool, Shimmer, Response } from '@ship/ui'
+import { Message, Reasoning, ChainOfThought, Tool, Shimmer, Response, Loader } from '@ship/ui'
 import { ErrorMessage } from './error-message'
 import { Markdown } from './markdown'
 import type { ChainOfThoughtStep } from '@/lib/ai-elements-adapter'
@@ -28,12 +28,22 @@ interface AIMessage {
   }
 }
 
+interface StreamingToolDisplay {
+  callID: string
+  name: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  input: Record<string, unknown>
+  output?: string
+  duration?: number
+}
+
 interface AIMessageListProps {
   messages: AIMessage[]
   isStreaming?: boolean
   streamingText?: string
   currentReasoning?: string
   currentSteps?: ChainOfThoughtStep[]
+  streamingTools?: StreamingToolDisplay[]
   streamingLabel?: string
   onRetryError?: (messageId: string) => void
   onOpenVSCode?: () => void
@@ -60,6 +70,7 @@ export function AIMessageList({
   streamingText,
   currentReasoning,
   currentSteps,
+  streamingTools,
   streamingLabel,
   onRetryError,
   onOpenVSCode,
@@ -158,7 +169,21 @@ export function AIMessageList({
           <Message role="assistant">
             {currentReasoning && <Reasoning isStreaming={true}>{currentReasoning}</Reasoning>}
 
-            {currentSteps && currentSteps.length > 0 && <ChainOfThought steps={currentSteps} />}
+            {/* Show active tool calls */}
+            {streamingTools && streamingTools.length > 0 && (
+              <div className="space-y-1">
+                {streamingTools.map((tool) => (
+                  <Tool
+                    key={tool.callID}
+                    name={tool.name}
+                    status={tool.status}
+                    input={tool.input}
+                    output={tool.output}
+                    duration={tool.duration}
+                  />
+                ))}
+              </div>
+            )}
 
             {streamingText && (
               <Response>
@@ -168,14 +193,8 @@ export function AIMessageList({
               </Response>
             )}
 
-            {!streamingText && !currentReasoning && !currentSteps && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <div className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary/60"></span>
-                </div>
-                <span className="text-sm">{streamingLabel || 'Thinking...'}</span>
-              </div>
+            {!streamingText && !currentReasoning && (!streamingTools || streamingTools.length === 0) && (
+              <Loader message={streamingLabel || 'Thinking...'} />
             )}
           </Message>
         )}

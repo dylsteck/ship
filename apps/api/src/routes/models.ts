@@ -52,10 +52,6 @@ const FALLBACK_MODELS = [
     provider: 'Anthropic',
     description: 'Fast and intelligent',
   },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', description: 'Latest GPT-4 multimodal model' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', description: 'Fast and affordable' },
-  { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google', description: 'Fast multimodal model' },
-  { id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'Google', description: 'Advanced reasoning' },
 ]
 
 /**
