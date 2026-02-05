@@ -41,6 +41,7 @@ export function ChatInterface({
   const [thinkingParts, setThinkingParts] = useState<ToolPart[]>([])
   const [thinkingReasoning, setThinkingReasoning] = useState<string>('')
   const [thinkingExpanded, setThinkingExpanded] = useState(true)
+  const [thinkingStatus, setThinkingStatus] = useState<string>('')
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
@@ -160,6 +161,7 @@ export function ChatInterface({
       setThinkingParts([])
       setThinkingReasoning('')
       setThinkingExpanded(true)
+      setThinkingStatus('')
 
       // Optimistically add user message
       const userMessage: Message = {
@@ -378,7 +380,7 @@ export function ChatInterface({
                   console.log('[chat-interface] 📡 Event received:', data.type, data)
                   
                   // Show event type as status for visibility
-                  const eventLabel = data.type.replace(/\./g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                  const eventLabel = data.type.replace(/\./g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
                   setThinkingStatus(`📡 ${eventLabel}`)
                   
                   // Update agent status based on event type
@@ -460,6 +462,7 @@ export function ChatInterface({
                   setTimeout(() => {
                     setThinkingParts([])
                     setThinkingReasoning('')
+                    setThinkingStatus('')
                   }, 2000)
                   onStatusChange?.('idle')
                 }
@@ -637,7 +640,7 @@ export function ChatInterface({
                 isThinking={isStreaming}
                 parts={thinkingParts}
                 reasoning={thinkingReasoning}
-                statusLabel={currentTool || 'Processing...'}
+                statusLabel={thinkingStatus || currentTool || 'Processing...'}
                 expanded={thinkingExpanded}
                 onToggle={() => setThinkingExpanded(!thinkingExpanded)}
               />
