@@ -286,25 +286,38 @@ async function resolveSandboxHome(sandbox: Sandbox, sandboxId?: string): Promise
   return '/home/user'
 }
 
-async function checkOpenCodeServer(sandbox: Sandbox, port: number): Promise<{ ok: boolean; code: string }> {
+async function checkOpenCodeServer(
+  sandbox: Sandbox,
+  port: number,
+): Promise<{ ok: boolean; code: string; details?: string }> {
   try {
+    // Try health endpoint first
     const healthResult = await sandbox.commands.run(
-      `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/health`,
+      `curl -s -w "%{http_code}\n%{time_total}\n%{size_download}" -o /dev/null http://localhost:${port}/health --connect-timeout 3 --max-time 5`,
     )
-    const healthCode = healthResult.stdout.trim()
-    if (healthCode === '200') {
-      return { ok: true, code: healthCode }
+    const [healthCode, timeTaken, sizeDownload] = healthResult.stdout.trim().split('\n')
+
+    if (healthCode === '200' && parseFloat(timeTaken) < 2) {
+      return { ok: true, code: healthCode, details: `health:${timeTaken}s` }
     }
 
-    const rootResult = await sandbox.commands.run(`curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/`)
-    const rootCode = rootResult.stdout.trim()
-    if (rootCode && rootCode !== '000') {
-      return { ok: true, code: rootCode }
+    // Try root endpoint as fallback
+    const rootResult = await sandbox.commands.run(
+      `curl -s -w "%{http_code}\n%{time_total}" -o /dev/null http://localhost:${port}/ --connect-timeout 3 --max-time 5`,
+    )
+    const [rootCode, rootTime] = rootResult.stdout.trim().split('\n')
+
+    if (rootCode && rootCode !== '000' && rootCode !== '000' && parseFloat(rootTime) < 2) {
+      return { ok: true, code: rootCode, details: `root:${rootTime}s` }
     }
 
-    return { ok: false, code: rootCode || healthCode || '000' }
-  } catch {
-    return { ok: false, code: '000' }
+    return {
+      ok: false,
+      code: rootCode || healthCode || '000',
+      details: `health:${healthCode}(${timeTaken}s),root:${rootCode}(${rootTime}s)`,
+    }
+  } catch (error) {
+    return { ok: false, code: '000', details: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
@@ -437,26 +450,53 @@ export async function startOpenCodeServer(
   await waitForOpenCodeServer(sandbox, 4096, 60, sandboxId, 500)
   console.log(`[opencode:${sandboxId}] Server is ready`)
 
-  // Get public URL for the OpenCode server
+  // Get public URL for OpenCode server
   const host = sandbox.getHost(4096)
   const url = `https://${host}`
   console.log(`[opencode:${sandboxId}] Server URL: ${url}`)
 
-  // Wait a bit more for E2B port forwarding to stabilize
-  // The internal server might be ready but the external port forwarding can lag
-  console.log(`[opencode:${sandboxId}] Waiting for port forwarding to stabilize...`)
-  await new Promise((resolve) => setTimeout(resolve, 2000))
+  // Wait for port forwarding to stabilize and verify health thoroughly
+  console.log(`[opencode:${sandboxId}] Verifying server health and port forwarding...`)
 
-  // Verify external URL is accessible
-  for (let i = 0; i < 5; i++) {
+  // First, wait for port forwarding to stabilize
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+
+  // Then verify the server is actually responsive to API calls
+  for (let i = 0; i < 10; i++) {
     try {
-      const healthCheck = await fetch(`${url}/global/health`, { signal: AbortSignal.timeout(5000) })
-      if (healthCheck.ok) {
-        console.log(`[opencode:${sandboxId}] External URL verified accessible`)
+      // Test both global health and a simple API endpoint
+      const [healthCheck, providersCheck] = await Promise.allSettled([
+        fetch(`${url}/global/health`, {
+          signal: AbortSignal.timeout(5000),
+          headers: { 'User-Agent': 'ship-verify/1.0' },
+        }),
+        fetch(`${url}/global/providers`, {
+          signal: AbortSignal.timeout(5000),
+          headers: { 'User-Agent': 'ship-verify/1.0' },
+        }),
+      ])
+
+      const healthOk = healthCheck.status === 'fulfilled' && healthCheck.value.ok
+      const providersOk = providersCheck.status === 'fulfilled' && providersCheck.value.ok
+
+      if (healthOk && providersOk) {
+        console.log(`[opencode:${sandboxId}] ✅ Server fully verified (attempt ${i + 1}/10)`)
         break
+      } else {
+        const healthStatus = healthCheck.status === 'rejected' ? 'failed' : healthCheck.value.status
+        const providersStatus = providersCheck.status === 'rejected' ? 'failed' : providersCheck.value.status
+        console.log(
+          `[opencode:${sandboxId}] Health check ${i + 1}/10: health=${healthStatus}, providers=${providersStatus}`,
+        )
       }
     } catch (err) {
-      console.log(`[opencode:${sandboxId}] External URL check attempt ${i + 1}/5 failed, retrying...`)
+      console.log(
+        `[opencode:${sandboxId}] External verification attempt ${i + 1}/10 failed:`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+
+    if (i < 9) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
@@ -482,15 +522,24 @@ async function waitForOpenCodeServer(
   const logPrefix = sandboxId ? `[opencode:${sandboxId}]` : '[opencode]'
   console.log(`${logPrefix} Waiting for server on port ${port}...`)
 
+  let lastCheckDetails = ''
   for (let i = 0; i < maxAttempts; i++) {
     const check = await checkOpenCodeServer(sandbox, port)
     if (check.ok) {
-      console.log(`${logPrefix} Server responded with ${check.code} in ${((i * pollIntervalMs) / 1000).toFixed(1)}s`)
+      console.log(
+        `${logPrefix} ✅ Server responded with ${check.code} in ${((i * pollIntervalMs) / 1000).toFixed(1)}s${check.details ? ` (${check.details})` : ''}`,
+      )
       return
     }
 
-    // Log progress every ~2 seconds
-    if (i > 0 && i % Math.ceil(2000 / pollIntervalMs) === 0) {
+    // Log changes in check details for debugging
+    if (check.details && check.details !== lastCheckDetails) {
+      console.log(`${logPrefix} Health check changed: ${check.details}`)
+      lastCheckDetails = check.details
+    }
+
+    // Log progress every ~5 seconds
+    if (i > 0 && i % Math.ceil(5000 / pollIntervalMs) === 0) {
       console.log(`${logPrefix} Still waiting... (${((i * pollIntervalMs) / 1000).toFixed(0)}s)`)
     }
 
@@ -498,7 +547,7 @@ async function waitForOpenCodeServer(
   }
 
   // On failure, get detailed diagnostics
-  console.error(`${logPrefix} Server failed to start. Getting diagnostics...`)
+  console.error(`${logPrefix} ❌ Server failed to start. Getting diagnostics...`)
   try {
     const psResult = await sandbox.commands.run(
       'ps aux | grep -E "opencode|node" | grep -v grep || echo "No matching processes"',
@@ -509,6 +558,12 @@ async function waitForOpenCodeServer(
   try {
     const logResult = await sandbox.commands.run('cat /tmp/opencode.log 2>/dev/null || echo "No log file"')
     console.error(`${logPrefix} Log file: ${logResult.stdout.slice(0, 500)}`)
+  } catch {}
+
+  try {
+    // Final health check with more details
+    const finalCheck = await checkOpenCodeServer(sandbox, port)
+    console.error(`${logPrefix} Final health check result:`, finalCheck)
   } catch {}
 
   throw new Error(`OpenCode server failed to start within ${maxAttempts} seconds`)

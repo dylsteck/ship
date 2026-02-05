@@ -113,8 +113,13 @@ export async function createOpenCodeSession(
 }
 
 /**
- * Send a prompt to OpenCode session
+ * Send a prompt to OpenCode session (ASYNC - returns immediately)
  * This initiates the prompt - responses come via event stream
+ *
+ * IMPORTANT: We use session.promptAsync() NOT session.prompt() because:
+ * - prompt() is SYNCHRONOUS and BLOCKS until the full AI response is complete
+ * - promptAsync() returns immediately (204 No Content) and events stream separately
+ * - We need async for proper SSE streaming to the client
  *
  * @param sessionId - OpenCode session ID
  * @param content - Prompt content
@@ -129,7 +134,7 @@ export async function promptOpenCode(
   sandboxUrl: string,
   directory?: string,
 ): Promise<void> {
-  console.log(`[opencode:prompt] Sending prompt to session ${sessionId.slice(0, 8)}...`)
+  console.log(`[opencode:prompt] Sending ASYNC prompt to session ${sessionId.slice(0, 8)}...`)
   console.log(`[opencode:prompt] URL: ${sandboxUrl}, directory: ${directory}`)
   console.log(`[opencode:prompt] Content length: ${content.length}, mode: ${options.mode}, model: ${options.model}`)
 
@@ -170,39 +175,28 @@ export async function promptOpenCode(
   // Determine agent based on mode
   const agent = options.mode === 'plan' ? 'plan' : 'build'
 
-  console.log(`[opencode:prompt] Calling session.prompt with agent: ${agent}`)
+  console.log(`[opencode:prompt] Calling session.promptAsync with agent: ${agent}`)
 
-  // v2 API: session.prompt() takes parameters directly
-  const response = await client.session.prompt({
+  // v2 API: session.promptAsync() returns immediately (204) - events stream via event.subscribe()
+  // This is CRITICAL - using prompt() instead would BLOCK until the AI finishes!
+  const response = await client.session.promptAsync({
     sessionID: sessionId,
+    directory, // Pass directory explicitly for proper scoping
     parts: [textPart],
     model,
     agent,
   })
 
-  console.log(`[opencode:prompt] Prompt response status:`, response.error ? 'ERROR' : 'SUCCESS')
+  console.log(`[opencode:prompt] promptAsync response:`, response.error ? 'ERROR' : 'ACCEPTED (204)')
 
   if (response.error) {
-    console.error(`[opencode:prompt] Prompt error:`, JSON.stringify(response.error, null, 2))
+    console.error(`[opencode:prompt] promptAsync error:`, JSON.stringify(response.error, null, 2))
     throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
   }
 
-  // Check for errors in response data (OpenCode sometimes returns errors in data.info.error)
-  if (response.data && typeof response.data === 'object') {
-    const data = response.data as { info?: { error?: unknown } }
-    if (data.info?.error) {
-      console.error(`[opencode:prompt] Response contains error:`, JSON.stringify(data.info.error, null, 2))
-      const errorInfo = data.info.error as { name?: string; data?: { message?: string; statusCode?: number } }
-
-      if (errorInfo.data?.statusCode === 404 && errorInfo.data?.message?.includes('model')) {
-        throw new Error(`Model not found: ${model?.providerID}/${model?.modelID}. ${errorInfo.data.message}`)
-      }
-
-      throw new Error(`OpenCode error: ${errorInfo.name || 'Unknown'} - ${JSON.stringify(errorInfo.data || errorInfo)}`)
-    }
-  }
-
-  console.log(`[opencode:prompt] Prompt sent successfully - events will stream via event.subscribe()`)
+  // promptAsync returns 204 No Content on success - no data to check
+  // Events will now stream via the event subscription
+  console.log(`[opencode:prompt] Prompt accepted - events will stream via event.subscribe()`)
 }
 
 /**
@@ -211,6 +205,9 @@ export async function promptOpenCode(
  *
  * IMPORTANT: The v2 SDK returns { stream: AsyncIterable<Event> }
  * You must iterate over result.stream, not the result directly
+ *
+ * NOTE: The client is created with x-opencode-directory header, but we also
+ * pass directory explicitly to subscribe() for proper event scoping.
  *
  * @param sandboxUrl - URL for the sandbox's OpenCode server
  * @param directory - Optional directory path to scope events to a specific project
@@ -223,7 +220,8 @@ export async function subscribeToEvents(sandboxUrl: string, directory?: string):
   const client = getOpenCodeClient(sandboxUrl, directory)
 
   // v2 API: event.subscribe() returns { stream: AsyncIterable<Event> }
-  const result = (await client.event.subscribe()) as SSEStreamResult
+  // Pass directory explicitly to ensure proper event scoping
+  const result = (await client.event.subscribe({ directory })) as SSEStreamResult
 
   console.log(`[opencode:events] Got event subscription result, type: ${typeof result}`)
 
@@ -280,6 +278,16 @@ export async function* filterSessionEvents(
   let eventCount = 0
   let lastEventTime = Date.now()
 
+  // Stream health monitoring
+  let streamHealthy = false
+  const healthInterval = setInterval(() => {
+    const timeSinceLastEvent = Date.now() - lastEventTime
+    if (eventCount > 0 && timeSinceLastEvent > 30000) {
+      // 30 seconds
+      console.warn(`[opencode:filter] ⚠️ Stream health warning: no events for ${timeSinceLastEvent / 1000}s`)
+    }
+  }, 10000)
+
   // Timeout warning
   const timeoutWarning = setTimeout(() => {
     console.warn(`[opencode:filter] No events received in ${timeoutMs / 1000}s for session ${sessionId.slice(0, 8)}`)
@@ -288,15 +296,28 @@ export async function* filterSessionEvents(
   // Early event detection
   const earlyWarning = setTimeout(() => {
     if (eventCount === 0) {
-      console.warn(`[opencode:filter] WARNING: No events received after 5s. Stream may be stuck.`)
+      console.warn(`[opencode:filter] WARNING: No events received after 5s. Stream may be stuck or dead.`)
     }
   }, 5000)
+
+  // Stream started indicator
+  setTimeout(() => {
+    if (eventCount === 0) {
+      console.warn(`[opencode:filter] ❌ CRITICAL: No events after 10s. The event stream is not working!`)
+    }
+  }, 10000)
 
   try {
     for await (const event of eventStream) {
       clearTimeout(earlyWarning)
       lastEventTime = Date.now()
       eventCount++
+
+      // Mark stream as healthy after first event
+      if (!streamHealthy && eventCount > 0) {
+        streamHealthy = true
+        console.log(`[opencode:filter] ✅ Stream is healthy (first event: ${event.type})`)
+      }
 
       // Get session ID from event
       const eventSessionId = getEventSessionId(event)
@@ -322,10 +343,19 @@ export async function* filterSessionEvents(
         console.log(`[opencode:filter] Filtered out event from different session: ${eventSessionId?.slice(0, 8)}`)
       }
     }
+  } catch (streamError) {
+    console.error(`[opencode:filter] ❌ Stream error:`, streamError)
+    throw streamError
   } finally {
     clearTimeout(timeoutWarning)
     clearTimeout(earlyWarning)
-    console.log(`[opencode:filter] Event stream ended after ${eventCount} events`)
+    clearInterval(healthInterval)
+
+    if (eventCount === 0) {
+      console.error(`[opencode:filter] ❌ CRITICAL: Stream ended with 0 events. This indicates a serious problem!`)
+    } else {
+      console.log(`[opencode:filter] Event stream ended after ${eventCount} events`)
+    }
   }
 }
 
