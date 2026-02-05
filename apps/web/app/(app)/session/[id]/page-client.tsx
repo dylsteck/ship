@@ -95,9 +95,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
       }
     }
 
-    function normalizeSandboxStatus(
-      status: string | null | undefined,
-    ): 'provisioning' | 'ready' | 'error' | 'none' {
+    function normalizeSandboxStatus(status: string | null | undefined): 'provisioning' | 'ready' | 'error' | 'none' {
       switch (status) {
         case 'active':
           return 'ready'
@@ -258,7 +256,11 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           setSandboxProgress('OpenCode server started')
           // Extract URL - try multiple possible field names for robustness
           const url = data.url || data.opencodeUrl || data.serverUrl || (data as any).opencode_url
-          console.log('[page-client] Extracted URL:', url, 'from fields:', { url: data.url, opencodeUrl: data.opencodeUrl, serverUrl: data.serverUrl })
+          console.log('[page-client] Extracted URL:', url, 'from fields:', {
+            url: data.url,
+            opencodeUrl: data.opencodeUrl,
+            serverUrl: data.serverUrl,
+          })
           if (url && typeof url === 'string' && url.trim()) {
             console.log('[page-client] Setting opencodeUrl state to:', url)
             setOpencodeUrl(url.trim())
@@ -268,7 +270,10 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               setSandboxStatus('ready')
             }
           } else {
-            console.warn('[page-client] opencode-started event missing valid url field. Full data:', JSON.stringify(data))
+            console.warn(
+              '[page-client] opencode-started event missing valid url field. Full data:',
+              JSON.stringify(data),
+            )
             console.warn('[page-client] Available keys in data:', Object.keys(data))
           }
           // Clear progress message after 2 seconds
@@ -408,11 +413,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
                     ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
                     : 'Session'}
                 </h1>
-                {sessionInfo.model && (
-                  <p className="text-xs text-muted-foreground">
-                    Model: {sessionInfo.model}
-                  </p>
-                )}
+                {sessionInfo.model && <p className="text-xs text-muted-foreground">Model: {sessionInfo.model}</p>}
               </div>
             </div>
 
@@ -432,29 +433,17 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               {sandboxStatus === 'provisioning' && (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <div className="mb-4 text-lg font-medium text-foreground">
-                      Provisioning sandbox...
-                    </div>
-                    {sandboxProgress && (
-                      <div className="mb-2 text-sm text-muted-foreground">
-                        {sandboxProgress}
-                      </div>
-                    )}
-                    <div className="text-sm text-muted-foreground">
-                      This usually takes 10-15 seconds
-                    </div>
+                    <div className="mb-4 text-lg font-medium text-foreground">Provisioning sandbox...</div>
+                    {sandboxProgress && <div className="mb-2 text-sm text-muted-foreground">{sandboxProgress}</div>}
+                    <div className="text-sm text-muted-foreground">This usually takes 10-15 seconds</div>
                   </div>
                 </div>
               )}
               {sandboxStatus === 'error' && (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <div className="mb-4 text-lg font-medium text-destructive">
-                      Failed to provision sandbox
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Please refresh the page to try again
-                    </div>
+                    <div className="mb-4 text-lg font-medium text-destructive">Failed to provision sandbox</div>
+                    <div className="text-sm text-muted-foreground">Please refresh the page to try again</div>
                   </div>
                 </div>
               )}
@@ -472,6 +461,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
                   onStatusChange={handleStatusChange}
                   onOpenVSCode={handleOpenVSCode}
                   onOpenTerminal={handleOpenTerminal}
+                  onOpenCodeUrl={setOpencodeUrl}
                   initialPrompt={initialPrompt ?? searchParams.get('prompt')}
                   initialMode={(() => {
                     const modeParam = searchParams.get('mode')
@@ -500,16 +490,8 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           </div>
 
           {/* Sandbox Drawers */}
-          <VSCodeDrawer
-            sandboxId={sandboxId}
-            isOpen={vscodeOpen}
-            onOpenChange={setVscodeOpen}
-          />
-          <TerminalDrawer
-            sandboxId={sandboxId}
-            isOpen={terminalOpen}
-            onOpenChange={setTerminalOpen}
-          />
+          <VSCodeDrawer sandboxId={sandboxId} isOpen={vscodeOpen} onOpenChange={setVscodeOpen} />
+          <TerminalDrawer sandboxId={sandboxId} isOpen={terminalOpen} onOpenChange={setTerminalOpen} />
         </div>
       </SidebarInset>
     </SidebarProvider>

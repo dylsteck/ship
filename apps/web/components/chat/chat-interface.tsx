@@ -24,6 +24,7 @@ interface ChatInterfaceProps {
   initialMode?: 'build' | 'plan'
   agentStatus?: AgentStatus
   currentTool?: string
+  onOpenCodeUrl?: (url: string) => void
 }
 
 export function ChatInterface({
@@ -31,6 +32,7 @@ export function ChatInterface({
   onStatusChange,
   onOpenVSCode,
   onOpenTerminal,
+  onOpenCodeUrl,
   initialPrompt,
   initialMode = 'build',
   agentStatus,
@@ -641,6 +643,7 @@ export function ChatInterface({
                   const url = data.url || data.properties?.url
                   if (typeof url === 'string') {
                     setOpenCodeUrl(url)
+                    onOpenCodeUrl?.(url)
                     console.log('[chat-interface] OpenCode URL received:', url)
                   }
                 }
