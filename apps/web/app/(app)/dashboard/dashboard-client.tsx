@@ -84,11 +84,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
   const { createSession, isCreating } = useCreateSession()
 
-  // Set default model once loaded - prefer Claude Sonnet 4 (big-pickle)
+  // Set default model once loaded - prefer Big Pickle (OpenCode's optimized coding model)
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
-      // Find Claude Sonnet 4 as the preferred default
-      const preferredDefault = models.find((m) => m.id === 'anthropic/claude-sonnet-4-20250514')
+      // Find Big Pickle as the preferred default
+      const preferredDefault = models.find((m) => m.id === 'opencode/big-pickle')
       // Or find any model marked as default
       const markedDefault = models.find((m) => m.isDefault)
       // Fall back to first model

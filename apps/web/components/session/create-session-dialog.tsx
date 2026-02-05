@@ -168,7 +168,7 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                 value={selectedModel}
                 onChange={setSelectedModel}
                 disabled={isPending}
-                placeholder="Default (Claude Sonnet 4)"
+                placeholder="Default (Big Pickle)"
               />
             </div>
 
