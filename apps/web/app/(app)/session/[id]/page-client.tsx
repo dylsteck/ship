@@ -73,6 +73,12 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     wsConnectedRef.current = wsConnected
   }, [wsConnected])
 
+  // Ref for opencodeUrl to avoid stale closure in interval
+  const opencodeUrlRef = useRef(opencodeUrl)
+  useEffect(() => {
+    opencodeUrlRef.current = opencodeUrl
+  }, [opencodeUrl])
+
   // Fetch session info and sandbox status
   useEffect(() => {
     async function loadSession() {
@@ -135,7 +141,8 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     loadSandbox()
 
     const interval = setInterval(() => {
-      if (!wsConnectedRef.current && sandboxStatusRef.current !== 'ready') {
+      // Poll if not connected, or if sandbox ready but URL missing
+      if (!wsConnectedRef.current && (sandboxStatusRef.current !== 'ready' || !opencodeUrlRef.current)) {
         loadSandbox()
       }
     }, 2000)
@@ -212,8 +219,8 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           setTimeout(() => setSandboxProgress(null), 3000)
         }
 
-        // Handle OpenCode server started
-        if (data.type === 'opencode-started') {
+        // Handle OpenCode server started (both event types)
+        if (data.type === 'opencode-started' || data.type === 'opencode-url') {
           setSandboxProgress('OpenCode server started')
           const url = data.url || data.opencodeUrl || data.serverUrl
           if (url && typeof url === 'string' && url.trim()) {

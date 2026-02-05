@@ -39,7 +39,7 @@ export function Tool({ name, status, input, output, duration, className }: ToolP
 
   return (
     <CollapsiblePrimitive.Root open={isOpen} onOpenChange={setIsOpen}>
-      <div className={cn('rounded-lg border overflow-hidden my-2', statusColors[status], className)}>
+      <div className={cn('rounded-lg border overflow-hidden my-2 max-w-md', statusColors[status], className)}>
         <CollapsiblePrimitive.Trigger className="w-full flex items-center justify-between px-3 py-2 hover:bg-black/5 transition-colors">
           <div className="flex items-center gap-2">
             {statusIcons[status]}
