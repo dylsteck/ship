@@ -2,7 +2,7 @@
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { cn } from '@ship/ui'
+import { cn, CodeBlock } from '@ship/ui'
 import type { Components } from 'react-markdown'
 
 interface MarkdownProps {
@@ -13,34 +13,23 @@ interface MarkdownProps {
 export function Markdown({ content, className }: MarkdownProps) {
   const components: Components = {
     // Code blocks and inline code
-    code({ className: codeClassName, children, ...props }) {
+    code({ className: codeClassName, children }) {
       const match = /language-(\w+)/.exec(codeClassName || '')
       const isInline = !match && !codeClassName
+      const language = match ? match[1] : 'text'
 
       if (isInline) {
-        return (
-          <code
-            className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800 dark:bg-gray-700 dark:text-gray-200"
-            {...props}
-          >
-            {children}
-          </code>
-        )
+        return <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">{children}</code>
       }
 
-      // Code block (inside pre)
-      return (
-        <code className={cn('block font-mono text-sm', codeClassName)} {...props}>
-          {children}
-        </code>
-      )
+      // Code block - use AI Elements CodeBlock
+      const codeContent = String(children).replace(/\n$/, '')
+      return <CodeBlock code={codeContent} language={language} />
     },
 
-    // Pre blocks (wrapping code blocks)
+    // Pre blocks - handled by code component above, just return children
     pre({ children }) {
-      return (
-        <pre className="my-3 overflow-x-auto rounded-lg bg-gray-900 p-4 text-gray-100 dark:bg-gray-950">{children}</pre>
-      )
+      return <>{children}</>
     },
 
     // Links

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { ChatInterface } from '@/components/chat/chat-interface'
-import { SessionPanel } from '@/components/session/session-panel'
+import { SessionSidebar } from '@/components/chat/session-sidebar'
 import { AgentStatus } from '@/components/session/status-indicator'
 import { SandboxToolbar } from '@/components/sandbox/sandbox-toolbar'
 import { VSCodeDrawer } from '@/components/sandbox/vscode-drawer'
@@ -12,7 +12,6 @@ import { useSearchParams } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@ship/ui'
 import type { ChatSession, User } from '@/lib/api'
-import { DashboardBackground } from '@/components/dashboard-background'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 
@@ -398,10 +397,9 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
         onSessionDeleted={removeSession}
       />
       <SidebarInset>
-        <div className="flex h-screen flex-col relative">
-          <DashboardBackground />
+        <div className="flex h-screen flex-col relative bg-white dark:bg-background">
           {/* Header */}
-          <header className="flex items-center justify-between border-b bg-background/80 px-4 py-3 relative z-10">
+          <header className="flex items-center justify-between border-b bg-white dark:bg-background/95 px-4 py-3 relative z-10">
             <div className="flex items-center gap-3">
               <SidebarTrigger className="cursor-pointer" />
               <Link href="/" className="text-muted-foreground hover:text-foreground">
@@ -427,7 +425,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
           </header>
 
           {/* Main content: Chat + Side Panel */}
-          <div className="flex flex-1 overflow-hidden bg-background/70 relative z-10">
+          <div className="flex flex-1 overflow-hidden bg-white dark:bg-background relative z-10">
             {/* Chat Interface */}
             <div className="flex-1 overflow-hidden">
               {sandboxStatus === 'provisioning' && (
@@ -476,8 +474,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
             </div>
 
             {/* Side Panel */}
-            <SessionPanel
-              key={`session-panel-${opencodeUrl || 'no-url'}`}
+            <SessionSidebar
               sessionId={sessionId}
               sessionInfo={sessionInfo}
               agentStatus={agentStatus}
