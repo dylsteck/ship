@@ -181,7 +181,7 @@ export function ChatInterface({
       setThinkingParts([])
       setThinkingReasoning('')
       setThinkingExpanded(true)
-      setThinkingStatus('')
+      setThinkingStatus('🚀 Starting...') // Set initial status so ThinkingIndicator renders
 
       // Optimistically add user message
       const userMessage: Message = {
@@ -205,7 +205,13 @@ export function ChatInterface({
       setMessages((prev) => [...prev, assistantMessage])
 
       try {
+        console.log('[chat-interface] Sending chat message to API...')
         const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
+        console.log('[chat-interface] Response received:', {
+          ok: response.ok,
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+        })
 
         // Check for non-OK responses (500, etc.) before trying to read stream
         if (!response.ok) {
@@ -250,20 +256,30 @@ export function ChatInterface({
         }
 
         if (!response.body) {
+          console.error('[chat-interface] No response body!')
           throw new Error('No response body')
         }
 
+        console.log('[chat-interface] Starting to read SSE stream...')
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
+        let chunkCount = 0
         // Reset cost events for this message
         costEventsRef.current = []
 
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          chunkCount++
+          console.log(`[chat-interface] SSE chunk #${chunkCount}:`, { done, valueLength: value?.length })
+          if (done) {
+            console.log('[chat-interface] SSE stream ended')
+            break
+          }
 
-          buffer += decoder.decode(value, { stream: true })
+          const chunk = decoder.decode(value, { stream: true })
+          console.log(`[chat-interface] SSE raw chunk: "${chunk.slice(0, 200)}..."`)
+          buffer += chunk
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
 
@@ -271,6 +287,7 @@ export function ChatInterface({
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6))
+                console.log('[chat-interface] SSE event parsed:', data.type || data.status || 'unknown')
 
                 // Handle status events for progress updates
                 if (data.type === 'status') {

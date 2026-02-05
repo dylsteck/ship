@@ -5,10 +5,7 @@
  * from Server Components and Server Actions.
  */
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.API_BASE_URL ||
-  'http://localhost:8787'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_BASE_URL || 'http://localhost:8787'
 
 // Session types matching API response
 export interface ChatSession {
@@ -117,15 +114,15 @@ export interface MessagePart {
 /**
  * Send a chat message and get streaming response
  */
-export async function sendChatMessage(
-  sessionId: string,
-  content: string,
-  mode?: 'build' | 'plan',
-): Promise<Response> {
+export async function sendChatMessage(sessionId: string, content: string, mode?: 'build' | 'plan'): Promise<Response> {
   return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
     body: JSON.stringify({ content, mode }),
+    credentials: 'include',
   })
 }
 

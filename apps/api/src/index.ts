@@ -16,10 +16,7 @@ import type { Env } from './env.d'
 const app = new Hono<{ Bindings: Env }>()
 
 // CORS middleware
-const allowedOrigins = new Set([
-  'http://localhost:3000',
-  'https://ship.dylansteck.com',
-])
+const allowedOrigins = new Set(['http://localhost:3000', 'https://ship.dylansteck.com'])
 
 app.use(
   '/*',
@@ -29,7 +26,9 @@ app.use(
       return allowedOrigins.has(origin) ? origin : undefined
     },
     credentials: true,
-  })
+    allowHeaders: ['Content-Type', 'Accept', 'Authorization'],
+    exposeHeaders: ['Content-Type', 'Cache-Control', 'Connection'],
+  }),
 )
 
 // Routes
