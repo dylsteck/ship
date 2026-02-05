@@ -80,6 +80,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const [activityTools, setActivityTools] = useState<SSEToolPart[]>([])
   const [reasoningParts, setReasoningParts] = useState<ReasoningPart[]>([])
   const [statusEvents, setStatusEvents] = useState<Array<{ status: string; message: string; time: number }>>([])
+  const [openCodeUrl, setOpenCodeUrl] = useState<string>('')
   const [lastStepCost, setLastStepCost] = useState<{ cost: number; tokens: StepFinishPart['tokens'] } | null>(null)
   const [sessionTodos, setSessionTodos] = useState<
     Array<{
@@ -208,6 +209,15 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
             ...prev,
             { status: 'starting-opencode', message: 'Starting OpenCode server...', time: Date.now() },
           ])
+        }
+
+        // Handle OpenCode URL
+        if (event.type === 'opencode-url') {
+          const url = (event as { url?: string }).url
+          if (url) {
+            setOpenCodeUrl(url)
+            console.log('[dashboard-client] OpenCode URL received:', url)
+          }
         }
 
         // Handle OpenCode events for real-time activity
@@ -606,6 +616,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       setLastStepCost(null)
                       setReasoningParts([])
                       setStatusEvents([])
+                      setOpenCodeUrl('')
                     }, 3000)
                     break
                   }
@@ -1156,6 +1167,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   cost={totalCost > 0 ? totalCost : undefined}
                   todos={sessionTodos}
                   diffs={fileDiffs}
+                  openCodeUrl={openCodeUrl || undefined}
                 />
               </div>
             )}

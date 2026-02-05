@@ -207,6 +207,15 @@ app.post('/:sessionId', async (c) => {
                 body: JSON.stringify({ opencode_url: url }),
               }),
             )
+
+            // Send URL to frontend
+            await stream.writeSSE({
+              event: 'opencode-url',
+              data: JSON.stringify({
+                type: 'opencode-url',
+                url: url,
+              }),
+            })
           } catch (error) {
             console.error(`[chat:${sessionId}] Failed to start OpenCode server:`, error)
             await stream.writeSSE({

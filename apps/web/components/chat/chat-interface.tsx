@@ -54,6 +54,9 @@ export function ChatInterface({
 
   // Status events timeline
   const [statusEvents, setStatusEvents] = useState<Array<{ status: string; message: string; time: number }>>([])
+
+  // OpenCode server URL
+  const [openCodeUrl, setOpenCodeUrl] = useState<string>('')
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
@@ -633,6 +636,15 @@ export function ChatInterface({
                   onStatusChange?.('executing', command)
                 }
 
+                // Handle OpenCode URL from backend
+                if (eventType === 'opencode-url' || data.type === 'opencode-url') {
+                  const url = data.url || data.properties?.url
+                  if (typeof url === 'string') {
+                    setOpenCodeUrl(url)
+                    console.log('[chat-interface] OpenCode URL received:', url)
+                  }
+                }
+
                 if (data.type === 'assistant') {
                   // Update assistant message with final content
                   setMessages((prev) =>
@@ -673,6 +685,7 @@ export function ChatInterface({
                     setReasoningParts([])
                     setLastStepCost(null)
                     setStatusEvents([])
+                    setOpenCodeUrl('')
                   }, 2000)
                   onStatusChange?.('idle')
                 }

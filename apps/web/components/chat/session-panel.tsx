@@ -65,6 +65,7 @@ interface SessionPanelProps {
   todos?: Todo[]
   diffs?: DiffSummary[]
   sessionInfo?: SSESessionInfo
+  openCodeUrl?: string
   className?: string
 }
 
@@ -370,6 +371,31 @@ function SessionSummary({ sessionInfo }: { sessionInfo: SSESessionInfo }) {
   )
 }
 
+// OpenCode URL section
+function OpenCodeSection({ url }: { url: string }) {
+  return (
+    <Card size="sm" className="border-blue-500/30 bg-blue-500/5">
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🔌</span>
+          <CardTitle className="text-xs uppercase text-muted-foreground">OpenCode Server</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all font-mono"
+        >
+          {url}
+        </a>
+        <p className="text-[10px] text-muted-foreground mt-1">Click to open agent server UI</p>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ============ Main Component ============
 
 export function SessionPanel({
@@ -381,10 +407,14 @@ export function SessionPanel({
   todos,
   diffs,
   sessionInfo,
+  openCodeUrl,
   className,
 }: SessionPanelProps) {
   return (
     <div className={cn('space-y-3 p-3', className)}>
+      {/* OpenCode server URL */}
+      {openCodeUrl && <OpenCodeSection url={openCodeUrl} />}
+
       {/* Repository info */}
       {repo && <RepoSection repo={repo} />}
 
@@ -404,7 +434,7 @@ export function SessionPanel({
       {sessionInfo && <SessionSummary sessionInfo={sessionInfo} />}
 
       {/* Empty state */}
-      {!repo && !model && !tokens && !todos?.length && !diffs?.length && !sessionInfo && (
+      {!repo && !model && !tokens && !todos?.length && !diffs?.length && !sessionInfo && !openCodeUrl && (
         <div className="text-center py-8 text-muted-foreground text-sm">
           <p>No session data</p>
         </div>
