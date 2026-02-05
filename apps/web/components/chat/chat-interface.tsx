@@ -51,6 +51,9 @@ export function ChatInterface({
   const [reasoningParts, setReasoningParts] = useState<ReasoningPart[]>([])
   const [lastStepCost, setLastStepCost] = useState<{ cost: number; tokens: StepFinishPart['tokens'] } | null>(null)
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null)
+
+  // Status events timeline
+  const [statusEvents, setStatusEvents] = useState<Array<{ status: string; message: string; time: number }>>([])
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
@@ -345,6 +348,16 @@ export function ChatInterface({
                 // Handle status events for progress updates
                 if (data.type === 'status') {
                   const statusMessage = data.message || 'Processing...'
+
+                  // Track status in timeline
+                  setStatusEvents((prev) => [
+                    ...prev,
+                    {
+                      status: data.status,
+                      message: statusMessage,
+                      time: Date.now(),
+                    },
+                  ])
 
                   // Update streaming label to show progress - always set thinkingStatus for visibility
                   if (data.status === 'initializing') {
@@ -659,6 +672,7 @@ export function ChatInterface({
                     setActivityTools([])
                     setReasoningParts([])
                     setLastStepCost(null)
+                    setStatusEvents([])
                   }, 2000)
                   onStatusChange?.('idle')
                 }
@@ -844,7 +858,7 @@ export function ChatInterface({
           />
 
           {/* Show ActivityFeed when streaming with typed tools */}
-          {isStreaming && (activityTools.length > 0 || thinkingStatus) && (
+          {isStreaming && (activityTools.length > 0 || thinkingStatus || statusEvents.length > 0) && (
             <div className="px-6 pb-6">
               <ActivityFeed
                 tools={activityTools}
@@ -853,6 +867,7 @@ export function ChatInterface({
                 cost={lastStepCost?.cost}
                 isStreaming={isStreaming}
                 startTime={streamStartTime || undefined}
+                statusEvents={statusEvents}
               />
             </div>
           )}

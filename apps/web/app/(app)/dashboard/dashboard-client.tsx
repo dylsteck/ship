@@ -79,6 +79,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   // New typed SSE state for rich activity display
   const [activityTools, setActivityTools] = useState<SSEToolPart[]>([])
   const [reasoningParts, setReasoningParts] = useState<ReasoningPart[]>([])
+  const [statusEvents, setStatusEvents] = useState<Array<{ status: string; message: string; time: number }>>([])
   const [lastStepCost, setLastStepCost] = useState<{ cost: number; tokens: StepFinishPart['tokens'] } | null>(null)
   const [sessionTodos, setSessionTodos] = useState<
     Array<{
@@ -185,14 +186,28 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           const status = (event as { status?: string }).status
           if (status === 'ready') {
             setThinkingStatus('Sandbox ready')
+            setStatusEvents((prev) => [
+              ...prev,
+              { status: 'sandbox-ready', message: 'Sandbox ready', time: Date.now() },
+            ])
           } else if (status === 'error') {
             setThinkingStatus('Sandbox error')
+            setStatusEvents((prev) => [...prev, { status: 'error', message: 'Sandbox error', time: Date.now() }])
+          } else if (status === 'provisioning') {
+            setStatusEvents((prev) => [
+              ...prev,
+              { status: 'provisioning', message: 'Provisioning sandbox...', time: Date.now() },
+            ])
           }
         }
 
         // Handle OpenCode server started
         if (event.type === 'opencode-started') {
           setThinkingStatus('OpenCode started')
+          setStatusEvents((prev) => [
+            ...prev,
+            { status: 'starting-opencode', message: 'Starting OpenCode server...', time: Date.now() },
+          ])
         }
 
         // Handle OpenCode events for real-time activity
@@ -218,6 +233,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           // Handle server connection
           if (ocEvent?.payload?.type === 'server.connected') {
             setThinkingStatus('Connected to agent')
+            setStatusEvents((prev) => [
+              ...prev,
+              { status: 'agent-active', message: 'Connected to agent', time: Date.now() },
+            ])
             return
           }
 
@@ -517,6 +536,15 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                     const statusInfo = getEventStatus(event)
                     if (statusInfo) {
                       setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
+                      // Track status for timeline display
+                      setStatusEvents((prev) => [
+                        ...prev,
+                        {
+                          status: event.status,
+                          message: event.message,
+                          time: Date.now(),
+                        },
+                      ])
                     }
                     break
                   }
@@ -525,6 +553,15 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                     const statusInfo = getEventStatus(event)
                     if (statusInfo) {
                       setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
+                      // Track session status for timeline display
+                      setStatusEvents((prev) => [
+                        ...prev,
+                        {
+                          status: `session-${event.properties.status.type}`,
+                          message: statusInfo.label,
+                          time: Date.now(),
+                        },
+                      ])
                     }
                     break
                   }
@@ -568,6 +605,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       setThinkingParts([])
                       setLastStepCost(null)
                       setReasoningParts([])
+                      setStatusEvents([])
                     }, 3000)
                     break
                   }
@@ -834,7 +872,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                     })}
 
                     {/* Activity feed - show when streaming and we have activity */}
-                    {isStreaming && (activityTools.length > 0 || thinkingStatus) && (
+                    {isStreaming && (activityTools.length > 0 || thinkingStatus || statusEvents.length > 0) && (
                       <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
                         <ActivityFeed
                           tools={activityTools}
@@ -843,6 +881,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                           cost={lastStepCost?.cost}
                           isStreaming={isStreaming}
                           startTime={streamStartTime || undefined}
+                          statusEvents={statusEvents}
                         />
                       </div>
                     )}

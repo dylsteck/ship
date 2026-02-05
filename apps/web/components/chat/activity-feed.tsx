@@ -15,6 +15,7 @@ interface ActivityFeedProps {
   isStreaming?: boolean
   startTime?: number
   className?: string
+  statusEvents?: Array<{ status: string; message: string; time: number }>
 }
 
 // Animated streaming indicator
@@ -27,6 +28,111 @@ function StreamingIndicator() {
       </span>
       <span>Agent is thinking...</span>
     </div>
+  )
+}
+
+// Status icon mapping
+const STATUS_ICONS: Record<string, string> = {
+  initializing: '🚀',
+  provisioning: '📦',
+  'sandbox-ready': '✅',
+  'starting-opencode': '🔌',
+  cloning: '📥',
+  'repo-ready': '✅',
+  'creating-session': '🔧',
+  'sending-prompt': '📤',
+  'agent-active': '⚡',
+  'agent-thinking': '💭',
+  'tool-call': '🔧',
+}
+
+// Status timeline showing initialization progress
+function StatusTimeline({
+  events,
+  isStreaming,
+}: {
+  events: Array<{ status: string; message: string; time: number }>
+  isStreaming?: boolean
+}) {
+  if (events.length === 0) return null
+
+  // Get unique statuses (keep latest for each status type)
+  const uniqueEvents = useMemo(() => {
+    const seen = new Set<string>()
+    const result: typeof events = []
+    // Iterate in reverse to keep latest
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i]
+      if (!seen.has(event.status)) {
+        seen.add(event.status)
+        result.unshift(event)
+      }
+    }
+    return result
+  }, [events])
+
+  return (
+    <Card size="sm" className="border-dashed border-blue-500/30 bg-blue-500/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs flex items-center gap-2">
+          <span>📊</span>
+          <span>Initialization Progress</span>
+          {isStreaming && (
+            <span className="relative flex h-1.5 w-1.5 ml-auto">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="relative">
+          {/* Timeline line */}
+          <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-blue-500/50 via-blue-500/30 to-transparent" />
+
+          {/* Status items */}
+          <div className="space-y-2">
+            {uniqueEvents.map((event, index) => {
+              const icon = STATUS_ICONS[event.status] || '⚪'
+              const isLatest = index === uniqueEvents.length - 1
+
+              return (
+                <div key={`${event.status}-${index}`} className="flex items-center gap-3 relative">
+                  {/* Icon bubble */}
+                  <div
+                    className={cn(
+                      'relative z-10 flex items-center justify-center w-5 h-5 rounded-full text-xs shrink-0',
+                      isLatest && isStreaming
+                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                        : 'bg-background border border-blue-500/30',
+                    )}
+                  >
+                    {icon}
+                  </div>
+
+                  {/* Status text */}
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={cn(
+                        'text-xs truncate',
+                        isLatest && isStreaming ? 'text-foreground font-medium' : 'text-muted-foreground',
+                      )}
+                    >
+                      {event.message}
+                    </p>
+                  </div>
+
+                  {/* Animated indicator for latest */}
+                  {isLatest && isStreaming && (
+                    <span className="w-1 h-1 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -167,6 +273,7 @@ export function ActivityFeed({
   isStreaming = false,
   startTime,
   className,
+  statusEvents,
 }: ActivityFeedProps) {
   // Group tools by status
   const { runningTools, completedTools, errorTools, pendingTools } = useMemo(() => {
@@ -202,6 +309,7 @@ export function ActivityFeed({
 
   const hasTools = tools.length > 0
   const hasReasoning = reasoning && reasoning.length > 0
+  const hasStatusEvents = statusEvents && statusEvents.length > 0
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -210,6 +318,9 @@ export function ActivityFeed({
         {isStreaming ? <StreamingIndicator /> : <span className="text-xs text-muted-foreground">Activity</span>}
         {startTime && <ElapsedTime startTime={startTime} />}
       </div>
+
+      {/* Status timeline - shows initialization progress */}
+      {hasStatusEvents && <StatusTimeline events={statusEvents} isStreaming={isStreaming} />}
 
       {/* Token/cost summary */}
       {tokenInfo && <TokenSummary tokens={tokenInfo} cost={cost} contextLimit={tokenInfo.contextLimit} />}
@@ -283,7 +394,7 @@ export function ActivityFeed({
       )}
 
       {/* Empty state */}
-      {!hasTools && !hasReasoning && !isStreaming && (
+      {!hasTools && !hasReasoning && !hasStatusEvents && !isStreaming && (
         <div className="text-center py-8 text-muted-foreground text-sm">No activity yet</div>
       )}
     </div>
