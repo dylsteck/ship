@@ -3,17 +3,19 @@ import type { Env } from '../env.d'
 
 const models = new Hono<{ Bindings: Env }>()
 
-// Default model if no preference set - Big Pickle (OpenCode's optimized coding model)
-const DEFAULT_MODEL = 'opencode/big-pickle'
+// Default model if no preference set - Big Pickle (free stealth model via OpenCode Zen)
+const DEFAULT_MODEL = 'big-pickle'
 
 // Fallback static model list when OpenCode is unavailable
 // Ordered by recommendation - default model first
 const FALLBACK_MODELS = [
   {
-    id: 'opencode/big-pickle',
+    id: 'big-pickle',
     name: 'Big Pickle',
-    provider: 'OpenCode',
-    description: 'Recommended - Optimized for coding agents',
+    provider: 'OpenCode Zen',
+    description: 'Free stealth model optimized for coding agents (200K context)',
+    contextWindow: 200000,
+    maxTokens: 128000,
     isDefault: true,
   },
   {
@@ -45,6 +47,8 @@ const FALLBACK_MODELS = [
  * Since OpenCode runs in sandbox, we just validate against fallback list
  */
 function validateModelWithFallback(modelId: string): boolean {
+  // Handle both new ID (big-pickle) and old ID (opencode/big-pickle) for backwards compatibility
+  if (modelId === 'opencode/big-pickle') return true
   return FALLBACK_MODELS.some((m) => m.id === modelId)
 }
 
