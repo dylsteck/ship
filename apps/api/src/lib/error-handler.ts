@@ -61,13 +61,17 @@ export function classifyError(error: unknown): ErrorDetails {
     lowerMessage.includes('too many requests') ||
     lowerMessage.includes('service unavailable') ||
     lowerMessage.includes('bad gateway') ||
-    lowerMessage.includes('gateway timeout')
+    lowerMessage.includes('gateway timeout') ||
+    lowerMessage.includes('port is not open') || // E2B sandbox port not ready
+    lowerMessage.includes('502') || // Generic 502 errors
+    lowerMessage.includes('503') || // Service temporarily unavailable
+    lowerMessage.includes('504') // Gateway timeout code
   ) {
     return {
       category: ErrorCategory.Transient,
       retryable: true,
-      maxRetries: 3,
-      backoffMs: 2000, // 2s, 4s, 8s exponential
+      maxRetries: 5, // Increase retries for port issues
+      backoffMs: 2000, // 2s, 4s, 8s, 16s, 32s exponential
       message,
     }
   }
@@ -145,10 +149,7 @@ export function sleep(ms: number, withJitter: boolean = true): Promise<void> {
  * @returns Result of operation
  * @throws Last error if all retries fail or error is not retryable
  */
-export async function executeWithRetry<T>(
-  operation: () => Promise<T>,
-  context: RetryContext,
-): Promise<T> {
+export async function executeWithRetry<T>(operation: () => Promise<T>, context: RetryContext): Promise<T> {
   let lastError: Error
 
   // First attempt

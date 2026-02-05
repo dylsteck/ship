@@ -296,9 +296,7 @@ async function checkOpenCodeServer(sandbox: Sandbox, port: number): Promise<{ ok
       return { ok: true, code: healthCode }
     }
 
-    const rootResult = await sandbox.commands.run(
-      `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/`,
-    )
+    const rootResult = await sandbox.commands.run(`curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/`)
     const rootCode = rootResult.stdout.trim()
     if (rootCode && rootCode !== '000') {
       return { ok: true, code: rootCode }
@@ -331,9 +329,7 @@ export async function startOpenCodeServer(
   if (existingServer.ok) {
     const host = sandbox.getHost(4096)
     const url = `https://${host}`
-    console.log(
-      `[opencode:${sandboxId}] Existing server detected (status ${existingServer.code}). Using ${url}`,
-    )
+    console.log(`[opencode:${sandboxId}] Existing server detected (status ${existingServer.code}). Using ${url}`)
     return { url, process: null }
   }
 
@@ -349,15 +345,11 @@ export async function startOpenCodeServer(
     console.log(`[opencode:${sandboxId}] OpenCode not found, checking .opencode directory...`)
 
     // Check if .opencode exists (installation directory)
-    const checkDirResult = await sandbox.commands.run(
-      `ls -la "${homeDir}/.opencode" 2>&1 || echo "DIR_NOT_FOUND"`,
-    )
+    const checkDirResult = await sandbox.commands.run(`ls -la "${homeDir}/.opencode" 2>&1 || echo "DIR_NOT_FOUND"`)
     console.log(`[opencode:${sandboxId}] .opencode directory: ${checkDirResult.stdout.slice(0, 200)}`)
 
     // Try to find the binary in common locations
-    const findResult = await sandbox.commands.run(
-      `find "${homeDir}" -name "opencode" -type f 2>/dev/null | head -5`,
-    )
+    const findResult = await sandbox.commands.run(`find "${homeDir}" -name "opencode" -type f 2>/dev/null | head -5`)
     console.log(`[opencode:${sandboxId}] find result: ${findResult.stdout}`)
 
     // Install OpenCode if not found
@@ -450,6 +442,25 @@ export async function startOpenCodeServer(
   const url = `https://${host}`
   console.log(`[opencode:${sandboxId}] Server URL: ${url}`)
 
+  // Wait a bit more for E2B port forwarding to stabilize
+  // The internal server might be ready but the external port forwarding can lag
+  console.log(`[opencode:${sandboxId}] Waiting for port forwarding to stabilize...`)
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  // Verify external URL is accessible
+  for (let i = 0; i < 5; i++) {
+    try {
+      const healthCheck = await fetch(`${url}/global/health`, { signal: AbortSignal.timeout(5000) })
+      if (healthCheck.ok) {
+        console.log(`[opencode:${sandboxId}] External URL verified accessible`)
+        break
+      }
+    } catch (err) {
+      console.log(`[opencode:${sandboxId}] External URL check attempt ${i + 1}/5 failed, retrying...`)
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+
   return { url, process: proc }
 }
 
@@ -474,9 +485,7 @@ async function waitForOpenCodeServer(
   for (let i = 0; i < maxAttempts; i++) {
     const check = await checkOpenCodeServer(sandbox, port)
     if (check.ok) {
-      console.log(
-        `${logPrefix} Server responded with ${check.code} in ${((i * pollIntervalMs) / 1000).toFixed(1)}s`,
-      )
+      console.log(`${logPrefix} Server responded with ${check.code} in ${((i * pollIntervalMs) / 1000).toFixed(1)}s`)
       return
     }
 
