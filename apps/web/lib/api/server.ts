@@ -112,21 +112,6 @@ export interface MessagePart {
 }
 
 /**
- * Send a chat message and get streaming response
- */
-export async function sendChatMessage(sessionId: string, content: string, mode?: 'build' | 'plan'): Promise<Response> {
-  return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({ content, mode }),
-    credentials: 'include',
-  })
-}
-
-/**
  * Get chat messages with pagination
  */
 export async function getChatMessages(
@@ -144,6 +129,21 @@ export async function getChatMessages(
   }
 
   return res.json()
+}
+
+/**
+ * Send a chat message and get streaming response
+ */
+export async function sendChatMessage(sessionId: string, content: string, mode?: 'build' | 'plan'): Promise<Response> {
+  console.log(`[api] Sending chat message to ${API_URL}/chat/${sessionId}`)
+  return fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({ content, mode }),
+  })
 }
 
 /**
