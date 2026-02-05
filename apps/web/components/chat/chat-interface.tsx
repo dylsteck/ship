@@ -276,15 +276,31 @@ export function ChatInterface({
                 if (data.type === 'status') {
                   const statusMessage = data.message || 'Processing...'
 
-                  // Update streaming label to show progress
-                  if (data.status === 'provisioning') {
-                    onStatusChange?.('planning', `Provisioning sandbox... ${statusMessage}`)
+                  // Update streaming label to show progress - always set thinkingStatus for visibility
+                  if (data.status === 'initializing') {
+                    onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('🚀 ' + statusMessage)
+                  } else if (data.status === 'provisioning') {
+                    onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('📦 ' + statusMessage)
+                  } else if (data.status === 'sandbox-ready') {
+                    onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('✅ ' + statusMessage)
                   } else if (data.status === 'starting-opencode') {
                     onStatusChange?.('planning', 'Starting OpenCode server...')
+                    setThinkingStatus('🔌 Starting agent server...')
                   } else if (data.status === 'cloning') {
                     onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('📥 ' + statusMessage)
                   } else if (data.status === 'repo-ready') {
                     onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('✅ ' + statusMessage)
+                  } else if (data.status === 'creating-session') {
+                    onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('🔧 ' + statusMessage)
+                  } else if (data.status === 'sending-prompt') {
+                    onStatusChange?.('planning', statusMessage)
+                    setThinkingStatus('📤 ' + statusMessage)
                   } else if (data.status === 'tool-call') {
                     // Show tool call in real-time
                     const toolLabel = data.toolTitle || data.toolName || 'Using tool'
@@ -693,7 +709,7 @@ export function ChatInterface({
           />
 
           {/* Show ThinkingIndicator when streaming to display all OpenCode activity */}
-          {isStreaming && (thinkingParts.length > 0 || thinkingReasoning) && (
+          {isStreaming && (thinkingParts.length > 0 || thinkingReasoning || thinkingStatus) && (
             <div className="px-6 pb-6">
               <ThinkingIndicator
                 isThinking={isStreaming}

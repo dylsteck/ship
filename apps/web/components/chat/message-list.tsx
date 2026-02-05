@@ -2,6 +2,7 @@
 
 import { ToolBlock } from './tool-block'
 import { ErrorMessage } from './error-message'
+import { Markdown } from './markdown'
 import { CostBreakdown } from '@/components/cost/cost-breakdown'
 import type { MessagePart, Message } from '@/lib/api'
 import type { CostBreakdown as CostBreakdownType } from '@/lib/cost-tracker'
@@ -68,7 +69,7 @@ export function MessageList({
   }
 
   return (
-    <div className={cn("flex-1 space-y-6 p-6", className)}>
+    <div className={cn('flex-1 space-y-6 p-6', className)}>
       {hasMore && (
         <button
           onClick={onLoadEarlier}
@@ -112,11 +113,14 @@ export function MessageList({
               }`}
             >
               {/* Render text content */}
-              {message.content && (
-                <div className={`whitespace-pre-wrap ${message.role === 'user' ? 'text-white' : ''}`}>
-                  {message.content}
-                </div>
-              )}
+              {message.content &&
+                (message.role === 'assistant' ? (
+                  <Markdown content={message.content} />
+                ) : (
+                  <div className={`whitespace-pre-wrap ${message.role === 'user' ? 'text-white' : ''}`}>
+                    {message.content}
+                  </div>
+                ))}
 
               {/* Render tool parts */}
               {parsedParts.map((part: MessagePart, i: number) => {
@@ -136,9 +140,7 @@ export function MessageList({
 
               {/* Render cost breakdown if available */}
               {(message as Message & { costBreakdown?: CostBreakdownType }).costBreakdown && (
-                <CostBreakdown
-                  breakdown={(message as Message & { costBreakdown?: CostBreakdownType }).costBreakdown}
-                />
+                <CostBreakdown breakdown={(message as Message & { costBreakdown?: CostBreakdownType }).costBreakdown} />
               )}
             </div>
           </div>
@@ -150,9 +152,7 @@ export function MessageList({
           <div className="rounded-lg bg-white px-4 py-3 shadow-sm dark:bg-gray-800">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                {streamingLabel || 'Thinking...'}
-              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">{streamingLabel || 'Thinking...'}</span>
             </div>
           </div>
         </div>
