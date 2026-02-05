@@ -147,24 +147,26 @@ export async function promptOpenCode(
   }
 
   // Parse model string (format: "provider/model" or just "model")
-  // OpenCode Zen models (kimi-k2.5-free, big-pickle, glm-4.7-free) don't need a provider prefix
-  // They're accessed directly via Models.dev
-  const OPENCODE_ZEN_MODELS = ['kimi-k2.5-free', 'big-pickle', 'glm-4.7-free']
+  // OpenCode Zen models should use format "opencode/<model-id>" per docs
+  // Examples: opencode/kimi-k2.5-free, opencode/big-pickle, opencode/glm-4.7-free
+  const OPENCODE_ZEN_MODEL_IDS = ['kimi-k2.5-free', 'big-pickle', 'glm-4.7-free']
   
   let model: { providerID: string; modelID: string } | undefined
   if (options.model) {
     const modelParts = options.model.split('/')
     if (modelParts.length === 2) {
+      // Format: "provider/model-id"
       model = {
         providerID: modelParts[0],
         modelID: modelParts[1],
       }
     } else {
-      // Check if it's an OpenCode Zen model (accessed via Models.dev)
-      if (OPENCODE_ZEN_MODELS.includes(options.model)) {
-        // OpenCode Zen models use Models.dev provider
+      // Single model ID without provider prefix
+      // Check if it's an OpenCode Zen model ID
+      if (OPENCODE_ZEN_MODEL_IDS.includes(options.model)) {
+        // OpenCode Zen models use "opencode" as provider per docs
         model = {
-          providerID: 'models.dev',
+          providerID: 'opencode',
           modelID: options.model,
         }
       } else {
@@ -179,10 +181,10 @@ export async function promptOpenCode(
   } else {
     // Default model - Kimi K2.5 Free via OpenCode Zen
     model = {
-      providerID: 'models.dev',
+      providerID: 'opencode',
       modelID: 'kimi-k2.5-free',
     }
-    console.log(`[opencode:prompt] Using default model: models.dev/kimi-k2.5-free`)
+    console.log(`[opencode:prompt] Using default model: opencode/kimi-k2.5-free`)
   }
 
   // Determine agent based on mode

@@ -360,7 +360,7 @@ export function DashboardMessages({
       {/* Streaming with no activity yet */}
       {isStreaming && !thinkingReasoning && activityTools.length === 0 && setupEvents.length === 0 && messages.length > 0 && (
         <Message role="assistant">
-          <Loader message={thinkingStatus || 'Thinking...'} />
+          <Loader message={typeof thinkingStatus === 'string' ? thinkingStatus : 'Thinking...'} />
         </Message>
       )}
 
@@ -421,7 +421,24 @@ function SubagentActivity({
   const durationText = duration > 0 ? formatDuration(duration) : null
   
   // Determine activity summary from status or tool names
-  const activitySummary = thinkingStatus || (uniqueTools.length > 0 ? uniqueTools[0] : 'Working...')
+  // Ensure it's always a string (not an object) - handle edge cases
+  const getActivitySummary = (): string => {
+    // Ensure thinkingStatus is a string (never render objects)
+    if (thinkingStatus && typeof thinkingStatus === 'string' && thinkingStatus.trim()) {
+      return thinkingStatus
+    }
+    // Fall back to first tool name if available (ensure it's a string)
+    if (uniqueTools.length > 0) {
+      const firstTool = uniqueTools[0]
+      if (typeof firstTool === 'string') {
+        return firstTool
+      }
+      // If somehow it's not a string, convert it
+      return String(firstTool)
+    }
+    return 'Working...'
+  }
+  const activitySummary = getActivitySummary()
   
   // Group tools by name for display
   const toolsByType = activityTools.reduce((acc, tool) => {
@@ -476,7 +493,7 @@ function SubagentActivity({
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left"
           >
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 bg-foreground text-background rounded-full text-xs font-medium">
+              <span className="px-3 py-1 bg-black dark:bg-black text-white rounded-full text-xs font-medium">
                 {activitySummary}
               </span>
               {durationText && (
@@ -543,7 +560,7 @@ function SubagentActivity({
 
       {/* Status when no tools/reasoning yet */}
       {!thinkingReasoning && activityTools.length === 0 && chainSteps.length === 0 && thinkingStatus && (
-        <Loader message={thinkingStatus} />
+        <Loader message={typeof thinkingStatus === 'string' ? thinkingStatus : 'Thinking...'} />
       )}
     </Message>
   )

@@ -106,7 +106,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   // Set default model once loaded
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
-      const preferredDefault = models.find((m) => m.id === 'kimi-k2.5-free')
+      const preferredDefault = models.find((m) => m.id === 'opencode/kimi-k2.5-free' || m.id === 'kimi-k2.5-free')
       const markedDefault = models.find((m) => m.isDefault)
       setSelectedModel(preferredDefault || markedDefault || models[0])
     }
@@ -141,7 +141,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           userId,
           repoOwner: data.repoOwner,
           repoName: data.repoName,
-          model: data.model || selectedModel?.id || 'kimi-k2.5-free',
+          model: data.model || selectedModel?.id || 'opencode/kimi-k2.5-free',
         })
 
         if (newSession) {
