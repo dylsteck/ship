@@ -209,17 +209,35 @@ export function ChatInterface({
         console.log('[chat-interface] Session ID:', sessionId)
         console.log('[chat-interface] Content:', content.slice(0, 100))
         console.log('[chat-interface] Mode:', modeOverride ?? initialMode)
+        console.log('[chat-interface] API_URL:', API_URL)
 
-        const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
+        // Direct fetch to bypass any potential import issues
+        const fetchUrl = `${API_URL}/chat/${encodeURIComponent(sessionId)}`
+        console.log('[chat-interface] Fetching URL:', fetchUrl)
+
+        const response = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify({ content, mode: modeOverride ?? initialMode }),
+        })
 
         console.log('[chat-interface] ========== RESPONSE RECEIVED ==========')
         console.log('[chat-interface] Response OK:', response.ok)
         console.log('[chat-interface] Response status:', response.status)
         console.log('[chat-interface] Response statusText:', response.statusText)
         console.log('[chat-interface] Response type:', response.type)
-        console.log('[chat-interface] Response headers:', Object.fromEntries(response.headers.entries()))
+        const headersObj = Object.fromEntries(response.headers.entries())
+        console.log('[chat-interface] Response headers:', JSON.stringify(headersObj))
         console.log('[chat-interface] Response body exists:', !!response.body)
         console.log('[chat-interface] Response bodyUsed:', response.bodyUsed)
+
+        // Alert to make it very visible
+        if (typeof window !== 'undefined') {
+          console.log('[chat-interface] 🚨 ALERT: Response received, status=' + response.status)
+        }
 
         // Check for non-OK responses (500, etc.) before trying to read stream
         if (!response.ok) {
