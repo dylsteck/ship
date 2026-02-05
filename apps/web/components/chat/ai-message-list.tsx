@@ -51,18 +51,6 @@ interface AIMessageListProps {
   className?: string
 }
 
-function UserAvatar() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-      />
-    </svg>
-  )
-}
 
 export function AIMessageList({
   messages,
@@ -131,7 +119,13 @@ export function AIMessageList({
           }
 
           return (
-            <Message key={msg.id} role={msg.role} avatar={msg.role === 'user' ? <UserAvatar /> : undefined}>
+            <Message key={msg.id} role={msg.role}>
+              {/* User messages - show content directly */}
+              {msg.role === 'user' && msg.content && (
+                <div className="text-foreground whitespace-pre-wrap">{msg.content}</div>
+              )}
+
+              {/* Assistant reasoning */}
               {msg.role === 'assistant' &&
                 msg.reasoningBlocks &&
                 msg.reasoningBlocks.length > 0 &&
@@ -141,6 +135,7 @@ export function AIMessageList({
                   </Reasoning>
                 ))}
 
+              {/* Assistant tools */}
               {msg.role === 'assistant' &&
                 msg.inlineTools &&
                 msg.inlineTools.length > 0 &&
@@ -155,7 +150,8 @@ export function AIMessageList({
                   />
                 ))}
 
-              {msg.content && (
+              {/* Assistant response content */}
+              {msg.role === 'assistant' && msg.content && (
                 <Response>
                   <Markdown content={msg.content} />
                 </Response>

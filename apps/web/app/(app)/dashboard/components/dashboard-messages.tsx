@@ -126,13 +126,17 @@ export function DashboardMessages({
           <Message
             key={message.id}
             role={message.role as 'user' | 'assistant'}
-            avatar={message.role === 'user' ? <UserAvatar /> : undefined}
           >
-            {message.content ? (
+            {/* User messages - plain text */}
+            {message.role === 'user' && message.content && (
+              <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
+            )}
+            {/* Assistant messages - markdown */}
+            {message.role === 'assistant' && message.content && (
               <Response>
                 <Markdown content={message.content} />
               </Response>
-            ) : null}
+            )}
           </Message>
         )
       })}
@@ -186,18 +190,6 @@ export function DashboardMessages({
   )
 }
 
-function UserAvatar() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-      />
-    </svg>
-  )
-}
 
 function ElapsedTime({ startTime }: { startTime: number }) {
   const elapsed = useElapsed(startTime)
