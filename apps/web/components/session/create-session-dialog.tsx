@@ -20,22 +20,31 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
   const [searchQuery, setSearchQuery] = useState('')
 
   // Use SWR hook for repos - only fetch when dialog is open
-  const { repos: filteredRepos, allRepos, isLoading: reposLoading, isError, mutate } = useFilteredGitHubRepos(
-    isOpen ? userId : undefined,
-    searchQuery
-  )
-  
+  const {
+    repos: filteredRepos,
+    allRepos,
+    isLoading: reposLoading,
+    isError,
+    mutate,
+  } = useFilteredGitHubRepos(isOpen ? userId : undefined, searchQuery)
+
   const reposError = isError ? 'Failed to load repositories' : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (!selectedRepo) { setError('Please select a repository'); return }
+    if (!selectedRepo) {
+      setError('Please select a repository')
+      return
+    }
     const [repoOwner, repoName] = selectedRepo.split('/')
     startTransition(async () => {
       try {
         await onCreate({ repoOwner, repoName, model: selectedModel || undefined })
-        setSelectedRepo(''); setSelectedModel(''); setSearchQuery(''); onClose()
+        setSelectedRepo('')
+        setSelectedModel('')
+        setSearchQuery('')
+        onClose()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to create session')
       }
@@ -43,7 +52,13 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
   }
 
   const handleClose = () => {
-    if (!isPending) { setSelectedRepo(''); setSelectedModel(''); setSearchQuery(''); setError(null); onClose() }
+    if (!isPending) {
+      setSelectedRepo('')
+      setSelectedModel('')
+      setSearchQuery('')
+      setError(null)
+      onClose()
+    }
   }
 
   if (!isOpen) return null
@@ -78,11 +93,19 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                 ) : reposError ? (
                   <div className="p-3 text-center">
                     <p className="text-[11px] text-destructive mb-1.5">{reposError}</p>
-                    <button type="button" onClick={() => mutate()} className="text-[11px] text-muted-foreground hover:text-foreground underline">Try again</button>
+                    <button
+                      type="button"
+                      onClick={() => mutate()}
+                      className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                    >
+                      Try again
+                    </button>
                   </div>
                 ) : filteredRepos.length === 0 ? (
                   <div className="p-3 text-center">
-                    <p className="text-[11px] text-muted-foreground">{searchQuery ? 'No matching repositories' : 'No repositories found'}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {searchQuery ? 'No matching repositories' : 'No repositories found'}
+                    </p>
                   </div>
                 ) : (
                   filteredRepos.map((repo) => (
@@ -92,23 +115,44 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                       onClick={() => setSelectedRepo(repo.fullName)}
                       className={cn(
                         'w-full px-2.5 py-2 text-left hover:bg-accent transition-colors flex items-center justify-between border-b border-border last:border-b-0',
-                        selectedRepo === repo.fullName && 'bg-accent'
+                        selectedRepo === repo.fullName && 'bg-accent',
                       )}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className={cn('text-[12px] truncate', selectedRepo === repo.fullName ? 'text-foreground font-medium' : 'text-foreground')}>{repo.fullName}</p>
-                        {repo.description && <p className="text-[10px] text-muted-foreground truncate mt-0.5">{repo.description}</p>}
+                        <p
+                          className={cn(
+                            'text-[12px] truncate',
+                            selectedRepo === repo.fullName ? 'text-foreground font-medium' : 'text-foreground',
+                          )}
+                        >
+                          {repo.fullName}
+                        </p>
+                        {repo.description && (
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">{repo.description}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                        {repo.language && <Badge variant="secondary" className="text-[9px] px-1 py-0">{repo.language}</Badge>}
+                        {repo.language && (
+                          <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                            {repo.language}
+                          </Badge>
+                        )}
                         {repo.private && (
                           <svg className="w-3 h-3 text-muted-foreground" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                            <path
+                              fillRule="evenodd"
+                              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         )}
                         {selectedRepo === repo.fullName && (
                           <svg className="w-3.5 h-3.5 text-foreground" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         )}
                       </div>
@@ -120,7 +164,12 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
 
             <div>
               <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">AI Model</label>
-              <ModelSelector value={selectedModel} onChange={setSelectedModel} disabled={isPending} placeholder="Default (Claude Opus 4.5)" />
+              <ModelSelector
+                value={selectedModel}
+                onChange={setSelectedModel}
+                disabled={isPending}
+                placeholder="Default (Claude Sonnet 4)"
+              />
             </div>
 
             {error && (
@@ -131,7 +180,9 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
           </div>
 
           <div className="px-4 py-3 bg-muted/30 border-t border-border flex items-center justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={isPending}>
+              Cancel
+            </Button>
             <Button type="submit" size="sm" disabled={isPending || !selectedRepo}>
               {isPending ? 'Creating...' : 'Create Session'}
             </Button>

@@ -1,7 +1,7 @@
 /**
  * API Types
  * Shared types for API requests and responses
- * 
+ *
  * Note: ChatSession and Message are defined in ./server.ts for server-side usage
  */
 
@@ -60,6 +60,7 @@ export interface ModelInfo {
   description?: string
   contextWindow?: number
   maxTokens?: number
+  isDefault?: boolean
 }
 
 export interface DefaultModelResponse {

@@ -84,10 +84,15 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
   const { createSession, isCreating } = useCreateSession()
 
-  // Set default model once loaded
+  // Set default model once loaded - prefer Claude Sonnet 4 (big-pickle)
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
-      setSelectedModel(models[0])
+      // Find Claude Sonnet 4 as the preferred default
+      const preferredDefault = models.find((m) => m.id === 'anthropic/claude-sonnet-4-20250514')
+      // Or find any model marked as default
+      const markedDefault = models.find((m) => m.isDefault)
+      // Fall back to first model
+      setSelectedModel(preferredDefault || markedDefault || models[0])
     }
   }, [models, selectedModel])
 
@@ -171,21 +176,23 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
 
         // Handle OpenCode events for real-time activity
         if (event.type === 'opencode-event') {
-          const ocEvent = (event as {
-            event?: {
-              type?: string
-              payload?: { type?: string }
-              properties?: {
-                part?: {
-                  type?: string
-                  tool?: string | { name?: string }
-                  callID?: string
-                  state?: { title?: string; status?: string }
+          const ocEvent = (
+            event as {
+              event?: {
+                type?: string
+                payload?: { type?: string }
+                properties?: {
+                  part?: {
+                    type?: string
+                    tool?: string | { name?: string }
+                    callID?: string
+                    state?: { title?: string; status?: string }
+                  }
+                  delta?: string
                 }
-                delta?: string
               }
             }
-          }).event
+          ).event
 
           // Handle server connection
           if (ocEvent?.payload?.type === 'server.connected') {

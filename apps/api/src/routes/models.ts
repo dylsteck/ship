@@ -3,16 +3,18 @@ import type { Env } from '../env.d'
 
 const models = new Hono<{ Bindings: Env }>()
 
-// Default model if no preference set
+// Default model if no preference set - Claude Sonnet 4 (big-pickle)
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514'
 
 // Fallback static model list when OpenCode is unavailable
+// Ordered by recommendation - default model first
 const FALLBACK_MODELS = [
   {
     id: 'anthropic/claude-sonnet-4-20250514',
     name: 'Claude Sonnet 4',
     provider: 'Anthropic',
-    description: 'Latest balanced Claude model',
+    description: 'Recommended - Latest balanced Claude model',
+    isDefault: true,
   },
   {
     id: 'anthropic/claude-opus-4-20250514',

@@ -387,6 +387,7 @@ export function ChatInterface({
                   })
 
                   if (part?.type === 'text') {
+                    // Safely extract text - delta or text must be a string
                     if (typeof delta === 'string') {
                       assistantTextRef.current += delta
                     } else if (typeof part.text === 'string') {
@@ -403,13 +404,15 @@ export function ChatInterface({
                     onStatusChange?.('coding', 'Writing response...')
                     setThinkingStatus('✍️ Writing...')
                   } else if (part?.type === 'tool') {
-                    // Extract tool information
-                    const toolName = typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
-                    const callID = part.callID || part.id || `tool-${Date.now()}-${Math.random()}`
+                    // Extract tool information - ensure toolName is always a string
+                    const rawToolName =
+                      typeof part.tool === 'string' ? part.tool : (part.tool as { name?: string })?.name
+                    const toolName = typeof rawToolName === 'string' ? rawToolName : 'unknown'
+                    const callID = String(part.callID || part.id || `tool-${Date.now()}-${Math.random()}`)
 
                     console.log('[chat-interface] Tool part:', { toolName, callID, status: part.state?.status })
 
-                    if (toolName) {
+                    if (toolName && toolName !== 'unknown') {
                       // Update status with tool name
                       let status: AgentStatus = 'coding'
                       let statusLabel = toolName
@@ -433,13 +436,17 @@ export function ChatInterface({
                       onStatusChange?.(status, toolName)
                       setThinkingStatus(statusLabel)
 
-                      // Add to thinking parts for display
+                      // Add to thinking parts for display - ensure all values are safe for React
+                      // Extract title safely - must be a string
+                      const rawTitle = part.state?.title || part.title || toolName
+                      const safeTitle = typeof rawTitle === 'string' ? rawTitle : toolName
+
                       const toolPart: ToolPart = {
                         type: 'tool',
                         callID,
                         tool: toolName,
                         state: {
-                          title: part.state?.title || part.title || toolName,
+                          title: safeTitle,
                           status: part.state?.status || (part.output ? 'complete' : part.input ? 'running' : 'pending'),
                         },
                         input: part.input,
@@ -457,8 +464,9 @@ export function ChatInterface({
                       })
                     }
                   } else if (part?.type === 'reasoning') {
-                    // Handle reasoning parts
-                    const reasoningText = part.reasoning || part.text || ''
+                    // Handle reasoning parts - ensure text is a string
+                    const rawReasoningText = part.reasoning || part.text
+                    const reasoningText = typeof rawReasoningText === 'string' ? rawReasoningText : ''
                     if (reasoningText) {
                       setThinkingReasoning((prev) => {
                         // Append reasoning, separated by newlines
@@ -467,12 +475,17 @@ export function ChatInterface({
                       onStatusChange?.('planning', 'Reasoning...')
                       setThinkingStatus('💭 Reasoning...')
                     }
+                  } else if (part?.type === 'step-start') {
+                    // Handle step-start events - just update status
+                    setThinkingStatus('🚀 Starting step...')
                   }
                 }
 
                 // Handle session status events
                 if (data.type === 'session.status') {
-                  const status = data.properties?.status
+                  const rawStatus = data.properties?.status
+                  // Ensure status is a string before using .includes()
+                  const status = typeof rawStatus === 'string' ? rawStatus : ''
                   if (status) {
                     // Map OpenCode session status to agent status
                     let agentStatus: AgentStatus = 'planning'
@@ -488,30 +501,34 @@ export function ChatInterface({
                 }
 
                 // Handle ALL other event types for visibility - show them in real-time
+                // Ensure data.type is a string before using string methods
+                const eventType = typeof data.type === 'string' ? data.type : ''
                 if (
+                  eventType &&
                   !['status', 'message.part.updated', 'session.status', 'done', 'error', 'heartbeat'].includes(
-                    data.type,
+                    eventType,
                   )
                 ) {
-                  console.log('[chat-interface] 📡 Event received:', data.type, data)
+                  console.log('[chat-interface] 📡 Event received:', eventType, data)
 
                   // Show event type as status for visibility
-                  const eventLabel = data.type.replace(/\./g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                  const eventLabel = eventType.replace(/\./g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
                   setThinkingStatus(`📡 ${eventLabel}`)
 
                   // Update agent status based on event type
-                  if (data.type.includes('tool') || data.type.includes('command')) {
+                  if (eventType.includes('tool') || eventType.includes('command')) {
                     onStatusChange?.('coding', eventLabel)
-                  } else if (data.type.includes('thinking') || data.type.includes('reasoning')) {
+                  } else if (eventType.includes('thinking') || eventType.includes('reasoning')) {
                     onStatusChange?.('planning', eventLabel)
                   }
                 }
 
                 // Handle file watcher updates
-                if (data.type === 'file-watcher.updated') {
+                if (eventType === 'file-watcher.updated') {
                   const event = data.properties?.event
                   const path = data.properties?.path
-                  if (event && path) {
+                  // Ensure both are strings
+                  if (typeof event === 'string' && typeof path === 'string') {
                     const fileName = path.split('/').pop() || path
                     const statusLabel = `${event}: ${fileName}`
                     onStatusChange?.('coding', statusLabel)
@@ -520,28 +537,22 @@ export function ChatInterface({
                 }
 
                 // Handle todo updates (agent creating tasks)
-                if (data.type === 'todo.updated') {
+                if (eventType === 'todo.updated') {
                   const todos = data.properties?.todos || []
-                  if (todos.length > 0) {
-                    const todoTitle = todos[0]?.content || 'New task'
+                  if (Array.isArray(todos) && todos.length > 0) {
+                    const rawTitle = todos[0]?.content
+                    const todoTitle = typeof rawTitle === 'string' ? rawTitle : 'New task'
                     setThinkingStatus(`📋 Task: ${todoTitle.slice(0, 40)}`)
                     onStatusChange?.('planning', `Creating task: ${todoTitle.slice(0, 30)}`)
                   }
                 }
 
                 // Handle command execution
-                if (data.type === 'command.executed') {
-                  const command = data.properties?.command || 'command'
+                if (eventType === 'command.executed') {
+                  const rawCommand = data.properties?.command
+                  const command = typeof rawCommand === 'string' ? rawCommand : 'command'
                   setThinkingStatus(`⚡ Running: ${command}`)
                   onStatusChange?.('executing', command)
-                }
-
-                // Handle command execution
-                if (data.type === 'command.executed') {
-                  const command = data.properties?.command
-                  if (command) {
-                    onStatusChange?.('executing', `Running: ${command}`)
-                  }
                 }
 
                 if (data.type === 'assistant') {

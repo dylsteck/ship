@@ -252,14 +252,18 @@ function formatToolOutput(tool: string, output: unknown): { summary?: string; co
 // Collapsible tool detail component
 function ToolDetail({ part, isExpanded, onToggle }: { part: ToolPart; isExpanded: boolean; onToggle: () => void }) {
   const [copied, setCopied] = useState(false)
-  const toolInfo = getToolInfo(part.tool)
-  const title = part.state?.title || ''
+  // Ensure tool name is always a string
+  const safeTool = typeof part.tool === 'string' ? part.tool : 'unknown'
+  const toolInfo = getToolInfo(safeTool)
+  // Ensure title is always a string (never an object)
+  const rawTitle = part.state?.title
+  const title = typeof rawTitle === 'string' ? rawTitle : ''
   const isRunning = part.state?.status === 'running'
   const isComplete = part.state?.status === 'complete'
   const isError = part.state?.status === 'error'
 
-  const inputInfo = formatToolInput(part.tool, part.input)
-  const outputInfo = formatToolOutput(part.tool, part.output)
+  const inputInfo = formatToolInput(safeTool, part.input)
+  const outputInfo = formatToolOutput(safeTool, part.output)
 
   const hasDetails = inputInfo.code || inputInfo.detail || outputInfo.code || outputInfo.summary
 
@@ -426,6 +430,11 @@ export function ThinkingIndicator({
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set())
   const startTimeRef = useRef<number | null>(null)
 
+  // Ensure statusLabel is always a string (safety check)
+  const safeStatusLabel = typeof statusLabel === 'string' ? statusLabel : 'Processing...'
+  // Ensure reasoning is always a string
+  const safeReasoning = typeof reasoning === 'string' ? reasoning : ''
+
   // Track elapsed time when thinking
   useEffect(() => {
     if (isThinking) {
@@ -449,13 +458,13 @@ export function ThinkingIndicator({
 
   // Reset timer when new thinking session starts
   useEffect(() => {
-    if (isThinking && parts.length === 0 && !statusLabel.includes('Processing')) {
+    if (isThinking && parts.length === 0 && !safeStatusLabel.includes('Processing')) {
       startTimeRef.current = Date.now()
       setElapsedSeconds(0)
       setVisibleParts([])
       setExpandedParts(new Set())
     }
-  }, [isThinking, parts.length, statusLabel])
+  }, [isThinking, parts.length, safeStatusLabel])
 
   // Sync visible parts with actual parts
   useEffect(() => {
@@ -475,11 +484,11 @@ export function ThinkingIndicator({
   const handleToggle = onToggle || (() => setInternalExpanded(!internalExpanded))
 
   // Don't render if nothing to show
-  if (!isThinking && parts.length === 0 && !reasoning && !statusLabel) {
+  if (!isThinking && parts.length === 0 && !safeReasoning && !safeStatusLabel) {
     return null
   }
 
-  const hasContent = parts.length > 0 || reasoning
+  const hasContent = parts.length > 0 || safeReasoning
   const showHeader = isThinking || hasContent
 
   // Get the most recent active part
@@ -526,7 +535,7 @@ export function ThinkingIndicator({
 
             {/* Status label */}
             <span className="font-medium text-foreground/90 flex-1">
-              {activeToolInfo ? `${activeToolInfo.icon} ${activeToolInfo.label}...` : statusLabel}
+              {activeToolInfo ? `${activeToolInfo.icon} ${activeToolInfo.label}...` : safeStatusLabel}
             </span>
 
             {/* Active tool title */}
@@ -568,7 +577,7 @@ export function ThinkingIndicator({
               {visibleParts.length === 0 && isThinking && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                  <span className="animate-pulse">{statusLabel || 'Initializing...'}</span>
+                  <span className="animate-pulse">{safeStatusLabel || 'Initializing...'}</span>
                 </div>
               )}
 
@@ -583,10 +592,10 @@ export function ThinkingIndicator({
             </div>
 
             {/* Reasoning text */}
-            {reasoning && (
+            {safeReasoning && (
               <div className="mt-3 pt-3 border-t border-border/30">
                 <div className="text-xs text-muted-foreground mb-1">💭 Reasoning</div>
-                <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{reasoning}</p>
+                <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{safeReasoning}</p>
               </div>
             )}
           </div>
