@@ -4,61 +4,46 @@ import * as React from 'react'
 import { useState, useMemo } from 'react'
 import {
   Card,
-  CardHeader,
-  CardTitle,
   CardContent,
   Badge,
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
   ScrollArea,
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-  Button,
 } from '@ship/ui'
 import { cn } from '@ship/ui/utils'
 import type { ToolState } from '@/lib/sse-types'
 
-// Tool icon mapping based on tool name
+// Tool icon mapping based on tool name - using Lucide-style icons
 const TOOL_ICONS: Record<string, string> = {
-  read: '📄',
-  Read: '📄',
-  write: '✏️',
-  Write: '✏️',
-  edit: '📝',
-  Edit: '📝',
-  bash: '💻',
-  Bash: '💻',
-  glob: '🔍',
-  Glob: '🔍',
-  grep: '🔎',
-  Grep: '🔎',
-  webfetch: '🌐',
-  websearch: '🔎',
-  codesearch: '📚',
-  gh_grep_searchGitHub: '🐙',
-  skill: '🎯',
-  default: '🔧',
+  read: '▸',
+  Read: '▸',
+  write: '✎',
+  Write: '✎',
+  edit: '✎',
+  Edit: '✎',
+  bash: '$',
+  Bash: '$',
+  shell: '$',
+  glob: '⌘',
+  Glob: '⌘',
+  grep: '⌘',
+  Grep: '⌘',
+  webfetch: '↓',
+  websearch: '⌘',
+  codesearch: '⌘',
+  default: '•',
 }
 
-// Status badge variants
-const STATUS_CONFIG: Record<
-  ToolState['status'],
-  { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; className?: string }
-> = {
-  pending: { variant: 'outline', label: 'Pending', className: 'text-muted-foreground' },
-  running: { variant: 'default', label: 'Running', className: 'animate-pulse bg-blue-500' },
-  completed: {
-    variant: 'secondary',
-    label: 'Complete',
-    className: 'bg-green-500/10 text-green-600 dark:text-green-400',
-  },
-  error: { variant: 'destructive', label: 'Error' },
+// Clean status indicators
+const STATUS_CONFIG: Record<ToolState['status'], { color: string; label: string; dot: string }> = {
+  pending: { color: 'text-muted-foreground', label: 'Pending', dot: '○' },
+  running: { color: 'text-blue-500', label: 'Running', dot: '◐' },
+  completed: { color: 'text-green-500', label: 'Done', dot: '✓' },
+  error: { color: 'text-red-500', label: 'Error', dot: '✕' },
 }
 
 interface ToolCardProps {
@@ -75,16 +60,31 @@ function formatDuration(ms: number): string {
 }
 
 function getToolIcon(toolName: string): string {
-  // Try exact match first
   if (TOOL_ICONS[toolName]) return TOOL_ICONS[toolName]
-
-  // Try lowercase match
   const lowerName = toolName.toLowerCase()
   for (const [key, icon] of Object.entries(TOOL_ICONS)) {
     if (lowerName.includes(key.toLowerCase())) return icon
   }
-
   return TOOL_ICONS.default
+}
+
+// Animated spinner for running state
+function LoadingSpinner() {
+  return (
+    <svg
+      className="animate-spin h-3 w-3 text-blue-500"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      ></path>
+    </svg>
+  )
 }
 
 function CopyButton({ content }: { content: string }) {
@@ -105,26 +105,51 @@ function CopyButton({ content }: { content: string }) {
     <Tooltip>
       <TooltipTrigger
         onClick={handleCopy}
-        className="h-6 w-6 inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
+        className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
       >
-        {copied ? (
-          <span className="text-green-500 text-sm">✓</span>
-        ) : (
-          <span className="text-muted-foreground text-sm">📋</span>
-        )}
+        {copied ? <span className="text-green-500 text-xs">✓</span> : <span className="text-xs">⎘</span>}
       </TooltipTrigger>
       <TooltipContent>{copied ? 'Copied!' : 'Copy'}</TooltipContent>
     </Tooltip>
   )
 }
 
+// Format tool input for display
+function formatToolInput(tool: string, input: Record<string, unknown>): string {
+  const name = tool.toLowerCase()
+
+  if (name.includes('bash') || name.includes('shell')) {
+    return `$ ${input.command || ''}`
+  }
+
+  if (name.includes('read')) {
+    const path = input.filePath || input.path
+    return `Reading: ${path}`
+  }
+
+  if (name.includes('write') || name.includes('edit')) {
+    const path = input.filePath || input.path
+    return `Writing: ${path}`
+  }
+
+  if (name.includes('glob')) {
+    return `Finding: ${input.pattern}`
+  }
+
+  if (name.includes('grep')) {
+    return `Searching: "${input.pattern}"`
+  }
+
+  return JSON.stringify(input, null, 2)
+}
+
 export function ToolCard({ id, tool, state, className }: ToolCardProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(state.status === 'running')
 
   const statusConfig = STATUS_CONFIG[state.status]
   const icon = getToolIcon(tool)
 
-  // Calculate duration if timing info available
+  // Calculate duration
   const duration = useMemo(() => {
     if (!state.time?.start) return null
     const endTime = state.time.end || Date.now()
@@ -132,103 +157,110 @@ export function ToolCard({ id, tool, state, className }: ToolCardProps) {
   }, [state.time])
 
   // Format input for display
-  const formattedInput = useMemo(() => {
+  const displayInput = useMemo(() => {
     if (!state.input) return null
-    try {
-      return JSON.stringify(state.input, null, 2)
-    } catch {
-      return String(state.input)
-    }
-  }, [state.input])
+    return formatToolInput(tool, state.input)
+  }, [state.input, tool])
 
-  // Format output for display
-  const formattedOutput = useMemo(() => {
+  // Format output
+  const displayOutput = useMemo(() => {
     if (!state.output) return null
-    // Output is usually a string
     return state.output
   }, [state.output])
 
-  const hasContent = formattedInput || formattedOutput
+  const hasContent = displayInput || displayOutput
+  const isRunning = state.status === 'running'
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card
-        size="sm"
-        className={cn(
-          'transition-all duration-200',
-          state.status === 'running' && 'ring-2 ring-blue-500/50',
-          state.status === 'error' && 'ring-2 ring-red-500/50',
-          className,
-        )}
-      >
-        <CollapsibleTrigger className="w-full">
-          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
-                <span className="text-lg" role="img" aria-label={tool}>
-                  {icon}
-                </span>
-                <CardTitle className="text-sm font-mono">{state.title || tool}</CardTitle>
-              </div>
-              <div className="flex items-center gap-2">
-                {duration !== null && state.status !== 'pending' && (
-                  <span className="text-xs text-muted-foreground font-mono">{formatDuration(duration)}</span>
-                )}
-                <Badge variant={statusConfig.variant} className={cn('text-[0.625rem]', statusConfig.className)}>
-                  {statusConfig.label}
-                </Badge>
-                <span className="text-muted-foreground text-xs">{isOpen ? '▼' : '▶'}</span>
-              </div>
+      <Card className={cn('border-0 shadow-none bg-transparent overflow-hidden', className)}>
+        <CollapsibleTrigger className="w-full group">
+          <div
+            className={cn(
+              'flex items-center gap-3 py-2 px-3 rounded-lg transition-all cursor-pointer',
+              'hover:bg-muted/50',
+              isRunning && 'bg-blue-500/5',
+              state.status === 'error' && 'bg-red-500/5',
+            )}
+          >
+            {/* Status indicator */}
+            <div className="flex-shrink-0 w-5 flex justify-center">
+              {isRunning ? (
+                <LoadingSpinner />
+              ) : (
+                <span className={cn('text-xs', statusConfig.color)}>{statusConfig.dot}</span>
+              )}
             </div>
-          </CardHeader>
+
+            {/* Icon */}
+            <div className="flex-shrink-0 w-4 text-center text-muted-foreground font-mono text-sm">{icon}</div>
+
+            {/* Title */}
+            <div className="flex-1 min-w-0 text-left">
+              <span
+                className={cn(
+                  'text-sm truncate block',
+                  isRunning ? 'text-blue-600 dark:text-blue-400' : 'text-foreground',
+                )}
+              >
+                {state.title || tool}
+              </span>
+            </div>
+
+            {/* Duration */}
+            {duration !== null && state.status !== 'pending' && (
+              <span className="text-xs text-muted-foreground font-mono tabular-nums">{formatDuration(duration)}</span>
+            )}
+
+            {/* Expand indicator */}
+            {hasContent && (
+              <span className="text-xs text-muted-foreground transition-transform group-data-[state=open]:rotate-90">
+                ›
+              </span>
+            )}
+          </div>
         </CollapsibleTrigger>
 
         <CollapsibleContent>
           {hasContent && (
-            <CardContent className="pt-0">
-              <Tabs defaultValue={formattedOutput ? 'output' : 'input'} className="w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <TabsList className="h-7">
-                    {formattedInput && (
-                      <TabsTrigger value="input" className="text-xs px-2 py-1">
-                        Input
-                      </TabsTrigger>
-                    )}
-                    {formattedOutput && (
-                      <TabsTrigger value="output" className="text-xs px-2 py-1">
-                        Output
-                      </TabsTrigger>
-                    )}
-                  </TabsList>
-                </div>
-
-                {formattedInput && (
-                  <TabsContent value="input" className="mt-0">
-                    <div className="relative">
-                      <div className="absolute right-2 top-2 z-10">
-                        <CopyButton content={formattedInput} />
-                      </div>
-                      <ScrollArea className="h-[200px] rounded-md border bg-muted/30">
-                        <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-all">{formattedInput}</pre>
-                      </ScrollArea>
+            <div className="pl-11 pr-3 pb-2">
+              <div className="space-y-2">
+                {/* Input section */}
+                {displayInput && (
+                  <div className="relative group/input">
+                    <div className="absolute right-1.5 top-1.5 opacity-0 group-hover/input:opacity-100 transition-opacity">
+                      <CopyButton content={displayInput} />
                     </div>
-                  </TabsContent>
+                    <ScrollArea className="max-h-[150px]">
+                      <pre className="text-xs font-mono text-muted-foreground bg-muted/30 rounded px-3 py-2 whitespace-pre-wrap break-all">
+                        {displayInput}
+                      </pre>
+                    </ScrollArea>
+                  </div>
                 )}
 
-                {formattedOutput && (
-                  <TabsContent value="output" className="mt-0">
-                    <div className="relative">
-                      <div className="absolute right-2 top-2 z-10">
-                        <CopyButton content={formattedOutput} />
-                      </div>
-                      <ScrollArea className="h-[200px] rounded-md border bg-muted/30">
-                        <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-all">{formattedOutput}</pre>
-                      </ScrollArea>
+                {/* Output section */}
+                {displayOutput && (
+                  <div className="relative group/output">
+                    <div className="absolute right-1.5 top-1.5 opacity-0 group-hover/output:opacity-100 transition-opacity">
+                      <CopyButton content={displayOutput} />
                     </div>
-                  </TabsContent>
+                    <ScrollArea className="max-h-[200px]">
+                      <pre
+                        className={cn(
+                          'text-xs font-mono rounded px-3 py-2 whitespace-pre-wrap break-all',
+                          state.status === 'error'
+                            ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                            : 'bg-muted/50 text-foreground',
+                        )}
+                      >
+                        {displayOutput}
+                      </pre>
+                    </ScrollArea>
+                  </div>
                 )}
-              </Tabs>
-            </CardContent>
+              </div>
+            </div>
           )}
         </CollapsibleContent>
       </Card>
