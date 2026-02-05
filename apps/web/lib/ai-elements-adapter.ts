@@ -5,7 +5,7 @@
  * Uses existing types from lib/sse-types.ts as input.
  */
 
-import type { ToolPart, ReasoningPart, TextPart, Message, AssistantMessage, UserMessage } from '@/lib/sse-types'
+import type { ToolPart, ReasoningPart, TextPart, MessagePart, Message, AssistantMessage, UserMessage } from '@/lib/sse-types'
 
 /**
  * Adapt a tool part from SSE to AI Elements Tool format
@@ -197,4 +197,161 @@ export function extractTextFromParts(parts: Array<TextPart | ToolPart | Reasonin
  */
 export function isToolStreaming(toolPart: ToolPart): boolean {
   return toolPart.state?.status === 'running'
+}
+
+/**
+ * Adapt permission.asked event to UI format
+ */
+export function adaptPermissionAsked(event: {
+  type: 'permission.asked'
+  properties: {
+    permission: string
+    description?: string
+    patterns?: string[]
+  }
+}): {
+  permission: string
+  description: string
+  patterns?: string[]
+} {
+  return {
+    permission: event.properties.permission,
+    description: event.properties.description || `Request permission for ${event.properties.permission}`,
+    patterns: event.properties.patterns,
+  }
+}
+
+/**
+ * Adapt question.asked event to UI format
+ */
+export function adaptQuestionAsked(event: {
+  type: 'question.asked'
+  properties: {
+    text: string
+  }
+}): {
+  text: string
+} {
+  return {
+    text: event.properties.text,
+  }
+}
+
+/**
+ * Adapt file-watcher.updated event to UI format
+ */
+export function adaptFileWatcherEvent(event: {
+  type: 'file-watcher.updated'
+  properties: {
+    event: 'create' | 'modify' | 'delete'
+    path: string
+  }
+}): {
+  type: 'create' | 'modify' | 'delete'
+  path: string
+  icon: string
+} {
+  const icons = {
+    create: '📝',
+    modify: '✏️',
+    delete: '🗑️',
+  }
+  return {
+    type: event.properties.event,
+    path: event.properties.path,
+    icon: icons[event.properties.event],
+  }
+}
+
+/**
+ * Adapt session.updated event to extract title
+ */
+export function adaptSessionUpdated(event: {
+  type: 'session.updated'
+  properties: {
+    info: {
+      id: string
+      title: string
+      summary?: { additions: number; deletions: number; files: number }
+    }
+  }
+}): {
+  id: string
+  title: string
+  summary?: { additions: number; deletions: number; files: number }
+} {
+  return {
+    id: event.properties.info.id,
+    title: event.properties.info.title,
+    summary: event.properties.info.summary,
+  }
+}
+
+/**
+ * Adapt event to AI Elements display format
+ * Returns component type and props for rendering
+ */
+export function adaptEventToAIElements(event: {
+  type: string
+  properties?: Record<string, unknown>
+  [key: string]: unknown
+}): {
+  component: 'Message' | 'Tool' | 'Reasoning' | 'Loader' | 'Task' | 'Error' | 'System'
+  props: Record<string, unknown>
+  displayPriority: number
+} | null {
+  switch (event.type) {
+    case 'message.part.updated': {
+      const part = (event.properties as { part?: MessagePart })?.part
+      if (!part) return null
+
+      if (part.type === 'tool') {
+        return {
+          component: 'Tool',
+          props: adaptToolPart(part as ToolPart),
+          displayPriority: 7,
+        }
+      }
+      if (part.type === 'reasoning') {
+        return {
+          component: 'Reasoning',
+          props: adaptReasoningPart(part as ReasoningPart),
+          displayPriority: 6,
+        }
+      }
+      return null
+    }
+    case 'permission.asked':
+      return {
+        component: 'Message',
+        props: {
+          role: 'assistant',
+          children: adaptPermissionAsked(event as Parameters<typeof adaptPermissionAsked>[0]),
+        },
+        displayPriority: 9, // High priority - needs user action
+      }
+    case 'question.asked':
+      return {
+        component: 'Message',
+        props: {
+          role: 'assistant',
+          children: adaptQuestionAsked(event as Parameters<typeof adaptQuestionAsked>[0]),
+        },
+        displayPriority: 8,
+      }
+    case 'file-watcher.updated':
+      return {
+        component: 'System',
+        props: adaptFileWatcherEvent(event as Parameters<typeof adaptFileWatcherEvent>[0]),
+        displayPriority: 3, // Low priority - informational
+      }
+    case 'session.updated':
+      return {
+        component: 'System',
+        props: adaptSessionUpdated(event as Parameters<typeof adaptSessionUpdated>[0]),
+        displayPriority: 5,
+      }
+    default:
+      return null
+  }
 }

@@ -4,6 +4,7 @@ import type { SSEEvent, MessagePart, ToolPart, TextPart } from './sse-types'
 
 /**
  * Parse raw SSE event data into typed event
+ * Handles nested events, wrapped events, and various event formats
  */
 export function parseSSEEvent(data: unknown): SSEEvent | null {
   if (!data || typeof data !== 'object') return null
@@ -13,6 +14,19 @@ export function parseSSEEvent(data: unknown): SSEEvent | null {
   // Handle wrapped events (server sends event inside 'event' field sometimes)
   if (event.event && typeof event.event === 'object') {
     return parseSSEEvent(event.event)
+  }
+
+  // Handle events wrapped with type: 'event' and properties
+  if (event.type === 'event' && event.properties && typeof event.properties === 'object') {
+    return parseSSEEvent(event.properties)
+  }
+
+  // Handle opencode-url event which has url at top level
+  if (event.type === 'opencode-url' && event.url) {
+    return {
+      type: 'opencode-url',
+      url: event.url as string,
+    } as SSEEvent
   }
 
   const type = event.type

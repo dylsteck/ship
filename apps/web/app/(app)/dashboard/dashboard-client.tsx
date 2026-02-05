@@ -63,6 +63,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     setTotalCost,
     streamStartTime,
     setStreamStartTime,
+    sessionTitle,
+    setSessionTitle,
+    sessionInfo,
+    setSessionInfo,
     wsRef,
     streamingMessageRef,
     assistantTextRef,
@@ -87,6 +91,9 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     setFileDiffs,
     setStatusEvents,
     setMessageQueue,
+    setOpenCodeUrl,
+    setSessionTitle,
+    setSessionInfo,
     streamingMessageRef,
     assistantTextRef,
     setStreamStartTime,
@@ -251,6 +258,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   lastStepCost={lastStepCost}
                   statusEvents={statusEvents}
                   streamStartTime={streamStartTime}
+                  sessionTodos={sessionTodos}
                 />
               </div>
 
@@ -306,6 +314,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   todos={sessionTodos}
                   diffs={fileDiffs}
                   openCodeUrl={openCodeUrl || undefined}
+                  sessionInfo={sessionInfo || undefined}
                 />
               </div>
             )}

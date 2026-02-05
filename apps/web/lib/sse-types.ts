@@ -221,6 +221,105 @@ export type FileWatcherEvent = {
   }
 }
 
+export type PermissionAskedEvent = {
+  type: 'permission.asked'
+  properties: {
+    sessionID: string
+    id: string
+    permission: string
+    patterns?: string[]
+    description?: string
+    metadata?: Record<string, unknown>
+  }
+}
+
+export type PermissionGrantedEvent = {
+  type: 'permission.granted'
+  properties: {
+    sessionID: string
+    id: string
+    permission: string
+  }
+}
+
+export type PermissionDeniedEvent = {
+  type: 'permission.denied'
+  properties: {
+    sessionID: string
+    id: string
+    permission: string
+  }
+}
+
+export type QuestionAskedEvent = {
+  type: 'question.asked'
+  properties: {
+    sessionID: string
+    id: string
+    text: string
+  }
+}
+
+export type QuestionRepliedEvent = {
+  type: 'question.replied'
+  properties: {
+    sessionID: string
+    id: string
+    text: string
+  }
+}
+
+export type QuestionRejectedEvent = {
+  type: 'question.rejected'
+  properties: {
+    sessionID: string
+    id: string
+  }
+}
+
+export type CommandExecutedEvent = {
+  type: 'command.executed'
+  properties: {
+    sessionID: string
+    command: string
+    output?: string
+  }
+}
+
+export type SessionCreatedEvent = {
+  type: 'session.created'
+  properties: {
+    info: SessionInfo
+  }
+}
+
+export type SessionDeletedEvent = {
+  type: 'session.deleted'
+  properties: {
+    sessionID: string
+  }
+}
+
+export type SessionCompactedEvent = {
+  type: 'session.compacted'
+  properties: {
+    sessionID: string
+  }
+}
+
+export type MessageRemovedEvent = {
+  type: 'message.removed'
+  properties: {
+    sessionID: string
+    messageID: string
+  }
+}
+
+export type OpencodeUrlEvent = {
+  type: 'opencode-url'
+  url: string
+}
+
 export type ServerConnectedEvent = {
   type: 'server.connected'
   properties: Record<string, never>
@@ -254,13 +353,25 @@ export type SSEEvent =
   | StatusEvent
   | MessagePartUpdatedEvent
   | MessageUpdatedEvent
+  | MessageRemovedEvent
+  | SessionCreatedEvent
   | SessionUpdatedEvent
+  | SessionDeletedEvent
+  | SessionCompactedEvent
   | SessionStatusEvent
   | SessionIdleEvent
   | SessionErrorEvent
   | SessionDiffEvent
   | TodoUpdatedEvent
   | FileWatcherEvent
+  | PermissionAskedEvent
+  | PermissionGrantedEvent
+  | PermissionDeniedEvent
+  | QuestionAskedEvent
+  | QuestionRepliedEvent
+  | QuestionRejectedEvent
+  | CommandExecutedEvent
+  | OpencodeUrlEvent
   | ServerConnectedEvent
   | ServerHeartbeatEvent
   | HeartbeatEvent

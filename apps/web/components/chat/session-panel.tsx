@@ -165,15 +165,27 @@ export function SessionPanel({
       {/* OpenCode URL */}
       {openCodeUrl && (
         <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">opencode</div>
-          <a
-            href={openCodeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:text-blue-400 hover:underline break-all"
-          >
-            open in browser
-          </a>
+          <div className="text-muted-foreground mb-1.5">opencode</div>
+          <div className="flex items-center gap-2">
+            <a
+              href={openCodeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:text-blue-400 hover:underline break-all flex-1 min-w-0 text-xs"
+            >
+              {openCodeUrl.replace(/^https?:\/\//, '').slice(0, 40)}
+              {openCodeUrl.length > 40 ? '...' : ''}
+            </a>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(openCodeUrl)
+              }}
+              className="text-muted-foreground hover:text-foreground transition-colors text-xs px-1.5 py-0.5 rounded hover:bg-muted"
+              title="Copy URL"
+            >
+              📋
+            </button>
+          </div>
         </div>
       )}
 

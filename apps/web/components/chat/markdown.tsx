@@ -48,38 +48,38 @@ export function Markdown({ content, className }: MarkdownProps) {
 
     // Headings
     h1({ children }) {
-      return <h1 className="mb-3 mt-4 text-xl font-semibold text-gray-900 dark:text-gray-100">{children}</h1>
+      return <h1 className="mb-3 mt-4 text-xl font-semibold text-foreground">{children}</h1>
     },
     h2({ children }) {
-      return <h2 className="mb-2 mt-3 text-lg font-semibold text-gray-900 dark:text-gray-100">{children}</h2>
+      return <h2 className="mb-2 mt-3 text-lg font-semibold text-foreground">{children}</h2>
     },
     h3({ children }) {
-      return <h3 className="mb-2 mt-3 text-base font-semibold text-gray-900 dark:text-gray-100">{children}</h3>
+      return <h3 className="mb-2 mt-3 text-base font-semibold text-foreground">{children}</h3>
     },
     h4({ children }) {
-      return <h4 className="mb-1 mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">{children}</h4>
+      return <h4 className="mb-1 mt-2 text-sm font-semibold text-foreground">{children}</h4>
     },
 
     // Paragraphs
     p({ children }) {
-      return <p className="mb-2 last:mb-0 text-gray-800 dark:text-gray-200">{children}</p>
+      return <p className="mb-2 last:mb-0 text-foreground">{children}</p>
     },
 
     // Lists
     ul({ children }) {
-      return <ul className="mb-2 ml-4 list-disc space-y-1 text-gray-800 dark:text-gray-200">{children}</ul>
+      return <ul className="mb-2 ml-4 list-disc space-y-1 text-foreground">{children}</ul>
     },
     ol({ children }) {
-      return <ol className="mb-2 ml-4 list-decimal space-y-1 text-gray-800 dark:text-gray-200">{children}</ol>
+      return <ol className="mb-2 ml-4 list-decimal space-y-1 text-foreground">{children}</ol>
     },
     li({ children }) {
-      return <li className="text-gray-800 dark:text-gray-200">{children}</li>
+      return <li className="text-foreground">{children}</li>
     },
 
     // Blockquotes
     blockquote({ children }) {
       return (
-        <blockquote className="my-2 border-l-4 border-gray-300 pl-4 italic text-gray-600 dark:border-gray-600 dark:text-gray-400">
+        <blockquote className="my-2 border-l-4 border-border pl-4 italic text-muted-foreground">
           {children}
         </blockquote>
       )
@@ -87,40 +87,40 @@ export function Markdown({ content, className }: MarkdownProps) {
 
     // Horizontal rules
     hr() {
-      return <hr className="my-4 border-gray-200 dark:border-gray-700" />
+      return <hr className="my-4 border-border" />
     },
 
     // Tables
     table({ children }) {
       return (
         <div className="my-3 overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">{children}</table>
+          <table className="min-w-full divide-y divide-border">{children}</table>
         </div>
       )
     },
     thead({ children }) {
-      return <thead className="bg-gray-50 dark:bg-gray-800">{children}</thead>
+      return <thead className="bg-muted">{children}</thead>
     },
     tbody({ children }) {
-      return <tbody className="divide-y divide-gray-200 dark:divide-gray-700">{children}</tbody>
+      return <tbody className="divide-y divide-border">{children}</tbody>
     },
     tr({ children }) {
       return <tr>{children}</tr>
     },
     th({ children }) {
       return (
-        <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {children}
         </th>
       )
     },
     td({ children }) {
-      return <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{children}</td>
+      return <td className="whitespace-nowrap px-3 py-2 text-sm text-foreground">{children}</td>
     },
 
     // Strong and emphasis
     strong({ children }) {
-      return <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
+      return <strong className="font-semibold text-foreground">{children}</strong>
     },
     em({ children }) {
       return <em className="italic">{children}</em>
@@ -128,7 +128,7 @@ export function Markdown({ content, className }: MarkdownProps) {
 
     // Strikethrough (GFM)
     del({ children }) {
-      return <del className="text-gray-500 line-through dark:text-gray-400">{children}</del>
+      return <del className="text-muted-foreground line-through">{children}</del>
     },
   }
 

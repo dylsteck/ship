@@ -1,16 +1,20 @@
 # Ship
 
-Personal background coding agent. Select a repo, spin up a sandboxed VM, and let AI agents work autonomously.
+A background agent platform for building software. Sign in with GitHub, chat with an AI agent (powered by OpenCode SDK) that works on code in sandboxed environments. Tasks come from Linear issues or chat conversations. Sessions contain conversations with one or many tasks — the agent writes code, runs tests, and deploys while you focus on other things.
 
-## Stack
+**Core Value**: The agent works autonomously in the background on real coding tasks while you do other things — you come back to working code, not just suggestions.
+
+## Tech Stack
 
 - **Monorepo**: Turborepo 2.x with pnpm workspaces
-- **Frontend**: Next.js 16 (App Router) + Tailwind v4
-- **Backend**: Cloudflare Workers (Hono framework)
-- **Database**: Cloudflare D1 (SQLite)
+- **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/ui, AI Elements components
+- **Backend**: Cloudflare Workers (Hono framework), Durable Objects for session state
+- **Database**: Cloudflare D1 (SQLite) for user/auth data
 - **Auth**: GitHub OAuth (Arctic) + JWT sessions (jose)
-- **Sandboxes**: Vercel Sandbox (OpenCode SDK)
-- **Agents**: Claude, Codex, Copilot, Cursor, Gemini, OpenCode
+- **Sandboxes**: Vercel Sandbox (OpenCode SDK) for isolated code execution
+- **Agents**: OpenCode SDK with support for Claude, GPT-4, and other LLMs
+- **MCP Servers**: Vercel (deployment), Grep (GitHub code search), Context7 (documentation search)
+- **Real-time**: Server-Sent Events (SSE) for live agent updates and WebSockets for chat
 
 ## Project Structure
 
@@ -47,9 +51,13 @@ ship/
 
 ### 1. Install Dependencies
 
+From the root directory:
+
 ```bash
 pnpm install
 ```
+
+This installs dependencies for both the web app (`apps/web`) and API worker (`apps/api`).
 
 ### 2. Configure Web App Environment
 
@@ -73,6 +81,9 @@ SESSION_SECRET=your-32-char-secret-key-here-min
 # API Configuration (defaults work for local development)
 API_BASE_URL=http://localhost:8787
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Optional: Context7 API key for documentation search MCP
+CONTEXT7_API_KEY=your-context7-api-key
 ```
 
 ### 3. Configure API Secrets (Cloudflare Worker)
@@ -87,12 +98,21 @@ cp .dev.vars.example .dev.vars
 Edit `apps/api/.dev.vars`:
 
 ```env
-# Anthropic API Key (for agent operations in Phase 3)
+# Anthropic API Key (for OpenCode agent operations)
 # Get from: https://console.anthropic.com/settings/keys
 ANTHROPIC_API_KEY=sk-ant-...
 
+# OpenAI API Key (optional, for GPT-4 models)
+# Get from: https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-...
+
 # Internal API Secret - generate with: openssl rand -hex 32
 API_SECRET=your-api-secret-here
+
+# Vercel Sandbox credentials (for sandbox provisioning)
+SANDBOX_VERCEL_TOKEN=your-vercel-token
+SANDBOX_VERCEL_TEAM_ID=your-team-id
+SANDBOX_VERCEL_PROJECT_ID=your-project-id
 ```
 
 ### 4. Create D1 Database
@@ -222,9 +242,22 @@ pnpm build
 npx wrangler pages deploy .next
 ```
 
+## How It Works
+
+1. **Authentication**: Sign in with GitHub OAuth to create a persistent session
+2. **Session Creation**: Create a new session linked to a GitHub repository
+3. **Agent Interaction**: Chat with the AI agent or connect a Linear issue
+4. **Autonomous Execution**: The agent works in a sandboxed environment, writing code, running tests, and making commits
+5. **Real-time Updates**: Watch progress via SSE events showing tool calls, reasoning, file changes, and more
+6. **Review & Deploy**: Review changes, approve permissions, and deploy via integrated MCP servers
+
 ## Architecture Notes
 
 - **Authentication Flow**: GitHub OAuth → API creates session → API returns JWT → Web stores in httpOnly cookie
+- **Session State**: Durable Objects manage session state and real-time communication
+- **Agent Execution**: OpenCode SDK orchestrates agents in Vercel Sandbox environments
+- **Real-time Updates**: Server-Sent Events (SSE) stream agent activity (tool calls, reasoning, file changes)
+- **MCP Integration**: Model Context Protocol servers provide external tools (Vercel deployment, GitHub search, documentation)
 - **Data Access Layer**: Server Components verify sessions via DAL before accessing data
 - **Middleware**: `proxy.ts` optimistically redirects unauthenticated users (not a security boundary)
 - **API Communication**: Web app proxies requests to Cloudflare Worker API

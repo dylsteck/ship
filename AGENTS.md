@@ -106,6 +106,27 @@ pnpm db:generate  # Generate migrations
 pnpm db:migrate   # Run migrations
 ```
 
+## MCP Servers
+
+The following MCP (Model Context Protocol) servers are configured in `opencode.json`:
+
+- **Vercel**: Deployment tools (`vercel_deploy_preview`, `vercel_deploy_production`, `vercel_get_deployment`, `vercel_list_deployments`)
+  - URL: `http://localhost:8787/mcp/vercel` (local server)
+  - Provides Vercel deployment capabilities
+
+- **Grep**: GitHub code search (`grep_searchGitHub`)
+  - URL: `https://mcp.grep.app`
+  - Search across millions of public GitHub repositories for code examples
+  - Use `use grep` in prompts to leverage this tool
+
+- **Context7**: Documentation search (`context7_query-docs`)
+  - URL: `https://mcp.context7.com/mcp`
+  - Requires `CONTEXT7_API_KEY` environment variable
+  - Search up-to-date documentation for libraries and frameworks
+  - Use `use context7` in prompts to leverage this tool
+
+All MCP servers are enabled by default. Configure in `opencode.json` using the `mcpServers` key with `type: "sse"` for remote servers.
+
 ## Testing
 
 (To be added)

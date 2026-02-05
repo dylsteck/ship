@@ -51,6 +51,8 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
   const [fileDiffs, setFileDiffs] = useState<Array<{ filename: string; additions: number; deletions: number }>>([])
   const [totalCost, setTotalCost] = useState<number>(0)
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null)
+  const [sessionTitle, setSessionTitle] = useState<string>('')
+  const [sessionInfo, setSessionInfo] = useState<import('@/lib/sse-types').SessionInfo | null>(null)
 
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
@@ -298,6 +300,10 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
     setTotalCost,
     streamStartTime,
     setStreamStartTime,
+    sessionTitle,
+    setSessionTitle,
+    sessionInfo,
+    setSessionInfo,
     wsRef,
     streamingMessageRef,
     assistantTextRef,

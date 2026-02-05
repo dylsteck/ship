@@ -45,6 +45,9 @@ interface UseDashboardSSEParams {
     React.SetStateAction<Array<{ status: string; message: string; time: number }>>
   >
   setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
+  setOpenCodeUrl: React.Dispatch<React.SetStateAction<string>>
+  setSessionTitle: React.Dispatch<React.SetStateAction<string>>
+  setSessionInfo: React.Dispatch<React.SetStateAction<import('@/lib/sse-types').SessionInfo | null>>
   streamingMessageRef: React.MutableRefObject<string | null>
   assistantTextRef: React.MutableRefObject<string>
   setStreamStartTime: (value: number | null) => void
@@ -67,6 +70,9 @@ export function useDashboardSSE({
   setFileDiffs,
   setStatusEvents,
   setMessageQueue,
+  setOpenCodeUrl,
+  setSessionTitle,
+  setSessionInfo,
   streamingMessageRef,
   assistantTextRef,
   setStreamStartTime,
@@ -319,6 +325,53 @@ export function useDashboardSSE({
                   case 'file-watcher.updated': {
                     const { event: fileEvent, path } = event.properties
                     setThinkingStatus(`📝 ${fileEvent}: ${path.split('/').pop()}`)
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: 'file-changed',
+                        message: `${fileEvent}: ${path.split('/').pop()}`,
+                        time: Date.now(),
+                      },
+                    ])
+                    break
+                  }
+
+                  case 'opencode-url': {
+                    const url = (event as { url?: string }).url
+                    if (url) {
+                      setOpenCodeUrl(url)
+                      setStatusEvents((prev) => [
+                        ...prev,
+                        { status: 'opencode-ready', message: 'OpenCode server ready', time: Date.now() },
+                      ])
+                    }
+                    break
+                  }
+
+                  case 'session.updated': {
+                    const sessionInfoData = event.properties.info
+                    if (sessionInfoData) {
+                      const title = sessionInfoData.title
+                      if (title) {
+                        setSessionTitle(title)
+                        setSessionInfo(sessionInfoData)
+                        setStatusEvents((prev) => [
+                          ...prev,
+                          { status: 'session-updated', message: `Session: ${title}`, time: Date.now() },
+                        ])
+                      }
+                    }
+                    break
+                  }
+
+                  case 'message.updated': {
+                    // Message was updated (e.g., completed)
+                    const messageInfo = event.properties.info
+                    if (messageInfo) {
+                      setMessages((prev) =>
+                        prev.map((m) => (m.id === messageInfo.id ? { ...m, ...messageInfo } : m)),
+                      )
+                    }
                     break
                   }
 
@@ -327,6 +380,14 @@ export function useDashboardSSE({
                     if (statusInfo) {
                       setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
                     }
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: 'heartbeat',
+                        message: statusInfo?.label || 'Waiting for agent response...',
+                        time: Date.now(),
+                      },
+                    ])
                     break
                   }
 
@@ -445,6 +506,100 @@ export function useDashboardSSE({
                     setIsStreaming(false)
                     setThinkingStatus('')
                     streamingMessageRef.current = null
+                    break
+                  }
+
+                  // Handle additional event types
+                  case 'session.created':
+                  case 'session.deleted':
+                  case 'session.compacted': {
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: event.type,
+                        message: `Session ${event.type.split('.')[1]}`,
+                        time: Date.now(),
+                      },
+                    ])
+                    break
+                  }
+
+                  case 'permission.asked':
+                  case 'permission.granted':
+                  case 'permission.denied': {
+                    const permissionEvent = event as {
+                      type: string
+                      properties?: {
+                        permission?: string
+                        description?: string
+                      }
+                    }
+                    const description = permissionEvent.properties?.description || permissionEvent.properties?.permission || ''
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: event.type,
+                        message: `Permission ${event.type.split('.')[1]}: ${description}`,
+                        time: Date.now(),
+                      },
+                    ])
+                    break
+                  }
+
+                  case 'question.asked':
+                  case 'question.replied':
+                  case 'question.rejected': {
+                    const questionEvent = event as {
+                      type: string
+                      properties?: {
+                        text?: string
+                      }
+                    }
+                    const text = questionEvent.properties?.text || ''
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: event.type,
+                        message: `Question ${event.type.split('.')[1]}: ${text.slice(0, 50)}`,
+                        time: Date.now(),
+                      },
+                    ])
+                    break
+                  }
+
+                  case 'command.executed': {
+                    const commandEvent = event as {
+                      type: string
+                      properties?: {
+                        command?: string
+                      }
+                    }
+                    const command = commandEvent.properties?.command || ''
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: 'command-executed',
+                        message: `Command: ${command.slice(0, 50)}`,
+                        time: Date.now(),
+                      },
+                    ])
+                    break
+                  }
+
+                  default: {
+                    // Log unhandled events for debugging
+                    if (process.env.NODE_ENV === 'development') {
+                      console.warn('[SSE] Unhandled event type:', event.type, event)
+                    }
+                    // Still add to status events for visibility
+                    setStatusEvents((prev) => [
+                      ...prev,
+                      {
+                        status: `unhandled-${event.type}`,
+                        message: `Unhandled event: ${event.type}`,
+                        time: Date.now(),
+                      },
+                    ])
                     break
                   }
                 }

@@ -1,11 +1,13 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import { Message, Tool, Reasoning, Shimmer, Response, Loader } from '@ship/ui'
+import { Message, Tool, Reasoning, Shimmer, Response, Loader, Task, ChainOfThought } from '@ship/ui'
+import { Button } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
 import type { Message as ChatMessage } from '@/lib/api'
 import type { ToolPart as SSEToolPart, ReasoningPart, StepFinishPart } from '@/lib/sse-types'
+import { buildChainOfThoughtSteps } from '@/lib/ai-elements-adapter'
 interface DashboardMessagesProps {
   activeSessionId: string | null
   messages: ChatMessage[]
@@ -25,6 +27,12 @@ interface DashboardMessagesProps {
   lastStepCost: { cost: number; tokens: StepFinishPart['tokens'] } | null
   statusEvents: Array<{ status: string; message: string; time: number }>
   streamStartTime: number | null
+  sessionTodos?: Array<{
+    id: string
+    content: string
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+    priority: 'high' | 'medium' | 'low'
+  }>
 }
 
 function mapToolStatus(status: string | undefined): 'pending' | 'in_progress' | 'completed' | 'failed' {
@@ -52,6 +60,7 @@ export function DashboardMessages({
   lastStepCost,
   statusEvents,
   streamStartTime,
+  sessionTodos = [],
 }: DashboardMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -68,6 +77,24 @@ export function DashboardMessages({
     (e) => !e.status.startsWith('tool-call') && !e.status.startsWith('session-'),
   )
   const hasMessages = messages.some((m) => m.content)
+
+  // Group status events by type for better display
+  const permissionEvents = statusEvents.filter((e) => e.status.startsWith('permission.'))
+  const questionEvents = statusEvents.filter((e) => e.status.startsWith('question.'))
+  const fileChangeEvents = statusEvents.filter((e) => e.status === 'file-changed')
+  const sessionEvents = statusEvents.filter((e) => e.status.startsWith('session-') || e.status === 'session-updated')
+  const systemEvents = statusEvents.filter(
+    (e) =>
+      !e.status.startsWith('tool-call') &&
+      !e.status.startsWith('session-') &&
+      !e.status.startsWith('permission.') &&
+      !e.status.startsWith('question.') &&
+      e.status !== 'file-changed' &&
+      e.status !== 'opencode-ready',
+  )
+
+  // Build chain of thought steps from tools and reasoning
+  const chainSteps = buildChainOfThoughtSteps(activityTools, reasoningParts)
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-6">
@@ -142,8 +169,11 @@ export function DashboardMessages({
       })}
 
       {/* Streaming activity: tools + reasoning */}
-      {isStreaming && (activityTools.length > 0 || thinkingReasoning) && (
+      {isStreaming && (activityTools.length > 0 || thinkingReasoning || chainSteps.length > 0) && (
         <Message role="assistant">
+          {/* Chain of Thought - shows step-by-step progress */}
+          {chainSteps.length > 0 && <ChainOfThought steps={chainSteps} />}
+
           {/* Reasoning */}
           {thinkingReasoning && (
             <Reasoning isStreaming={isStreaming}>
@@ -175,6 +205,183 @@ export function DashboardMessages({
           {!thinkingReasoning && activityTools.length === 0 && thinkingStatus && (
             <Loader message={thinkingStatus} />
           )}
+        </Message>
+      )}
+
+      {/* Permission Requests */}
+      {permissionEvents.length > 0 && (
+        <Message role="assistant">
+          {permissionEvents.map((event, idx) => {
+            const isAsked = event.status === 'permission.asked'
+            const isGranted = event.status === 'permission.granted'
+            const isDenied = event.status === 'permission.denied'
+
+            return (
+              <div
+                key={`${event.status}-${idx}`}
+                className={`border rounded-lg p-4 ${
+                  isAsked
+                    ? 'border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20'
+                    : isGranted
+                      ? 'border-green-500/50 bg-green-50 dark:bg-green-950/20'
+                      : 'border-red-500/50 bg-red-50 dark:bg-red-950/20'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={isAsked ? 'text-yellow-600' : isGranted ? 'text-green-600' : 'text-red-600'}>
+                    {isAsked ? '🔒' : isGranted ? '✅' : '❌'}
+                  </span>
+                  <div className="flex-1">
+                    <div className="font-medium text-foreground mb-1">
+                      {isAsked ? 'Permission Request' : isGranted ? 'Permission Granted' : 'Permission Denied'}
+                    </div>
+                    <div className="text-sm text-muted-foreground mb-3">{event.message}</div>
+                    {isAsked && (
+                      <div className="flex gap-2">
+                        <Button variant="default" size="sm">
+                          Approve
+                        </Button>
+                        <Button variant="outline" size="sm">
+                          Deny
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </Message>
+      )}
+
+      {/* Questions */}
+      {questionEvents.length > 0 && (
+        <Message role="assistant">
+          {questionEvents.map((event, idx) => {
+            const isAsked = event.status === 'question.asked'
+            const isReplied = event.status === 'question.replied'
+            const isRejected = event.status === 'question.rejected'
+
+            return (
+              <div
+                key={`${event.status}-${idx}`}
+                className={`border rounded-lg p-4 ${
+                  isAsked
+                    ? 'border-blue-500/50 bg-blue-50 dark:bg-blue-950/20'
+                    : isReplied
+                      ? 'border-green-500/50 bg-green-50 dark:bg-green-950/20'
+                      : 'border-gray-500/50 bg-gray-50 dark:bg-gray-950/20'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={isAsked ? 'text-blue-600' : isReplied ? 'text-green-600' : 'text-gray-600'}>
+                    {isAsked ? '❓' : isReplied ? '✅' : '⏭️'}
+                  </span>
+                  <div className="flex-1">
+                    <div className="font-medium text-foreground mb-2">{event.message}</div>
+                    {isAsked && (
+                      <div className="flex gap-2">
+                        <Button variant="default" size="sm">
+                          Reply
+                        </Button>
+                        <Button variant="outline" size="sm">
+                          Skip
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </Message>
+      )}
+
+      {/* File Changes */}
+      {fileChangeEvents.length > 0 && (
+        <Message role="assistant">
+          <div className="space-y-1">
+            {fileChangeEvents.map((event, idx) => {
+              const parts = event.message.split(': ')
+              const action = parts[0] || 'modify'
+              const filename = parts[1] || ''
+              const icon = action === 'create' ? '📝' : action === 'modify' ? '✏️' : '🗑️'
+
+              return (
+                <div key={`file-${idx}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>{icon}</span>
+                  <span className="font-mono text-xs">{filename}</span>
+                  <span className="text-xs">{action}</span>
+                </div>
+              )
+            })}
+          </div>
+        </Message>
+      )}
+
+      {/* Session Updates */}
+      {sessionEvents.length > 0 && (
+        <Message role="assistant">
+          <div className="space-y-1">
+            {sessionEvents.map((event, idx) => (
+              <div key={`session-${idx}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>📝</span>
+                <span>{event.message}</span>
+              </div>
+            ))}
+          </div>
+        </Message>
+      )}
+
+      {/* OpenCode URL Ready */}
+      {statusEvents.some((e) => e.status === 'opencode-ready') && (
+        <Message role="assistant">
+          <div className="border border-green-500/50 bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600">🔗</span>
+                <span className="text-sm font-medium text-foreground">OpenCode Server Ready</span>
+              </div>
+            </div>
+          </div>
+        </Message>
+      )}
+
+      {/* Todos */}
+      {sessionTodos.length > 0 && (
+        <Message role="assistant">
+          <div className="space-y-2">
+            {sessionTodos.map((todo) => {
+              const statusMap: Record<string, 'pending' | 'in_progress' | 'completed' | 'failed'> = {
+                pending: 'pending',
+                in_progress: 'in_progress',
+                completed: 'completed',
+                cancelled: 'failed',
+              }
+              return (
+                <Task
+                  key={todo.id}
+                  title={todo.content}
+                  status={statusMap[todo.status] || 'pending'}
+                  description={todo.priority !== 'medium' ? `Priority: ${todo.priority}` : undefined}
+                />
+              )
+            })}
+          </div>
+        </Message>
+      )}
+
+      {/* System Events */}
+      {systemEvents.length > 0 && (
+        <Message role="assistant">
+          <div className="space-y-1">
+            {systemEvents.map((event, idx) => (
+              <div key={`system-${idx}`} className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+                <span>{event.message}</span>
+              </div>
+            ))}
+          </div>
         </Message>
       )}
 
