@@ -111,7 +111,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
       // Find Big Pickle as the preferred default (new ID format)
-      const preferredDefault = models.find((m) => m.id === 'big-pickle')
+      const preferredDefault = models.find((m) => m.id === 'kimi-k2.5-free')
       // Or find any model marked as default
       const markedDefault = models.find((m) => m.isDefault)
       // Fall back to first model
@@ -725,8 +725,8 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         userId,
         repoOwner: data.repoOwner,
         repoName: data.repoName,
-        // Use selected model ID directly (big-pickle, not opencode/big-pickle)
-        model: data.model || selectedModel?.id || 'big-pickle',
+        // Use selected model ID directly
+        model: data.model || selectedModel?.id || 'kimi-k2.5-free',
       })
 
       if (newSession) {

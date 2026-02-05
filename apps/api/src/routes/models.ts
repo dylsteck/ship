@@ -3,12 +3,21 @@ import type { Env } from '../env.d'
 
 const models = new Hono<{ Bindings: Env }>()
 
-// Default model if no preference set - Big Pickle (free stealth model via OpenCode Zen)
-const DEFAULT_MODEL = 'big-pickle'
+// Default model if no preference set - Kimi K2.5 Free (via OpenCode Zen)
+const DEFAULT_MODEL = 'kimi-k2.5-free'
 
 // Fallback static model list when OpenCode is unavailable
 // Ordered by recommendation - default model first
 const FALLBACK_MODELS = [
+  {
+    id: 'kimi-k2.5-free',
+    name: 'Kimi K2.5 Free',
+    provider: 'OpenCode Zen',
+    description: 'Free high-performance model from Moonshot AI (256K context)',
+    contextWindow: 256000,
+    maxTokens: 128000,
+    isDefault: true,
+  },
   {
     id: 'big-pickle',
     name: 'Big Pickle',
@@ -16,7 +25,14 @@ const FALLBACK_MODELS = [
     description: 'Free stealth model optimized for coding agents (200K context)',
     contextWindow: 200000,
     maxTokens: 128000,
-    isDefault: true,
+  },
+  {
+    id: 'glm-4.7-free',
+    name: 'GLM 4.7 Free',
+    provider: 'OpenCode Zen',
+    description: 'Free GLM model from Zhipu AI (128K context)',
+    contextWindow: 128000,
+    maxTokens: 64000,
   },
   {
     id: 'anthropic/claude-sonnet-4-20250514',
@@ -47,8 +63,9 @@ const FALLBACK_MODELS = [
  * Since OpenCode runs in sandbox, we just validate against fallback list
  */
 function validateModelWithFallback(modelId: string): boolean {
-  // Handle both new ID (big-pickle) and old ID (opencode/big-pickle) for backwards compatibility
+  // Handle legacy IDs for backwards compatibility
   if (modelId === 'opencode/big-pickle') return true
+  if (modelId === 'big-pickle') return true
   return FALLBACK_MODELS.some((m) => m.id === modelId)
 }
 
