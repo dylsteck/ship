@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
-import { getAvailableModels, switchModel } from '../lib/opencode'
 
 const models = new Hono<{ Bindings: Env }>()
 
@@ -9,9 +8,24 @@ const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514'
 
 // Fallback static model list when OpenCode is unavailable
 const FALLBACK_MODELS = [
-  { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'Anthropic', description: 'Latest balanced Claude model' },
-  { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic', description: 'Most capable Claude model' },
-  { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', description: 'Fast and intelligent' },
+  {
+    id: 'anthropic/claude-sonnet-4-20250514',
+    name: 'Claude Sonnet 4',
+    provider: 'Anthropic',
+    description: 'Latest balanced Claude model',
+  },
+  {
+    id: 'anthropic/claude-opus-4-20250514',
+    name: 'Claude Opus 4',
+    provider: 'Anthropic',
+    description: 'Most capable Claude model',
+  },
+  {
+    id: 'anthropic/claude-3-5-sonnet-20241022',
+    name: 'Claude 3.5 Sonnet',
+    provider: 'Anthropic',
+    description: 'Fast and intelligent',
+  },
   { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', description: 'Latest GPT-4 multimodal model' },
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', description: 'Fast and affordable' },
   { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google', description: 'Fast multimodal model' },
@@ -20,31 +34,19 @@ const FALLBACK_MODELS = [
 
 /**
  * Validate model ID against available models (with fallback)
+ * Since OpenCode runs in sandbox, we just validate against fallback list
  */
-async function validateModelWithFallback(modelId: string): Promise<boolean> {
-  try {
-    const models = await getAvailableModels()
-    return models.some((m) => m.id === modelId)
-  } catch {
-    // Fall back to checking against static list
-    return FALLBACK_MODELS.some((m) => m.id === modelId)
-  }
+function validateModelWithFallback(modelId: string): boolean {
+  return FALLBACK_MODELS.some((m) => m.id === modelId)
 }
 
 /**
  * GET /models/available
- * List all available models from OpenCode providers
- * Falls back to static list if OpenCode is unavailable
+ * List all available models
+ * Returns static list - OpenCode runs in sandbox so we can't query it from here
  */
-models.get('/available', async (c) => {
-  try {
-    const availableModels = await getAvailableModels()
-    return c.json(availableModels)
-  } catch (error) {
-    console.error('Error fetching models from OpenCode, using fallback:', error)
-    // Return fallback static list when OpenCode is unavailable
-    return c.json(FALLBACK_MODELS)
-  }
+models.get('/available', (c) => {
+  return c.json(FALLBACK_MODELS)
 })
 
 /**
@@ -61,16 +63,14 @@ models.get('/default', async (c) => {
     }
 
     // Check user_preferences table for default model
-    const result = await c.env.DB.prepare(
-      'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?'
-    )
+    const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
       .bind(userId, 'default_model')
       .first<{ value: string }>()
 
     const defaultModel = result?.value || DEFAULT_MODEL
 
     // Validate model exists
-    const isValid = await validateModelWithFallback(defaultModel)
+    const isValid = validateModelWithFallback(defaultModel)
     if (!isValid) {
       // Fall back to default if stored model is invalid
       return c.json({ model: DEFAULT_MODEL })
@@ -97,7 +97,7 @@ models.post('/default', async (c) => {
     }
 
     // Validate model exists
-    const isValid = await validateModelWithFallback(model)
+    const isValid = validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }
@@ -106,7 +106,7 @@ models.post('/default', async (c) => {
     await c.env.DB.prepare(
       `INSERT INTO user_preferences (user_id, key, value)
        VALUES (?, ?, ?)
-       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
     )
       .bind(userId, 'default_model', model)
       .run()
@@ -133,23 +133,16 @@ models.post('/sessions/:id', async (c) => {
     }
 
     // Validate model exists
-    const isValid = await validateModelWithFallback(model)
+    const isValid = validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }
 
     // Store in SessionDO metadata
+    // Model will be used on next prompt - OpenCode picks it up from the prompt() call
     const doId = c.env.SESSION_DO.idFromName(sessionId)
     const doStub = c.env.SESSION_DO.get(doId)
     await doStub.setSessionMeta('model', model)
-
-    // Update OpenCode session model
-    try {
-      await switchModel(sessionId, model)
-    } catch (switchError) {
-      console.error('Error switching OpenCode session model:', switchError)
-      // Continue - model is stored in metadata even if OpenCode update fails
-    }
 
     return c.json({ success: true, model })
   } catch (error) {
@@ -180,9 +173,7 @@ models.get('/sessions/:id', async (c) => {
     // Fall back to user's default
     const userId = meta['userId']
     if (userId) {
-      const result = await c.env.DB.prepare(
-        'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?'
-      )
+      const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
         .bind(userId, 'default_model')
         .first<{ value: string }>()
 

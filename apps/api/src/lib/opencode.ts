@@ -1,5 +1,5 @@
 /**
- * OpenCode SDK wrapper for agent execution
+ * OpenCode SDK wrapper for agent execution (v2 API)
  *
  * OpenCode provides the complete agent runtime:
  * - Build mode (execute immediately) and Plan mode (propose first)
@@ -11,117 +11,101 @@
  * ARCHITECTURE NOTE:
  * In production, OpenCode runs INSIDE the E2B sandbox, not as a separate server.
  * The client connects to the sandbox's OpenCode server via sandbox.getHost(port).
- * In development, we auto-start a local OpenCode server.
  */
 
-import { createOpencode, createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk'
-import type { Event, Session, Part, TextPartInput } from '@opencode-ai/sdk'
+// Using v2 SDK - this is critical for proper event streaming
+import {
+  createOpencodeClient,
+  type OpencodeClient,
+  type Event,
+  type Part,
+  type TextPart,
+  type ToolPart,
+  type Session,
+  type TextPartInput,
+} from '@opencode-ai/sdk/v2'
 
 // Re-export types for convenience
-export type { Event, Session, Part, TextPartInput }
+export type { Event, Part, TextPart, ToolPart, Session, TextPartInput }
 
-// Client instance cache for development mode only
-let devClientInstance: OpencodeClient | null = null
-let serverCleanup: (() => void) | null = null
+// Type for the SSE stream result
+interface SSEStreamResult {
+  stream: AsyncIterable<Event>
+}
 
-// Cache of clients per sandbox URL (for production)
-const sandboxClients: Map<string, OpencodeClient> = new Map()
+// Client instance cache per sandbox URL
+const clientCache: Map<string, OpencodeClient> = new Map()
 
 /**
  * Create an OpenCode client for a specific sandbox
- * This is the primary method for production use in CF Workers
  *
  * @param baseUrl - The public URL of the OpenCode server in the sandbox
+ * @param directory - Optional directory path for scoping events (e.g., /home/user/repo)
  * @returns OpencodeClient connected to the sandbox
  */
-export function createOpenCodeClientForSandbox(baseUrl: string): OpencodeClient {
+export function createOpenCodeClientForSandbox(baseUrl: string, directory?: string): OpencodeClient {
+  // Create a cache key that includes directory for proper scoping
+  const cacheKey = `${baseUrl}:${directory || 'global'}`
+
   // Check cache first
-  const cached = sandboxClients.get(baseUrl)
+  const cached = clientCache.get(cacheKey)
   if (cached) {
     return cached
   }
 
-  // Create new client
-  const client = createOpencodeClient({ baseUrl })
-  sandboxClients.set(baseUrl, client)
+  // Create new client with v2 API
+  const client = createOpencodeClient({
+    baseUrl,
+    directory, // Important: this scopes events to this directory
+  })
+
+  clientCache.set(cacheKey, client)
   return client
 }
 
 /**
- * Get or create OpenCode client for development
- * Auto-starts the OpenCode server locally
+ * Get OpenCode client (convenience wrapper)
  *
- * WARNING: This should only be used in development mode!
- * In production, use createOpenCodeClientForSandbox() with the sandbox URL.
+ * @param sandboxUrl - URL for the sandbox's OpenCode server
+ * @param directory - Optional directory path for scoping
  */
-export async function getOpenCodeClientDev(): Promise<OpencodeClient> {
-  if (devClientInstance) {
-    return devClientInstance
-  }
-
-  // Auto-start server in development
-  // OpenCode will automatically load opencode.json from project root
-  const { client, server } = await createOpencode({
-    hostname: '127.0.0.1',
-    port: 4096,
-  })
-  devClientInstance = client
-  serverCleanup = server.close
-
-  return devClientInstance
-}
-
-/**
- * Get or create OpenCode client
- * In development, auto-starts the OpenCode server
- * In production with sandbox URL, connects to sandbox's OpenCode server
- *
- * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
- */
-export async function getOpenCodeClient(sandboxUrl?: string): Promise<OpencodeClient> {
-  // Check if we're in a Node.js environment (development)
-  const globalProcess = (globalThis as { process?: { env?: Record<string, string> } }).process
-  const isNode = typeof globalThis !== 'undefined' && globalProcess !== undefined
-
-  // In Cloudflare Workers, ENVIRONMENT comes from bindings
-  // In Node.js, check process.env
-  const environment = isNode ? globalProcess?.env?.ENVIRONMENT : 'production'
-  const isDev = environment === 'development'
-
-  if (isDev) {
-    return getOpenCodeClientDev()
-  }
-
-  // Production mode - must have sandbox URL
+export function getOpenCodeClient(sandboxUrl: string, directory?: string): OpencodeClient {
   if (!sandboxUrl) {
-    throw new Error(
-      'OpenCode sandbox URL required in production. Ensure sandbox is provisioned and OpenCode server is started.',
-    )
+    throw new Error('OpenCode sandbox URL is required')
   }
-
-  return createOpenCodeClientForSandbox(sandboxUrl)
+  return createOpenCodeClientForSandbox(sandboxUrl, directory)
 }
 
 /**
  * Create a new OpenCode session for a project
  *
- * @param projectPath - Path to the project in the sandbox
- * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
+ * @param projectPath - Path to the project in the sandbox (e.g., /home/user/repo)
+ * @param sandboxUrl - URL for the sandbox's OpenCode server
+ * @returns Session info with ID
  */
 export async function createOpenCodeSession(
   projectPath: string,
-  sandboxUrl?: string,
+  sandboxUrl: string,
 ): Promise<{ id: string; projectPath: string }> {
-  const client = await getOpenCodeClient(sandboxUrl)
+  console.log(`[opencode:session] Creating session for path: ${projectPath}, URL: ${sandboxUrl}`)
+
+  const client = getOpenCodeClient(sandboxUrl, projectPath)
+
+  // v2 API: session.create() takes parameters directly, not nested in body
   const response = await client.session.create({
-    query: { directory: projectPath },
+    directory: projectPath,
   })
 
+  console.log(`[opencode:session] Create response:`, JSON.stringify(response).slice(0, 500))
+
   if (response.error) {
+    console.error(`[opencode:session] Failed to create session:`, response.error)
     throw new Error(`Failed to create session: ${JSON.stringify(response.error)}`)
   }
 
   const session = response.data as Session
+  console.log(`[opencode:session] Session created: ${session.id}`)
+
   return {
     id: session.id,
     projectPath,
@@ -130,275 +114,307 @@ export async function createOpenCodeSession(
 
 /**
  * Send a prompt to OpenCode session
- * This initiates the prompt and returns the response
- * For streaming events, use subscribeToEvents()
+ * This initiates the prompt - responses come via event stream
  *
  * @param sessionId - OpenCode session ID
  * @param content - Prompt content
- * @param options - Optional mode and model settings
- * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
+ * @param options - Mode and model settings
+ * @param sandboxUrl - URL for the sandbox's OpenCode server
+ * @param directory - Project directory path (for proper client scoping)
  */
 export async function promptOpenCode(
   sessionId: string,
   content: string,
-  options?: { mode?: 'build' | 'plan'; model?: string },
-  sandboxUrl?: string,
+  options: { mode?: 'build' | 'plan'; model?: string } = {},
+  sandboxUrl: string,
+  directory?: string,
 ): Promise<void> {
-  console.log(`[opencode:prompt] Starting prompt send for session ${sessionId.slice(0, 8)}...`)
-  const client = await getOpenCodeClient(sandboxUrl)
-  console.log(`[opencode:prompt] Got client for ${sandboxUrl}`)
+  console.log(`[opencode:prompt] Sending prompt to session ${sessionId.slice(0, 8)}...`)
+  console.log(`[opencode:prompt] URL: ${sandboxUrl}, directory: ${directory}`)
+  console.log(`[opencode:prompt] Content length: ${content.length}, mode: ${options.mode}, model: ${options.model}`)
 
+  const client = getOpenCodeClient(sandboxUrl, directory)
+
+  // Build text part
   const textPart: TextPartInput = {
     type: 'text',
     text: content,
   }
-  console.error(`[opencode:prompt] Sending prompt with ${content.length} chars...`)
-  console.log(`[opencode:prompt] Sending prompt with ${content.length} chars...`)
 
-  // Build prompt body according to OpenCode SDK spec
-  // Model format: { providerID: string, modelID: string }
-  // Mode is NOT a prompt parameter - it's session-level
-  const promptBody: { parts: TextPartInput[]; model?: { providerID: string; modelID: string } } = {
-    parts: [textPart],
-  }
-  
   // Parse model string (format: "provider/model" or just "model")
-  // User's selected model takes priority
-  if (options?.model) {
+  let model: { providerID: string; modelID: string } | undefined
+  if (options.model) {
     const modelParts = options.model.split('/')
     if (modelParts.length === 2) {
-      promptBody.model = {
+      model = {
         providerID: modelParts[0],
         modelID: modelParts[1],
       }
     } else {
       // Assume Anthropic if no provider specified
-      promptBody.model = {
+      model = {
         providerID: 'anthropic',
         modelID: options.model,
       }
     }
-    console.error(`[opencode:prompt] Using user-selected model: ${promptBody.model.providerID}/${promptBody.model.modelID}`)
-    console.log(`[opencode:prompt] Using model: ${promptBody.model.providerID}/${promptBody.model.modelID}`)
+    console.log(`[opencode:prompt] Using model: ${model.providerID}/${model.modelID}`)
   } else {
-    // Default model - use claude-sonnet-4-20250514 (matches UI selection)
-    promptBody.model = {
+    // Default model
+    model = {
       providerID: 'anthropic',
-      modelID: 'claude-sonnet-4-20250514', // Matches what user selects in UI
+      modelID: 'claude-sonnet-4-20250514',
     }
-    console.error(`[opencode:prompt] Using default model: anthropic/claude-sonnet-4-20250514`)
     console.log(`[opencode:prompt] Using default model: anthropic/claude-sonnet-4-20250514`)
   }
 
-  console.error(`[opencode:prompt] Prompt body:`, JSON.stringify(promptBody, null, 2))
-  
+  // Determine agent based on mode
+  const agent = options.mode === 'plan' ? 'plan' : 'build'
+
+  console.log(`[opencode:prompt] Calling session.prompt with agent: ${agent}`)
+
+  // v2 API: session.prompt() takes parameters directly
   const response = await client.session.prompt({
-    path: { id: sessionId },
-    body: promptBody,
+    sessionID: sessionId,
+    parts: [textPart],
+    model,
+    agent,
   })
-  
-  console.error(`[opencode:prompt] Prompt API response status:`, response.error ? 'ERROR' : 'SUCCESS')
-  console.log(`[opencode:prompt] Prompt sent, response:`, response.error ? `Error: ${JSON.stringify(response.error)}` : 'Success')
-  
-  // Check for API-level errors first
+
+  console.log(`[opencode:prompt] Prompt response status:`, response.error ? 'ERROR' : 'SUCCESS')
+
   if (response.error) {
-    console.error(`[opencode:prompt] ✗ Prompt API error:`, JSON.stringify(response.error, null, 2))
+    console.error(`[opencode:prompt] Prompt error:`, JSON.stringify(response.error, null, 2))
     throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
   }
-  
-  // Log response data if available
+
+  // Check for errors in response data (OpenCode sometimes returns errors in data.info.error)
   if (response.data && typeof response.data === 'object') {
-    console.error(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
-    console.log(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
-    console.error(`[opencode:prompt] Response data:`, JSON.stringify(response.data, null, 2).slice(0, 2000))
-    console.log(`[opencode:prompt] Response data:`, JSON.stringify(response.data).slice(0, 500))
-    
-    // CRITICAL: Check if response contains an error in the message info
-    // OpenCode returns errors in response.data.info.error, not response.error
-    const data = response.data as { info?: { error?: unknown }; parts?: unknown[] }
+    const data = response.data as { info?: { error?: unknown } }
     if (data.info?.error) {
+      console.error(`[opencode:prompt] Response contains error:`, JSON.stringify(data.info.error, null, 2))
       const errorInfo = data.info.error as { name?: string; data?: { message?: string; statusCode?: number } }
-      console.error(`[opencode:prompt] ✗ Response contains error in message info:`, JSON.stringify(errorInfo, null, 2))
-      
-      // If it's a model not found error (404), throw a clear error
+
       if (errorInfo.data?.statusCode === 404 && errorInfo.data?.message?.includes('model')) {
-        const errorMsg = `Model not found: ${promptBody.model?.providerID}/${promptBody.model?.modelID}. Error: ${errorInfo.data.message}`
-        console.error(`[opencode:prompt] ${errorMsg}`)
-        throw new Error(errorMsg)
+        throw new Error(`Model not found: ${model?.providerID}/${model?.modelID}. ${errorInfo.data.message}`)
       }
-      
-      // For other errors, throw with full error info
-      const errorMsg = `OpenCode returned error: ${errorInfo.name || 'Unknown'} - ${JSON.stringify(errorInfo.data || errorInfo)}`
-      console.error(`[opencode:prompt] ${errorMsg}`)
-      throw new Error(errorMsg)
-    }
-    
-    // Check if response contains initial message parts
-    if (data.parts && Array.isArray(data.parts) && data.parts.length > 0) {
-      console.error(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
-      console.log(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
-    }
-  }
-  
-  // Log response data if available
-  if (response.data && typeof response.data === 'object') {
-    console.error(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
-    console.log(`[opencode:prompt] Response data keys:`, Object.keys(response.data))
-    console.error(`[opencode:prompt] Response data:`, JSON.stringify(response.data).slice(0, 1000))
-    console.log(`[opencode:prompt] Response data:`, JSON.stringify(response.data).slice(0, 500))
-    
-    // Check if response contains initial message parts
-    const data = response.data as { info?: unknown; parts?: unknown[] }
-    if (data.parts && Array.isArray(data.parts) && data.parts.length > 0) {
-      console.error(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
-      console.log(`[opencode:prompt] Response contains ${data.parts.length} initial parts - these should come through events`)
+
+      throw new Error(`OpenCode error: ${errorInfo.name || 'Unknown'} - ${JSON.stringify(errorInfo.data || errorInfo)}`)
     }
   }
 
-  if (response.error) {
-    console.error(`[opencode:prompt] ✗ Prompt error:`, response.error)
-    throw new Error(`Failed to send prompt: ${JSON.stringify(response.error)}`)
-  }
-  console.error(`[opencode:prompt] ✓ Prompt completed successfully`)
-  console.log(`[opencode:prompt] Prompt completed successfully`)
+  console.log(`[opencode:prompt] Prompt sent successfully - events will stream via event.subscribe()`)
 }
 
 /**
- * Subscribe to OpenCode events (directory-scoped for better filtering)
- * Returns an async iterator of events
+ * Subscribe to OpenCode events
+ * Returns an async iterable of events
  *
- * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
+ * IMPORTANT: The v2 SDK returns { stream: AsyncIterable<Event> }
+ * You must iterate over result.stream, not the result directly
+ *
+ * @param sandboxUrl - URL for the sandbox's OpenCode server
  * @param directory - Optional directory path to scope events to a specific project
  */
-export async function subscribeToEvents(sandboxUrl?: string, directory?: string): Promise<AsyncIterable<Event>> {
-  const client = await getOpenCodeClient(sandboxUrl)
-  console.error(`[opencode] Subscribing to events at ${sandboxUrl}${directory ? `, directory: ${directory}` : ' (global)'}...`)
-  console.log(`[opencode] Subscribing to events at ${sandboxUrl}...`)
+export async function subscribeToEvents(sandboxUrl: string, directory?: string): Promise<AsyncIterable<Event>> {
+  console.log(
+    `[opencode:events] Subscribing to events at ${sandboxUrl}${directory ? `, directory: ${directory}` : ' (global)'}`,
+  )
 
-  // Use directory-scoped events if directory is provided (per OpenCode docs)
-  // This ensures we only get events for the specific project/session
-  const eventStream = directory 
-    ? await client.event.subscribe({ query: { directory } })
-    : await client.event.subscribe()
-  
-  console.error(`[opencode] Got event stream, type: ${typeof eventStream}, has stream: ${'stream' in eventStream}`)
-  console.log(`[opencode] Got event stream, type: ${typeof eventStream}, has stream: ${'stream' in eventStream}`)
-  
-  // Log the structure of the eventStream for debugging
-  if (eventStream && typeof eventStream === 'object') {
-    console.log(`[opencode] Event stream keys: ${Object.keys(eventStream).join(', ')}`)
+  const client = getOpenCodeClient(sandboxUrl, directory)
+
+  // v2 API: event.subscribe() returns { stream: AsyncIterable<Event> }
+  const result = (await client.event.subscribe()) as SSEStreamResult
+
+  console.log(`[opencode:events] Got event subscription result, type: ${typeof result}`)
+
+  if (!result || typeof result !== 'object') {
+    throw new Error(`Invalid event subscription result: ${typeof result}`)
   }
 
-  // The SDK returns a ServerSentEventsResult with a .stream property
-  // The stream is an AsyncGenerator that yields events
-  // Per docs: for await (const event of events.stream)
-  const stream = eventStream.stream as AsyncIterable<Event>
-  
-  // Wrap the stream to ensure events are properly typed
-  async function* eventWrapper(): AsyncGenerator<Event> {
-    try {
-      console.log(`[opencode] Starting to iterate event stream...`)
-      console.log(`[opencode] Stream type check: ${typeof stream}, has Symbol.asyncIterator: ${Symbol.asyncIterator in stream}`)
-      let iterCount = 0
-      let firstEventReceived = false
-      const firstEventTimeout = setTimeout(() => {
-        if (!firstEventReceived) {
-          console.error(`[opencode] WARNING: No events received after 5s. Event stream may be hanging.`)
-        }
-      }, 5000)
-      
-      for await (const rawEvent of stream) {
-        if (!firstEventReceived) {
-          firstEventReceived = true
-          clearTimeout(firstEventTimeout)
-          console.log(`[opencode] ✓ First event received from stream`)
-        }
-        iterCount++
-        if (iterCount <= 3) {
-          console.log(`[opencode] Raw event from stream #${iterCount}:`, typeof rawEvent, rawEvent ? Object.keys(rawEvent as object) : 'null')
-        }
-        
-        // If event is a raw object without proper type, try to parse it
-        const event = rawEvent as Event & { data?: string }
-        
-        // Some SSE libraries return { data: "json string" } - parse if needed
-        if (event.data && typeof event.data === 'string' && !event.type) {
-          try {
-            const parsed = JSON.parse(event.data) as Event
-            yield parsed
-            continue
-          } catch {
-            // Not JSON, yield as-is
-          }
-        }
-        
-        yield event
-      }
-      clearTimeout(firstEventTimeout)
-      console.log(`[opencode] Event stream iteration ended after ${iterCount} events`)
-    } catch (streamError) {
-      console.error(`[opencode] ✗ Error iterating event stream:`, streamError)
-      console.error(`[opencode] Error details:`, streamError instanceof Error ? {
-        message: streamError.message,
-        stack: streamError.stack,
-        name: streamError.name
-      } : streamError)
-      throw streamError
-    }
+  // The SDK returns an object with a stream property
+  if ('stream' in result && result.stream) {
+    console.log(`[opencode:events] Returning stream from result.stream`)
+    return result.stream
   }
-  
-  return eventWrapper()
+
+  // Fallback: maybe it's directly iterable
+  if (Symbol.asyncIterator in result) {
+    console.log(`[opencode:events] Result is directly iterable`)
+    return result as AsyncIterable<Event>
+  }
+
+  throw new Error(`Event subscription did not return an async iterable. Got: ${JSON.stringify(Object.keys(result))}`)
 }
 
 /**
  * Stop/abort the current OpenCode session activity
  *
  * @param sessionId - OpenCode session ID
- * @param sandboxUrl - Optional URL for the sandbox's OpenCode server (required in production)
+ * @param sandboxUrl - URL for the sandbox's OpenCode server
+ * @param directory - Project directory path
  */
-export async function stopOpenCode(sessionId: string, sandboxUrl?: string): Promise<void> {
-  const client = await getOpenCodeClient(sandboxUrl)
+export async function stopOpenCode(sessionId: string, sandboxUrl: string, directory?: string): Promise<void> {
+  const client = getOpenCodeClient(sandboxUrl, directory)
+
+  // v2 API: session.abort() takes sessionID directly
   await client.session.abort({
-    path: { id: sessionId },
+    sessionID: sessionId,
   })
 }
 
 /**
- * Respond to permission request
- * Note: This would be implemented via the permission.replied event
+ * Filter events for a specific session
+ * Yields only events that belong to the given session
+ *
+ * @param eventStream - The event stream to filter
+ * @param sessionId - Session ID to filter for
+ * @param timeoutMs - Timeout in milliseconds (default 2 minutes)
  */
-export async function respondToPermission(
-  _sessionId: string,
-  _permissionId: string,
-  _approved: boolean,
-): Promise<void> {
-  // Permission handling is done through the SDK's event system
-  // Client should respond via WebSocket, and we forward to OpenCode
-  // This is a placeholder for the full implementation
-  throw new Error('Permission response not yet implemented')
+export async function* filterSessionEvents(
+  eventStream: AsyncIterable<Event>,
+  sessionId: string,
+  timeoutMs: number = 120000,
+): AsyncGenerator<Event> {
+  console.log(`[opencode:filter] Starting event filter for session ${sessionId.slice(0, 8)}...`)
+
+  let eventCount = 0
+  let lastEventTime = Date.now()
+
+  // Timeout warning
+  const timeoutWarning = setTimeout(() => {
+    console.warn(`[opencode:filter] No events received in ${timeoutMs / 1000}s for session ${sessionId.slice(0, 8)}`)
+  }, timeoutMs)
+
+  // Early event detection
+  const earlyWarning = setTimeout(() => {
+    if (eventCount === 0) {
+      console.warn(`[opencode:filter] WARNING: No events received after 5s. Stream may be stuck.`)
+    }
+  }, 5000)
+
+  try {
+    for await (const event of eventStream) {
+      clearTimeout(earlyWarning)
+      lastEventTime = Date.now()
+      eventCount++
+
+      // Get session ID from event
+      const eventSessionId = getEventSessionId(event)
+
+      // Log first several events for debugging
+      if (eventCount <= 10) {
+        console.log(
+          `[opencode:filter] Event #${eventCount}: type=${event.type}, eventSession=${eventSessionId?.slice(0, 8) || 'none'}, targetSession=${sessionId.slice(0, 8)}`,
+        )
+      }
+
+      // Filter: include events that match session OR have no session (global events)
+      if (!eventSessionId || eventSessionId === sessionId) {
+        yield event
+
+        // Stop on session terminal states
+        if (event.type === 'session.idle' || event.type === 'session.error') {
+          console.log(`[opencode:filter] Session terminal event: ${event.type}`)
+          break
+        }
+      } else if (eventCount <= 20) {
+        // Log filtered events early on for debugging
+        console.log(`[opencode:filter] Filtered out event from different session: ${eventSessionId?.slice(0, 8)}`)
+      }
+    }
+  } finally {
+    clearTimeout(timeoutWarning)
+    clearTimeout(earlyWarning)
+    console.log(`[opencode:filter] Event stream ended after ${eventCount} events`)
+  }
 }
 
 /**
- * Cleanup OpenCode client and server
+ * Extract session ID from an event
+ * Different event types store session ID in different places
+ */
+function getEventSessionId(event: Event): string | undefined {
+  // Most message-related events have part.sessionID
+  if (event.type === 'message.part.updated') {
+    return event.properties?.part?.sessionID
+  }
+
+  if (event.type === 'message.part.removed') {
+    return event.properties?.sessionID
+  }
+
+  if (event.type === 'message.updated') {
+    return event.properties?.info?.sessionID
+  }
+
+  if (event.type === 'message.removed') {
+    return event.properties?.sessionID
+  }
+
+  // Session events
+  if (event.type === 'session.status') {
+    return event.properties?.sessionID
+  }
+
+  if (event.type === 'session.idle') {
+    return event.properties?.sessionID
+  }
+
+  if (event.type === 'session.error') {
+    return event.properties?.sessionID
+  }
+
+  if (event.type === 'session.created' || event.type === 'session.updated' || event.type === 'session.deleted') {
+    return event.properties?.info?.id
+  }
+
+  if (event.type === 'session.compacted') {
+    return event.properties?.sessionID
+  }
+
+  if (event.type === 'session.diff') {
+    return event.properties?.sessionID
+  }
+
+  // Permission events
+  if (event.type === 'permission.asked' || event.type === 'permission.replied') {
+    return event.properties?.sessionID
+  }
+
+  // Question events
+  if (event.type === 'question.asked' || event.type === 'question.replied' || event.type === 'question.rejected') {
+    return event.properties?.sessionID
+  }
+
+  // Todo events
+  if (event.type === 'todo.updated') {
+    return event.properties?.sessionID
+  }
+
+  // Command events
+  if (event.type === 'command.executed') {
+    return event.properties?.sessionID
+  }
+
+  // Global events have no session ID
+  return undefined
+}
+
+/**
+ * Cleanup cached clients
  */
 export function cleanupOpenCode(): void {
-  if (serverCleanup) {
-    serverCleanup()
-    serverCleanup = null
-  }
-  devClientInstance = null
-  // Clear sandbox clients cache
-  sandboxClients.clear()
+  clientCache.clear()
 }
 
 /**
  * Get available models from OpenCode providers
- * Returns a flat list of all models across all configured providers
  */
-export async function getAvailableModels(): Promise<
-  Array<{ id: string; name: string; provider: string; description?: string }>
-> {
-  const client = await getOpenCodeClient()
+export async function getAvailableModels(
+  sandboxUrl: string,
+  directory?: string,
+): Promise<Array<{ id: string; name: string; provider: string; description?: string }>> {
+  const client = getOpenCodeClient(sandboxUrl, directory)
   const response = await client.config.providers()
 
   if (response.error) {
@@ -406,26 +422,27 @@ export async function getAvailableModels(): Promise<
   }
 
   const data = response.data
-  if (!data || typeof data !== 'object' || !('providers' in data)) {
+  if (!data || typeof data !== 'object') {
     return []
   }
 
-  const providersData = data as unknown as {
-    providers: Array<{
+  const providersData = data as {
+    providers?: Array<{
+      id: string
       name: string
-      models?: { [key: string]: { name?: string; description?: string } }
+      models?: Record<string, { name?: string; description?: string }>
     }>
   }
 
   const models: Array<{ id: string; name: string; provider: string; description?: string }> = []
 
-  for (const provider of providersData.providers) {
+  for (const provider of providersData.providers || []) {
     if (provider.models && typeof provider.models === 'object') {
       for (const [modelId, modelInfo] of Object.entries(provider.models)) {
         models.push({
-          id: `${provider.name}/${modelId}`,
+          id: `${provider.id}/${modelId}`,
           name: modelInfo.name || modelId,
-          provider: provider.name,
+          provider: provider.name || provider.id,
           description: modelInfo.description,
         })
       }
@@ -438,193 +455,45 @@ export async function getAvailableModels(): Promise<
 /**
  * Validate if a model ID is available
  */
-export async function validateModel(modelId: string): Promise<boolean> {
-  const models = await getAvailableModels()
+export async function validateModel(modelId: string, sandboxUrl: string, directory?: string): Promise<boolean> {
+  const models = await getAvailableModels(sandboxUrl, directory)
   return models.some((m) => m.id === modelId)
 }
 
 /**
- * Switch model for an OpenCode session
- * Updates the session's model configuration
- *
- * Note: OpenCode SDK may not support runtime model switching yet.
- * Model should be set during session creation.
+ * Get session info
  */
-export async function switchModel(_sessionId: string, newModel: string): Promise<void> {
-  // Validate model exists
-  const isValid = await validateModel(newModel)
-  if (!isValid) {
-    throw new Error(`Invalid model: ${newModel}`)
-  }
-
-  // Note: OpenCode SDK session.update() may not support 'model' parameter yet
-  // This is a placeholder for future functionality
-  // For now, we store model preference in SessionDO metadata
-  // and it will be used when creating new OpenCode sessions
-}
-
-/**
- * Filter events for a specific session
- * Includes timeout to prevent hanging forever
- */
-export async function* filterSessionEvents(
-  eventStream: AsyncIterable<Event>,
+export async function getSessionInfo(
   sessionId: string,
-  timeoutMs: number = 120000, // 2 minutes default
-): AsyncGenerator<Event> {
-  console.log(`[opencode] Starting to filter events for session ${sessionId.slice(0, 8)}...`)
-  let count = 0
-  let lastEventTime = Date.now()
+  sandboxUrl: string,
+  directory?: string,
+): Promise<Session | null> {
+  const client = getOpenCodeClient(sandboxUrl, directory)
 
-  const timeout = setTimeout(() => {
-    console.error(`[opencode] Event stream timeout after ${timeoutMs / 1000}s for session ${sessionId.slice(0, 8)}`)
-  }, timeoutMs)
+  const response = await client.session.get({
+    sessionID: sessionId,
+  })
 
-  // Add a timeout to detect if NO events are coming at all
-  const noEventsTimeout = setTimeout(() => {
-    if (count === 0) {
-      console.error(`[opencode] WARNING: No events received after 5s for session ${sessionId.slice(0, 8)}. Event stream may be broken.`)
-    }
-  }, 5000)
-
-  try {
-    console.log(`[opencode] Starting to iterate eventStream for session ${sessionId.slice(0, 8)}...`)
-    let hasStarted = false
-    
-    for await (const event of eventStream) {
-      if (!hasStarted) {
-        hasStarted = true
-        console.log(`[opencode] Event stream started yielding events! First event received.`)
-      }
-      
-      clearTimeout(noEventsTimeout) // Clear timeout once we get first event
-      lastEventTime = Date.now()
-      count++
-
-      // Debug: Log raw event structure for first few events
-      if (count <= 5) {
-        console.log(`[opencode] Raw event #${count}:`, JSON.stringify(event).slice(0, 800))
-      }
-
-      // Check if event belongs to this session
-      const eventSessionId = getEventSessionId(event)
-      
-      // Log session ID extraction for first 20 events (increased to catch more)
-      if (count <= 20) {
-        console.log(`[opencode] Event #${count} session ID extraction:`, {
-          type: event.type,
-          extractedSessionId: eventSessionId?.slice(0, 8) || 'none',
-          targetSessionId: sessionId.slice(0, 8),
-          propertiesKeys: event.properties ? Object.keys(event.properties) : [],
-          partKeys: event.properties?.part ? Object.keys(event.properties.part) : [],
-          fullEvent: count <= 5 ? JSON.stringify(event).slice(0, 1000) : undefined,
-        })
-      }
-
-      if (count <= 10 || count % 20 === 0) {
-        console.log(
-          `[opencode] Event #${count}: type=${event.type}, session=${eventSessionId?.slice(0, 8) || 'none'}, target=${sessionId.slice(0, 8)}, match=${eventSessionId === sessionId || !eventSessionId}`,
-        )
-      }
-
-      // TEMPORARY: Include ALL events to debug what's actually coming through
-      // TODO: Re-enable filtering once we confirm events are coming
-      if (eventSessionId) {
-        if (eventSessionId !== sessionId) {
-          // Log mismatched events but still yield them for debugging
-          if (count <= 20) {
-            console.log(`[opencode] Event #${count} session mismatch but INCLUDING for debug: ${eventSessionId.slice(0, 8)} !== ${sessionId.slice(0, 8)}, type=${event.type}`)
-          }
-          // TEMPORARILY INCLUDING ALL EVENTS - REMOVE THIS AFTER DEBUGGING
-          // continue
-        } else {
-          if (count <= 5) {
-            console.log(`[opencode] Event #${count} matches session ${sessionId.slice(0, 8)}, type=${event.type}`)
-          }
-        }
-      } else {
-        // Events without session ID (like server.connected) - include them
-        if (count <= 5) {
-          console.log(`[opencode] Event #${count} has no session ID (global event), including it, type=${event.type}`)
-        }
-      }
-
-      // Log event structure for first 10 events to debug
-      if (count <= 10) {
-        console.log(`[opencode] Yielding event #${count}:`, {
-          type: event.type,
-          hasProperties: !!event.properties,
-          propertiesKeys: event.properties ? Object.keys(event.properties) : [],
-          sessionId: eventSessionId,
-          targetSessionId: sessionId.slice(0, 8),
-        })
-      }
-
-      yield event
-
-      // Stop when session becomes idle or errors
-      if (event.type === 'session.idle' || event.type === 'session.error') {
-        console.log(`[opencode] Stopping event stream: ${event.type}`)
-        break
-      }
-    }
-  } finally {
-    clearTimeout(timeout)
-    clearTimeout(noEventsTimeout)
+  if (response.error) {
+    console.warn(`[opencode:session] Failed to get session ${sessionId}:`, response.error)
+    return null
   }
 
-  console.log(`[opencode] Event stream ended after ${count} events`)
+  return response.data as Session
 }
 
 /**
- * Extract session ID from event
- * Tries multiple possible locations since OpenCode SDK structure may vary
+ * List all sessions
  */
-function getEventSessionId(event: Event): string | undefined {
-  // Try common locations first
-  if (event.properties?.sessionID) {
-    return event.properties.sessionID
+export async function listSessions(sandboxUrl: string, directory?: string): Promise<Session[]> {
+  const client = getOpenCodeClient(sandboxUrl, directory)
+
+  const response = await client.session.list()
+
+  if (response.error) {
+    console.warn(`[opencode:session] Failed to list sessions:`, response.error)
+    return []
   }
-  
-  if (event.properties?.session?.id) {
-    return event.properties.session.id
-  }
-  
-  switch (event.type) {
-    case 'message.part.updated': {
-      const part = event.properties?.part
-      if (!part) return undefined
-      // Try multiple possible locations for session ID in part
-      return (
-        part.sessionID ||
-        (part as any).sessionId ||
-        (part as any).session?.id ||
-        event.properties?.sessionID ||
-        event.properties?.messageID // Sometimes messageID contains session info
-      )
-    }
-    case 'message.part.removed':
-      return event.properties?.sessionID || event.properties?.session?.id
-    case 'permission.updated':
-    case 'permission.replied':
-      return event.properties?.sessionID || event.properties?.session?.id
-    case 'session.status':
-    case 'session.idle':
-    case 'session.compacted':
-      return event.properties?.sessionID || event.properties?.session?.id
-    case 'session.created':
-    case 'session.updated':
-    case 'session.deleted':
-      return event.properties?.info?.id || event.properties?.sessionID || event.properties?.session?.id
-    case 'session.error':
-      return event.properties?.sessionID || event.properties?.session?.id
-    case 'session.diff':
-      return event.properties?.sessionID || event.properties?.session?.id
-    case 'todo.updated':
-      return event.properties?.sessionID || event.properties?.session?.id
-    case 'command.executed':
-      return event.properties?.sessionID || event.properties?.session?.id
-    default:
-      return undefined
-  }
+
+  return (response.data || []) as Session[]
 }

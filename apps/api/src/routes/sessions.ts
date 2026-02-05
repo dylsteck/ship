@@ -52,7 +52,7 @@ sessions.get('/', async (c) => {
       `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at
        FROM chat_sessions
        WHERE user_id = ? AND status != 'deleted'
-       ORDER BY last_activity DESC`
+       ORDER BY last_activity DESC`,
     )
       .bind(userId)
       .all<SessionRow>()
@@ -115,16 +115,17 @@ sessions.post('/', async (c) => {
     // Store session record in D1 FIRST (don't block on sandbox)
     await c.env.DB.prepare(
       `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?)`
+       VALUES (?, ?, ?, ?, 'active', ?, ?)`,
     )
       .bind(sessionId, input.userId, input.repoOwner, input.repoName, now, now)
       .run()
 
     // Start sandbox provisioning in background (don't block session creation)
     c.executionCtx.waitUntil(
-      doStub.fetch(`http://do/sandbox/provision`, {
-        method: 'POST',
-      })
+      doStub
+        .fetch(`http://do/sandbox/provision`, {
+          method: 'POST',
+        })
         .then(async (res) => {
           if (!res.ok) {
             const error = await res.json().catch(() => ({ error: 'Unknown error' }))
@@ -137,7 +138,7 @@ sessions.post('/', async (c) => {
               body: JSON.stringify({
                 type: 'sandbox-status',
                 status: 'error',
-                error: error.error || 'Sandbox provisioning failed',
+                error: (error as { error?: string }).error || 'Sandbox provisioning failed',
               }),
             })
           }
@@ -155,7 +156,7 @@ sessions.post('/', async (c) => {
               error: err instanceof Error ? err.message : 'Sandbox provisioning failed',
             }),
           })
-        })
+        }),
     )
 
     // Return session object immediately with provisioning status
@@ -190,7 +191,7 @@ sessions.get('/:id', async (c) => {
     const row = await c.env.DB.prepare(
       `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at
        FROM chat_sessions
-       WHERE id = ?`
+       WHERE id = ?`,
     )
       .bind(id)
       .first<SessionRow>()
@@ -234,9 +235,7 @@ sessions.delete('/:id', async (c) => {
     const id = c.req.param('id')
 
     // Check session exists
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM chat_sessions WHERE id = ?'
-    )
+    const existing = await c.env.DB.prepare('SELECT id FROM chat_sessions WHERE id = ?')
       .bind(id)
       .first<{ id: string }>()
 
@@ -255,9 +254,7 @@ sessions.delete('/:id', async (c) => {
 
     // Soft delete in D1 (mark as deleted)
     const now = Math.floor(Date.now() / 1000)
-    await c.env.DB.prepare(
-      `UPDATE chat_sessions SET status = 'deleted', archived_at = ? WHERE id = ?`
-    )
+    await c.env.DB.prepare(`UPDATE chat_sessions SET status = 'deleted', archived_at = ? WHERE id = ?`)
       .bind(now, id)
       .run()
 
