@@ -57,6 +57,11 @@ ship/
 - **Module system**: ESM
 - **Formatting**: Prettier (`pnpm format`)
 - **Linting**: ESLint with Next.js config
+- **File size**: Keep files and functions small and focused
+  - Components should be under ~300 lines
+  - Hooks should be under ~300 lines
+  - Functions should be under ~100 lines
+  - If a file exceeds these limits, break it into smaller, focused components/hooks
 
 ## Key Conventions
 
