@@ -20,11 +20,22 @@ interface ChatInterfaceProps {
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void
   onOpenVSCode?: () => void
   onOpenTerminal?: () => void
+  onOpenCodeUrl?: (url: string) => void
   initialPrompt?: string | null
   initialMode?: 'build' | 'plan'
   agentStatus?: AgentStatus
   currentTool?: string
-  onOpenCodeUrl?: (url: string) => void
+  sessionInfo?: {
+    repoOwner?: string
+    repoName?: string
+    branch?: string
+    model?: string
+    modelName?: string
+  }
+  sandboxId?: string | null
+  sandboxStatus?: 'provisioning' | 'ready' | 'error' | 'none'
+  opencodeUrl?: string | null
+  opencodeSessionId?: string | null
 }
 
 export function ChatInterface({
@@ -32,11 +43,15 @@ export function ChatInterface({
   onStatusChange,
   onOpenVSCode,
   onOpenTerminal,
-  onOpenCodeUrl,
   initialPrompt,
   initialMode = 'build',
   agentStatus,
   currentTool,
+  sessionInfo,
+  sandboxId,
+  sandboxStatus,
+  opencodeUrl,
+  opencodeSessionId,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -654,7 +669,7 @@ export function ChatInterface({
                 }
 
                 // DEBUG: Log ALL event types
-                console.log('[chat-interface] 📨 Processing event:', {
+                  console.log('[chat-interface] 📨 Processing event:', {
                   eventType,
                   dataType: data.type,
                   hasUrl: !!data.url,
@@ -670,7 +685,11 @@ export function ChatInterface({
                     console.log('[chat-interface] ✅ Setting OpenCode URL:', url)
                     setOpenCodeUrl(url)
                     onOpenCodeUrl?.(url)
+                    console.log('[chat-interface] 🔗 Calling onOpenCodeUrl with:', url)
+                  } else {
+                    console.log('[chat-interface] ❌ Invalid URL type:', typeof url)
                   }
+                }
                 }
 
                 if (data.type === 'assistant') {
@@ -782,14 +801,13 @@ export function ChatInterface({
                     createdAt: Math.floor(Date.now() / 1000),
                   }
                   setMessages((prev) => [...prev, prMessage])
+            }
+                } catch {
+                  // Ignore parse errors
                 }
-              } catch {
-                // Ignore parse errors
-              }
             }
           }
-        }
-      } catch (err) {
+        } catch (err) {
         console.error('Chat error:', err)
         setIsStreaming(false)
         streamingMessageRef.current = null
