@@ -344,11 +344,26 @@ export function ChatInterface({
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
 
+          let currentEventType = ''
           for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEventType = line.slice(7).trim()
+              console.log('[chat-interface] SSE event type:', currentEventType)
+              continue
+            }
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6))
-                console.log('[chat-interface] SSE event parsed:', data.type || data.status || 'unknown')
+                // Use event type from 'event:' line if data.type is not present
+                if (!data.type && currentEventType) {
+                  data.type = currentEventType
+                }
+                console.log(
+                  '[chat-interface] SSE data parsed:',
+                  data.type || data.status || 'unknown',
+                  'event:',
+                  currentEventType,
+                )
 
                 // Handle status events for progress updates
                 if (data.type === 'status') {
@@ -585,7 +600,7 @@ export function ChatInterface({
 
                 // Handle ALL other event types for visibility - show them in real-time
                 // Ensure data.type is a string before using string methods
-                const eventType = typeof data.type === 'string' ? data.type : ''
+                const eventType = typeof data.type === 'string' ? data.type : currentEventType
                 if (
                   eventType &&
                   !['status', 'message.part.updated', 'session.status', 'done', 'error', 'heartbeat'].includes(
@@ -638,13 +653,23 @@ export function ChatInterface({
                   onStatusChange?.('executing', command)
                 }
 
+                // DEBUG: Log ALL event types
+                console.log('[chat-interface] 📨 Processing event:', {
+                  eventType,
+                  dataType: data.type,
+                  hasUrl: !!data.url,
+                  url: data.url?.slice(0, 50),
+                })
+
                 // Handle OpenCode URL from backend
                 if (eventType === 'opencode-url' || data.type === 'opencode-url') {
+                  console.log('[chat-interface] 🎯 MATCHED opencode-url event!')
                   const url = data.url || data.properties?.url
+                  console.log('[chat-interface] Extracted URL:', url?.slice(0, 50))
                   if (typeof url === 'string') {
+                    console.log('[chat-interface] ✅ Setting OpenCode URL:', url)
                     setOpenCodeUrl(url)
                     onOpenCodeUrl?.(url)
-                    console.log('[chat-interface] OpenCode URL received:', url)
                   }
                 }
 
