@@ -40,6 +40,7 @@ interface AppSidebarProps {
   searchQuery: string
   onSearchChange: (value: string) => void
   currentSessionId?: string
+  currentSessionTitle?: string
   onSessionDeleted?: (sessionId: string) => void
   isStreaming?: boolean
 }
@@ -52,7 +53,7 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(seconds / 86400)}d`
 }
 
-export function AppSidebar({ sessions, user, searchQuery, onSearchChange, currentSessionId, onSessionDeleted, isStreaming = false }: AppSidebarProps) {
+export function AppSidebar({ sessions, user, searchQuery, onSearchChange, currentSessionId, currentSessionTitle, onSessionDeleted, isStreaming = false }: AppSidebarProps) {
   const router = useRouter()
   const { deleteSession } = useDeleteSession()
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
@@ -170,17 +171,29 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
               <SidebarMenu>
                 {activeSessions.map((session) => {
                   const isCurrentAndStreaming = isStreaming && currentSessionId === session.id
+                  const isCurrent = currentSessionId === session.id
+                  const title = isCurrent && currentSessionTitle ? currentSessionTitle : null
                   return (
                     <SidebarMenuItem key={session.id}>
                       <SidebarMenuButton render={<Link href={`/session/${session.id}`} />} tooltip={`${session.repoOwner}/${session.repoName}`}>
-                        <div className="flex items-center gap-2 min-w-0 group-data-[collapsible=icon]:hidden">
-                          {/* Spinner when this session is actively streaming */}
+                        <div className="flex items-center gap-2 min-w-0 w-full group-data-[collapsible=icon]:hidden">
                           {isCurrentAndStreaming && (
                             <span className="shrink-0 w-3 h-3 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin" />
                           )}
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-xs font-medium truncate">{session.repoOwner}/{session.repoName}</span>
-                            <span className="text-[10px] text-muted-foreground">{formatRelativeTime(session.lastActivity)}</span>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-xs font-medium truncate">
+                                {title || `${session.repoOwner}/${session.repoName}`}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground/50 shrink-0">
+                                {formatRelativeTime(session.lastActivity)}
+                              </span>
+                            </div>
+                            {title && (
+                              <span className="text-[10px] text-muted-foreground/60 truncate">
+                                {session.repoOwner}/{session.repoName}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </SidebarMenuButton>
@@ -215,9 +228,13 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
                 {inactiveSessions.map((session) => (
                   <SidebarMenuItem key={session.id}>
                     <SidebarMenuButton render={<Link href={`/session/${session.id}`} />} tooltip={`${session.repoOwner}/${session.repoName}`}>
-                      <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
-                        <span className="text-xs font-medium truncate opacity-70">{session.repoOwner}/{session.repoName}</span>
-                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(session.lastActivity)}</span>
+                      <div className="flex items-center min-w-0 w-full group-data-[collapsible=icon]:hidden">
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-medium truncate opacity-70">{session.repoOwner}/{session.repoName}</span>
+                            <span className="text-[10px] text-muted-foreground/50 shrink-0">{formatRelativeTime(session.lastActivity)}</span>
+                          </div>
+                        </div>
                       </div>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

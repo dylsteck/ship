@@ -237,6 +237,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         currentSessionId={activeSessionId || undefined}
+        currentSessionTitle={displayTitle}
         onSessionDeleted={(sessionId) => {
           setLocalSessions((prev) => prev.filter((s) => s.id !== sessionId))
         }}

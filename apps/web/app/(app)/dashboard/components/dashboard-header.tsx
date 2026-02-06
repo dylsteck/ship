@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { SidebarTrigger } from '@ship/ui'
+import { useSidebar } from '@ship/ui'
 import type { WebSocketStatus } from '@/lib/websocket'
 
 interface DashboardHeaderProps {
@@ -20,10 +20,21 @@ export function DashboardHeader({
   onToggleRightSidebar,
 }: DashboardHeaderProps) {
   const router = useRouter()
+  const { toggleSidebar } = useSidebar()
 
   return (
     <header className="flex items-center gap-3 px-4 py-3 relative z-10">
-      <SidebarTrigger className="cursor-pointer" />
+      {/* Left sidebar trigger — panel icon flipped horizontally */}
+      <button
+        onClick={toggleSidebar}
+        className="p-1.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+        title="Toggle sidebar"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M9 3v18" />
+        </svg>
+      </button>
 
       {/* Session title or fallback */}
       {activeSessionId && (
