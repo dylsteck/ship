@@ -42,6 +42,8 @@ export interface UIMessage {
   type?: 'error' | 'pr-notification' | 'permission' | 'question'
   errorCategory?: 'transient' | 'persistent' | 'user-action' | 'fatal'
   retryable?: boolean
+  // Wall-clock elapsed time in ms (set when streaming completes)
+  elapsed?: number
   // Permission/question prompt data
   promptData?: {
     id: string
@@ -360,6 +362,51 @@ export function extractStepCost(part: MessagePart): StepCost | null {
     cost: stepPart.cost,
     tokens: stepPart.tokens,
   }
+}
+
+// ============ API Message → UIMessage Mapping ============
+
+interface ApiMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  createdAt: number
+  inlineTools?: Array<{
+    name: string
+    status: 'pending' | 'in_progress' | 'completed' | 'failed'
+    input: Record<string, unknown>
+    output?: unknown
+    duration?: number
+  }>
+  reasoningBlocks?: Array<{ text: string }>
+}
+
+/**
+ * Map an array of API messages to UIMessages (for loading history on reload)
+ */
+export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
+  return apiMessages.map((msg) => {
+    const uiMsg: UIMessage = {
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: new Date(msg.createdAt * 1000),
+    }
+    if (msg.inlineTools?.length) {
+      uiMsg.toolInvocations = msg.inlineTools.map((t) => ({
+        toolCallId: `${msg.id}-${t.name}`,
+        toolName: t.name,
+        state: t.status === 'completed' ? 'result' as const : t.status === 'failed' ? 'error' as const : 'call' as const,
+        args: t.input,
+        result: t.output,
+        duration: t.duration,
+      }))
+    }
+    if (msg.reasoningBlocks?.length) {
+      uiMsg.reasoning = msg.reasoningBlocks.map((b) => b.text)
+    }
+    return uiMsg
+  })
 }
 
 // ============ Status Helpers ============

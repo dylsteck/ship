@@ -297,22 +297,13 @@ export function DashboardComposer({
               {activeSessionId && (
                 <>
                   {isStreaming ? (
-                    <div className="relative">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="rounded-full h-6 px-2.5 gap-1 text-[11px]"
-                        onClick={onStop}
-                      >
-                        <HugeiconsIcon icon={StopIcon} strokeWidth={2} className="size-3" />
-                        Stop
-                      </Button>
-                      {messageQueueLength > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[8px] font-medium px-0.5">
-                          {messageQueueLength}
-                        </span>
-                      )}
-                    </div>
+                    <Button
+                      onClick={onStop}
+                      size="icon-sm"
+                      className="rounded-full h-6 w-6 bg-foreground text-background hover:bg-foreground/90"
+                    >
+                      <HugeiconsIcon icon={StopIcon} strokeWidth={2} className="size-3.5" />
+                    </Button>
                   ) : (
                     <Button
                       onClick={onSubmit}

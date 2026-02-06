@@ -1,6 +1,6 @@
 'use client'
 
-import { Message, Tool, Reasoning, Response, Loader, Task, Steps, Conversation, ConversationScrollButton } from '@ship/ui'
+import { Message, Tool, Response, Loader, Task, Steps, Conversation, ConversationScrollButton } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
 import { PermissionPrompt } from './permission-prompt'
@@ -128,13 +128,10 @@ export function DashboardMessages({
             ((message.reasoning && message.reasoning.length > 0) ||
               (message.toolInvocations && message.toolInvocations.length > 0))
 
-          // Calculate elapsed time for completed steps
-          const totalToolDuration = message.toolInvocations?.reduce((acc, t) => acc + (t.duration || 0), 0) || 0
-          const stepsElapsed = !isCurrentlyStreaming
-            ? totalToolDuration
-            : streamStartTime
-              ? Date.now() - streamStartTime
-              : 0
+          // Wall-clock elapsed: use stamped value for completed, live timer for streaming
+          const stepsElapsed = isCurrentlyStreaming
+            ? (streamStartTime ? Date.now() - streamStartTime : 0)
+            : (message.elapsed || 0)
 
           return (
             <Message
@@ -156,15 +153,10 @@ export function DashboardMessages({
                 >
                   {/* Reasoning inside steps */}
                   {message.reasoning && message.reasoning.length > 0 && (
-                    <Reasoning
-                      isStreaming={
-                        isCurrentlyStreaming &&
-                        !message.content &&
-                        !message.toolInvocations?.some((t) => t.state === 'result')
-                      }
-                    >
-                      {message.reasoning.join('\n\n')}
-                    </Reasoning>
+                    <div className="text-sm text-muted-foreground/80 border-l-2 border-border/40 pl-3 py-1 my-1">
+                      <div className="text-[11px] text-muted-foreground/50 mb-1 font-medium">Reasoning</div>
+                      <div className="whitespace-pre-wrap leading-relaxed">{message.reasoning.join('\n\n')}</div>
+                    </div>
                   )}
 
                   {/* Tools inside steps */}

@@ -2,9 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
-import { stopChatStream, type Message as APIMessage } from '@/lib/api'
+import { stopChatStream, getChatMessages, type Message as APIMessage } from '@/lib/api'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
-import { createErrorMessage } from '@/lib/ai-elements-adapter'
+import { createErrorMessage, mapApiMessagesToUI } from '@/lib/ai-elements-adapter'
 import type { SessionInfo, StepFinishPart } from '@/lib/sse-types'
 import type { ChatSession } from '@/lib/api'
 
@@ -68,7 +68,10 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
             createdAt: new Date(msg.createdAt * 1000),
           }
           setMessages((prev) => {
-            const exists = prev.some((m) => m.id === uiMsg.id)
+            // Dedup by ID or by matching role+content (for optimistic user messages)
+            const exists = prev.some(
+              (m) => m.id === uiMsg.id || (m.role === uiMsg.role && m.content === uiMsg.content),
+            )
             if (exists) return prev
             return [...prev, uiMsg]
           })
@@ -96,7 +99,10 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
 
         if (event.type === 'opencode-url') {
           const url = (event as { url?: string }).url
-          if (url) setOpenCodeUrl(url)
+          if (url) {
+            setOpenCodeUrl(url)
+            try { localStorage.setItem(`opencode-url-${sessionId}`, url) } catch {}
+          }
         }
 
         if (event.type === 'sandbox-status') {
@@ -110,6 +116,39 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
   useEffect(() => {
     return () => wsRef.current?.disconnect()
   }, [])
+
+  // Load chat history and restore opencode URL when session changes
+  const historyLoadedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeSessionId) {
+      setMessages([])
+      historyLoadedRef.current = null
+      return
+    }
+    // Only load if we haven't already loaded for this session
+    if (historyLoadedRef.current === activeSessionId) return
+    historyLoadedRef.current = activeSessionId
+
+    // Restore opencode URL from localStorage
+    try {
+      const savedUrl = localStorage.getItem(`opencode-url-${activeSessionId}`)
+      if (savedUrl) setOpenCodeUrl(savedUrl)
+    } catch {}
+
+    // Load historical messages
+    getChatMessages(activeSessionId, { limit: 100 })
+      .then((apiMessages) => {
+        const uiMessages = mapApiMessagesToUI(apiMessages)
+        setMessages((prev) => {
+          // If we already have messages (from optimistic send), merge
+          if (prev.length > 0) return prev
+          return uiMessages
+        })
+      })
+      .catch((err) => {
+        console.error('Failed to load messages:', err)
+      })
+  }, [activeSessionId, setMessages, setOpenCodeUrl])
 
   const handleStop = useCallback(async () => {
     if (!activeSessionId) return

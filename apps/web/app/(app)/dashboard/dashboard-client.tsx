@@ -272,7 +272,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
             </div>
 
             {activeSessionId && (
-              <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden md:block overflow-y-auto">
+              <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden md:block overflow-y-auto h-full no-scrollbar">
                 <SessionPanel
                   sessionId={activeSessionId}
                   repo={selectedRepo ? { owner: selectedRepo.owner, name: selectedRepo.name } : undefined}

@@ -70,6 +70,7 @@ export function useDashboardSSE({
   setStreamStartTime,
 }: UseDashboardSSEParams) {
   const flushRef = useRef<number | null>(null)
+  const streamStartTimeRef = useRef<number | null>(null)
 
   const scheduleFlush = useCallback(() => {
     if (flushRef.current !== null) return
@@ -106,7 +107,9 @@ export function useDashboardSSE({
       assistantTextRef.current = ''
       reasoningRef.current = ''
       setLastStepCost(null)
-      setStreamStartTime(Date.now())
+      const now = Date.now()
+      streamStartTimeRef.current = now
+      setStreamStartTime(now)
 
       // Add user message
       const userMessage = createUserMessage(content)
@@ -237,7 +240,10 @@ export function useDashboardSSE({
 
                   case 'opencode-url': {
                     const url = (event as { url?: string }).url
-                    if (url) setOpenCodeUrl(url)
+                    if (url) {
+                      setOpenCodeUrl(url)
+                      try { localStorage.setItem(`opencode-url-${targetSessionId}`, url) } catch {}
+                    }
                     break
                   }
 
@@ -283,11 +289,14 @@ export function useDashboardSSE({
                       cancelAnimationFrame(flushRef.current)
                       flushRef.current = null
                     }
-                    // Final flush of accumulated text
+                    // Final flush of accumulated text + stamp wall-clock elapsed
                     const finalMsgId = streamingMessageRef.current
                     if (finalMsgId) {
                       const finalText = assistantTextRef.current
                       const finalReasoning = reasoningRef.current
+                      const elapsed = streamStartTimeRef.current
+                        ? Date.now() - streamStartTimeRef.current
+                        : 0
                       setMessages((prev) =>
                         prev.map((m) => {
                           if (m.id !== finalMsgId) return m
@@ -295,11 +304,13 @@ export function useDashboardSSE({
                             ...m,
                             content: finalText,
                             ...(finalReasoning ? { reasoning: [finalReasoning] } : {}),
+                            elapsed,
                           }
                         }),
                       )
                     }
                     setIsStreaming(false)
+                    setStreamStartTime(null)
                     streamingMessageRef.current = null
                     break
                   }
