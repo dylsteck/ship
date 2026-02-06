@@ -8,30 +8,29 @@ interface MessageProps {
   className?: string
 }
 
-export function Message({ role, children, avatar, className }: MessageProps) {
+export function Message({ role, children, className }: MessageProps) {
   if (role === 'system') {
     return (
-      <div className={cn('px-4 py-2', className)}>
+      <div className={cn('py-2', className)}>
         {children}
       </div>
     )
   }
 
-  return (
-    <div className={cn('flex gap-3 px-4 py-4', className)}>
-      {role === 'assistant' && <div className="flex-shrink-0 w-8 h-8" />}
-      <div className={cn('flex-1 min-w-0', role === 'user' && 'flex justify-end')}>
-        <div
-          className={cn(
-            'inline-block rounded-2xl px-4 py-2.5 max-w-[85%]',
-            role === 'user'
-              ? 'bg-secondary text-secondary-foreground'
-              : 'bg-transparent',
-          )}
-        >
+  if (role === 'user') {
+    return (
+      <div className={cn('flex justify-end py-3', className)}>
+        <div className="inline-block rounded-2xl bg-secondary text-secondary-foreground px-4 py-2.5 max-w-[85%]">
           {children}
         </div>
       </div>
+    )
+  }
+
+  // Assistant — flush left, no wrapper padding, no ghost avatar
+  return (
+    <div className={cn('py-3', className)}>
+      {children}
     </div>
   )
 }

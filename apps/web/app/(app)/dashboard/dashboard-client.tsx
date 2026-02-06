@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { SidebarProvider, SidebarInset, cn } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SessionPanel } from '@/components/chat/session-panel'
@@ -19,6 +20,7 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ sessions: initialSessions, userId, user }: DashboardClientProps) {
+  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
@@ -83,6 +85,17 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const { repos, isLoading: reposLoading } = useGitHubRepos(userId)
   const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
   const { createSession, isCreating } = useCreateSession()
+
+  // Activate session from URL param (e.g., /?session=abc123 from /session/[id] redirect)
+  useEffect(() => {
+    const sessionFromUrl = searchParams.get('session')
+    if (sessionFromUrl && !activeSessionId) {
+      setActiveSessionId(sessionFromUrl)
+      connectWebSocket(sessionFromUrl)
+      // Clean up the URL
+      window.history.replaceState({}, '', `/session/${sessionFromUrl}`)
+    }
+  }, [searchParams, activeSessionId, setActiveSessionId, connectWebSocket])
 
   // Set default model once loaded
   useEffect(() => {

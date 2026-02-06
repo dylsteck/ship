@@ -1,6 +1,6 @@
 'use client'
 
-import { Message, Tool, Reasoning, Shimmer, Response, Loader, Task, Conversation, ConversationScrollButton } from '@ship/ui'
+import { Message, Tool, Reasoning, Response, Loader, Task, Steps, Conversation, ConversationScrollButton } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
 import { PermissionPrompt } from './permission-prompt'
@@ -50,7 +50,7 @@ export function DashboardMessages({
           // Permission prompts
           if (message.type === 'permission' && message.promptData) {
             return (
-              <div key={message.id} className="px-4 py-2">
+              <div key={message.id} className="py-2">
                 <PermissionPrompt
                   id={message.promptData.id}
                   permission={message.promptData.permission || ''}
@@ -65,7 +65,7 @@ export function DashboardMessages({
           // Question prompts
           if (message.type === 'question' && message.promptData) {
             return (
-              <div key={message.id} className="px-4 py-2">
+              <div key={message.id} className="py-2">
                 <QuestionPrompt
                   id={message.promptData.id}
                   text={message.promptData.text || message.content}
@@ -78,7 +78,7 @@ export function DashboardMessages({
           // Error messages
           if (message.type === 'error') {
             return (
-              <div key={message.id} className="px-4 py-2">
+              <div key={message.id} className="py-2">
                 <ErrorMessage
                   message={message.content}
                   category={message.errorCategory || 'persistent'}
@@ -111,7 +111,6 @@ export function DashboardMessages({
             !message.reasoning?.length &&
             isCurrentlyStreaming
           ) {
-            // Show loader for empty streaming message
             return (
               <Message key={message.id} role="assistant">
                 <Loader message={statusLabel || 'Thinking...'} />
@@ -124,61 +123,77 @@ export function DashboardMessages({
             return null
           }
 
+          const hasSteps =
+            message.role === 'assistant' &&
+            ((message.reasoning && message.reasoning.length > 0) ||
+              (message.toolInvocations && message.toolInvocations.length > 0))
+
+          // Calculate elapsed time for completed steps
+          const totalToolDuration = message.toolInvocations?.reduce((acc, t) => acc + (t.duration || 0), 0) || 0
+          const stepsElapsed = !isCurrentlyStreaming
+            ? totalToolDuration
+            : streamStartTime
+              ? Date.now() - streamStartTime
+              : 0
+
           return (
-            <Message key={message.id} role={message.role} className={isCurrentlyStreaming ? 'will-change-[contents]' : undefined}>
+            <Message
+              key={message.id}
+              role={message.role}
+              className={isCurrentlyStreaming ? 'will-change-[contents]' : undefined}
+            >
               {/* User messages */}
               {message.role === 'user' && message.content && (
                 <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
               )}
 
-              {/* Assistant reasoning - collapsible */}
-              {message.role === 'assistant' && message.reasoning && message.reasoning.length > 0 && (
-                <Reasoning isStreaming={isCurrentlyStreaming && !message.content && !message.toolInvocations?.some(t => t.state === 'result')}>
-                  {message.reasoning.join('\n\n')}
-                </Reasoning>
+              {/* Steps collapsible — groups reasoning + tools */}
+              {hasSteps && (
+                <Steps
+                  isStreaming={isCurrentlyStreaming && isStreaming}
+                  elapsed={stepsElapsed}
+                  toolCount={message.toolInvocations?.length}
+                >
+                  {/* Reasoning inside steps */}
+                  {message.reasoning && message.reasoning.length > 0 && (
+                    <Reasoning
+                      isStreaming={
+                        isCurrentlyStreaming &&
+                        !message.content &&
+                        !message.toolInvocations?.some((t) => t.state === 'result')
+                      }
+                    >
+                      {message.reasoning.join('\n\n')}
+                    </Reasoning>
+                  )}
+
+                  {/* Tools inside steps */}
+                  {message.toolInvocations && message.toolInvocations.length > 0 && (
+                    <div className="space-y-2 my-1">
+                      {message.toolInvocations.map((tool) => (
+                        <Tool
+                          key={tool.toolCallId}
+                          name={tool.toolName}
+                          status={mapToolState(tool.state)}
+                          input={tool.args}
+                          output={tool.result}
+                          duration={tool.duration}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </Steps>
               )}
 
-              {/* Assistant tools - inline, individually */}
-              {message.role === 'assistant' && message.toolInvocations && message.toolInvocations.length > 0 && (
-                <div className="space-y-2 my-2">
-                  {message.toolInvocations.map((tool) => (
-                    <Tool
-                      key={tool.toolCallId}
-                      name={tool.toolName}
-                      status={mapToolState(tool.state)}
-                      input={tool.args}
-                      output={tool.result}
-                      duration={tool.duration}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Assistant response content */}
+              {/* Assistant response content — always visible, outside steps */}
               {message.role === 'assistant' && message.content && (
                 <Response>
-                  {isCurrentlyStreaming && isStreaming ? (
-                    <Shimmer>
-                      <Markdown content={message.content} />
-                    </Shimmer>
-                  ) : (
-                    <Markdown content={message.content} />
-                  )}
+                  <Markdown content={message.content} />
                 </Response>
               )}
             </Message>
           )
         })}
-
-        {/* Streaming loader when assistant has no content yet but tools/reasoning are updating */}
-        {isStreaming && streamingMessageId && (() => {
-          const streamMsg = messages.find((m) => m.id === streamingMessageId)
-          // Only show if we haven't already rendered the message above
-          if (streamMsg && !streamMsg.content && !streamMsg.toolInvocations?.length && !streamMsg.reasoning?.length) {
-            return null // Already handled by the empty streaming check above
-          }
-          return null
-        })()}
 
         {/* Todos */}
         {sessionTodos.length > 0 && (

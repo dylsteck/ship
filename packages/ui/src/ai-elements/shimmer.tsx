@@ -8,11 +8,10 @@ interface ShimmerProps {
   className?: string
 }
 
+/**
+ * Shimmer wrapper for streaming content.
+ * Purely structural — no background effect to avoid visible artifacts.
+ */
 export function Shimmer({ children, className }: ShimmerProps) {
-  return (
-    <div className={cn('relative overflow-hidden', className)}>
-      <span className="relative z-10">{children}</span>
-      <span className="absolute inset-0 z-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent animate-shimmer" />
-    </div>
-  )
+  return <div className={cn(className)}>{children}</div>
 }
