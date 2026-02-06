@@ -133,14 +133,14 @@ export function DashboardMessages({
 
               {/* Assistant reasoning - collapsible */}
               {message.role === 'assistant' && message.reasoning && message.reasoning.length > 0 && (
-                <Reasoning isStreaming={isCurrentlyStreaming}>
+                <Reasoning isStreaming={isCurrentlyStreaming && !message.content && !message.toolInvocations?.some(t => t.state === 'result')}>
                   {message.reasoning.join('\n\n')}
                 </Reasoning>
               )}
 
               {/* Assistant tools - inline, individually */}
               {message.role === 'assistant' && message.toolInvocations && message.toolInvocations.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-2 my-2">
                   {message.toolInvocations.map((tool) => (
                     <Tool
                       key={tool.toolCallId}
@@ -157,7 +157,7 @@ export function DashboardMessages({
               {/* Assistant response content */}
               {message.role === 'assistant' && message.content && (
                 <Response>
-                  {isCurrentlyStreaming ? (
+                  {isCurrentlyStreaming && isStreaming ? (
                     <Shimmer>
                       <Markdown content={message.content} />
                     </Shimmer>

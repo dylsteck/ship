@@ -9,5 +9,5 @@ interface ResponseProps {
 }
 
 export function Response({ children, className }: ResponseProps) {
-  return <div className={cn('prose prose-sm dark:prose-invert max-w-none', className)}>{children}</div>
+  return <div className={cn('max-w-none', className)}>{children}</div>
 }
