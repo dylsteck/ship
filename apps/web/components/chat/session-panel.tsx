@@ -430,7 +430,7 @@ export function SessionPanel({
             <div className="space-y-1">
               {diffs.slice(0, 8).map((d, i) => (
                 <div key={i} className="flex items-center justify-between text-[10px] text-muted-foreground font-mono gap-2">
-                  <span className="truncate flex-1">{d.filename.split('/').pop()}</span>
+                  <span className="truncate flex-1">{(d.filename || '').split('/').pop() || 'unknown'}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-green-500">+{d.additions}</span>
                     <span className="text-red-500">-{d.deletions}</span>

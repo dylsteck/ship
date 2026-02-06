@@ -105,7 +105,7 @@ function ToolIcon({ name }: { name: string }) {
 function getInputSummary(name: string, input: Record<string, unknown>): string | null {
   // File read/write/edit tools
   if (input.file_path || input.path || input.filePath) {
-    const path = (input.file_path || input.path || input.filePath) as string
+    const path = String(input.file_path || input.path || input.filePath || '')
     const segments = path.split('/')
     const short = segments.length > 3 ? '.../' + segments.slice(-3).join('/') : path
     return short

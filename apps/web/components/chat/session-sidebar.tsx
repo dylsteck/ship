@@ -181,7 +181,7 @@ export function SessionSidebar({
           <div className="mt-1 space-y-0.5">
             {diffs.slice(0, 8).map((d, i) => (
               <div key={i} className="flex justify-between text-muted-foreground">
-                <span className="truncate flex-1 mr-1">{d.filename.split('/').pop()}</span>
+                <span className="truncate flex-1 mr-1">{(d.filename || '').split('/').pop() || 'unknown'}</span>
                 <span className="shrink-0">
                   <span className="text-green-500">+{d.additions}</span>
                   {' '}
