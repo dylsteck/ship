@@ -145,17 +145,16 @@ export function updateToolInvocation(
 }
 
 /**
- * Add reasoning text to a message.
+ * Set reasoning text on a message (replaces, not appends — SSE sends cumulative text).
  */
-export function addReasoning(
+export function setReasoning(
   text: string,
   messageId: string,
   messages: UIMessage[],
 ): UIMessage[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m
-    const existing = m.reasoning || []
-    return { ...m, reasoning: [...existing, text] }
+    return { ...m, reasoning: [text] }
   })
 }
 
@@ -169,6 +168,7 @@ export function processPartUpdated(
   streamingMessageId: string,
   messages: UIMessage[],
   textRef: React.MutableRefObject<string>,
+  reasoningRef: React.MutableRefObject<string>,
 ): UIMessage[] {
   switch (part.type) {
     case 'text': {
@@ -186,8 +186,13 @@ export function processPartUpdated(
 
     case 'reasoning': {
       const reasoningPart = part as ReasoningPart
-      if (reasoningPart.text) {
-        return addReasoning(reasoningPart.text, streamingMessageId, messages)
+      if (typeof delta === 'string') {
+        reasoningRef.current += delta
+      } else if (reasoningPart.text) {
+        reasoningRef.current = reasoningPart.text
+      }
+      if (reasoningRef.current) {
+        return setReasoning(reasoningRef.current, streamingMessageId, messages)
       }
       return messages
     }

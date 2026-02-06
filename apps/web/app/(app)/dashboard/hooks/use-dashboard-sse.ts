@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { sendChatMessage } from '@/lib/api'
 import { parseSSEEvent } from '@/lib/sse-parser'
 import type { ToolPart as SSEToolPart, StepFinishPart, SessionInfo } from '@/lib/sse-types'
@@ -46,6 +46,7 @@ interface UseDashboardSSEParams {
   setSessionInfo: React.Dispatch<React.SetStateAction<SessionInfo | null>>
   streamingMessageRef: React.MutableRefObject<string | null>
   assistantTextRef: React.MutableRefObject<string>
+  reasoningRef: React.MutableRefObject<string>
   setStreamStartTime: (value: number | null) => void
 }
 
@@ -65,8 +66,32 @@ export function useDashboardSSE({
   setSessionInfo,
   streamingMessageRef,
   assistantTextRef,
+  reasoningRef,
   setStreamStartTime,
 }: UseDashboardSSEParams) {
+  const flushRef = useRef<number | null>(null)
+
+  const scheduleFlush = useCallback(() => {
+    if (flushRef.current !== null) return
+    flushRef.current = requestAnimationFrame(() => {
+      flushRef.current = null
+      const msgId = streamingMessageRef.current
+      if (!msgId) return
+      const text = assistantTextRef.current
+      const reasoning = reasoningRef.current
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== msgId) return m
+          const updates: Partial<typeof m> = {}
+          if (m.content !== text) updates.content = text
+          if (reasoning && (m.reasoning?.[0] !== reasoning)) updates.reasoning = [reasoning]
+          if (Object.keys(updates).length === 0) return m
+          return { ...m, ...updates }
+        }),
+      )
+    })
+  }, [setMessages, streamingMessageRef, assistantTextRef, reasoningRef])
+
   const handleSend = useCallback(
     async (content: string, modeOverride?: 'build' | 'plan', sessionIdOverride?: string) => {
       const targetSessionId = sessionIdOverride || activeSessionId
@@ -79,6 +104,7 @@ export function useDashboardSSE({
 
       setIsStreaming(true)
       assistantTextRef.current = ''
+      reasoningRef.current = ''
       setLastStepCost(null)
       setStreamStartTime(Date.now())
 
@@ -145,10 +171,28 @@ export function useDashboardSSE({
                     const part = event.properties.part
                     const delta = event.properties.delta
 
-                    // Use adapter for all message part updates
-                    setMessages((prev) =>
-                      processPartUpdated(part, delta, streamingMessageRef.current!, prev, assistantTextRef),
-                    )
+                    if (part.type === 'text' || part.type === 'reasoning') {
+                      // Accumulate in refs and batch via rAF for smooth rendering
+                      if (part.type === 'text') {
+                        if (typeof delta === 'string') {
+                          assistantTextRef.current += delta
+                        } else if ((part as { text?: string }).text) {
+                          assistantTextRef.current = (part as { text: string }).text
+                        }
+                      } else {
+                        if (typeof delta === 'string') {
+                          reasoningRef.current += delta
+                        } else if ((part as { text?: string }).text) {
+                          reasoningRef.current = (part as { text: string }).text
+                        }
+                      }
+                      scheduleFlush()
+                    } else {
+                      // Tools, step-finish etc. — update immediately via adapter
+                      setMessages((prev) =>
+                        processPartUpdated(part, delta, streamingMessageRef.current!, prev, assistantTextRef, reasoningRef),
+                      )
+                    }
 
                     // Extract cost from step-finish
                     if (part.type === 'step-finish') {
@@ -234,6 +278,27 @@ export function useDashboardSSE({
 
                   case 'done':
                   case 'session.idle': {
+                    // Flush any remaining batched text before ending
+                    if (flushRef.current !== null) {
+                      cancelAnimationFrame(flushRef.current)
+                      flushRef.current = null
+                    }
+                    // Final flush of accumulated text
+                    const finalMsgId = streamingMessageRef.current
+                    if (finalMsgId) {
+                      const finalText = assistantTextRef.current
+                      const finalReasoning = reasoningRef.current
+                      setMessages((prev) =>
+                        prev.map((m) => {
+                          if (m.id !== finalMsgId) return m
+                          return {
+                            ...m,
+                            content: finalText,
+                            ...(finalReasoning ? { reasoning: [finalReasoning] } : {}),
+                          }
+                        }),
+                      )
+                    }
                     setIsStreaming(false)
                     streamingMessageRef.current = null
                     break

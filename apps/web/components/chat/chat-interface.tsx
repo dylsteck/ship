@@ -66,6 +66,7 @@ export function ChatInterface({
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef('')
+  const reasoningRef = useRef('')
   const initialPromptSentRef = useRef(false)
 
   // Load initial messages
@@ -166,6 +167,7 @@ export function ChatInterface({
       setIsStreaming(true)
       onStatusChange?.('planning')
       assistantTextRef.current = ''
+      reasoningRef.current = ''
 
       // Add user message
       const userMessage = createUserMessage(content)
@@ -239,7 +241,7 @@ export function ChatInterface({
 
                   if (part) {
                     setMessages((prev) =>
-                      processPartUpdated(part, delta, streamingMessageRef.current!, prev, assistantTextRef),
+                      processPartUpdated(part, delta, streamingMessageRef.current!, prev, assistantTextRef, reasoningRef),
                     )
 
                     // Status updates

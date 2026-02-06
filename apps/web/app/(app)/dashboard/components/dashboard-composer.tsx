@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import {
   Button,
   DropdownMenu,
@@ -79,6 +79,14 @@ export function DashboardComposer({
 }: DashboardComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Auto-resize textarea for active session
+  useEffect(() => {
+    if (!textareaRef.current || !activeSessionId) return
+    const el = textareaRef.current
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [prompt, activeSessionId])
+
   return (
     <div
       className={cn(
@@ -94,7 +102,14 @@ export function DashboardComposer({
           activeSessionId ? 'max-w-3xl mx-auto' : 'max-w-[540px]',
         )}
       >
-        <div className="rounded-3xl border border-border/60 bg-card/95 backdrop-blur-sm shadow-lg overflow-hidden transition-shadow focus-within:shadow-xl focus-within:ring-2 focus-within:ring-foreground/10">
+        <div
+          className={cn(
+            'rounded-3xl border bg-card/95 backdrop-blur-sm shadow-lg overflow-hidden transition-all',
+            activeSessionId
+              ? 'border-border/40 focus-within:border-primary/30 focus-within:shadow-[0_0_0_1px_rgba(var(--primary-rgb,99,102,241),0.15),0_0_20px_-5px_rgba(var(--primary-rgb,99,102,241),0.1)]'
+              : 'border-border/60 focus-within:shadow-xl focus-within:ring-2 focus-within:ring-foreground/10',
+          )}
+        >
           <div className="p-4 pb-3">
             <textarea
               ref={textareaRef}
@@ -102,10 +117,10 @@ export function DashboardComposer({
               value={prompt}
               onChange={(e) => onPromptChange(e.target.value)}
               onKeyDown={onKeyDown}
-              rows={activeSessionId ? 2 : 3}
+              rows={activeSessionId ? 1 : 3}
               className={cn(
-                'w-full resize-none bg-transparent text-foreground text-[15px] placeholder:text-muted-foreground/60 focus:outline-none transition-all duration-300',
-                activeSessionId ? 'min-h-[56px]' : 'min-h-[88px]',
+                'w-full resize-none bg-transparent text-foreground text-[15px] placeholder:text-muted-foreground/60 focus:outline-none transition-all duration-200',
+                activeSessionId ? 'min-h-[40px] max-h-[200px]' : 'min-h-[88px]',
               )}
             />
 
@@ -168,17 +183,60 @@ export function DashboardComposer({
                   </>
                 )}
 
-                {activeSessionId && messageQueueLength > 0 && (
-                  <span className="text-[11px] text-muted-foreground ml-2">{messageQueueLength} queued</span>
+                {/* Active session: model label */}
+                {activeSessionId && selectedModel && (
+                  <span className="text-[10px] text-muted-foreground/50 font-mono ml-1">
+                    {selectedModel.name || selectedModel.id}
+                  </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
+                {/* Active session: mode toggle */}
+                {activeSessionId && (
+                  <div className="flex items-center gap-0.5 mr-1">
+                    <button
+                      onClick={() => onModeChange('build')}
+                      className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded-md transition-all',
+                        mode === 'build'
+                          ? 'text-foreground bg-muted/60 font-medium'
+                          : 'text-muted-foreground/50 hover:text-muted-foreground',
+                      )}
+                    >
+                      build
+                    </button>
+                    <button
+                      onClick={() => onModeChange('plan')}
+                      className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded-md transition-all',
+                        mode === 'plan'
+                          ? 'text-foreground bg-muted/60 font-medium'
+                          : 'text-muted-foreground/50 hover:text-muted-foreground',
+                      )}
+                    >
+                      plan
+                    </button>
+                  </div>
+                )}
+
                 {activeSessionId && isStreaming ? (
-                  <Button variant="destructive" size="sm" className="rounded-full px-3 gap-1.5" onClick={onStop}>
-                    <HugeiconsIcon icon={StopIcon} strokeWidth={2} className="size-3.5" />
-                    Stop
-                  </Button>
+                  <div className="relative">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="rounded-full h-8 px-3 gap-1.5"
+                      onClick={onStop}
+                    >
+                      <HugeiconsIcon icon={StopIcon} strokeWidth={2} className="size-3.5" />
+                      Stop
+                    </Button>
+                    {messageQueueLength > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-medium px-1">
+                        {messageQueueLength}
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <Button
                     onClick={onSubmit}

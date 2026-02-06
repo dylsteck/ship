@@ -125,7 +125,7 @@ export function DashboardMessages({
           }
 
           return (
-            <Message key={message.id} role={message.role}>
+            <Message key={message.id} role={message.role} className={isCurrentlyStreaming ? 'will-change-[contents]' : undefined}>
               {/* User messages */}
               {message.role === 'user' && message.content && (
                 <div className="text-foreground whitespace-pre-wrap">{message.content}</div>

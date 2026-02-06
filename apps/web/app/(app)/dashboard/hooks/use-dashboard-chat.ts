@@ -38,6 +38,7 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
+  const reasoningRef = useRef<string>('')
 
   const connectWebSocket = useCallback((sessionId: string) => {
     wsRef.current?.disconnect()
@@ -152,6 +153,7 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
     wsRef,
     streamingMessageRef,
     assistantTextRef,
+    reasoningRef,
     connectWebSocket,
     handleStop,
   }

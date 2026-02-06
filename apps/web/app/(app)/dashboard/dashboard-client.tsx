@@ -55,6 +55,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     setStreamStartTime,
     streamingMessageRef,
     assistantTextRef,
+    reasoningRef,
     connectWebSocket,
     handleStop,
   } = useDashboardChat(initialSessions)
@@ -75,6 +76,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     setSessionInfo,
     streamingMessageRef,
     assistantTextRef,
+    reasoningRef,
     setStreamStartTime,
   })
 
