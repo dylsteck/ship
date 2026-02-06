@@ -238,48 +238,112 @@ pnpm start       # Start production server
 
 ## Deployment
 
-### Cloudflare Worker (API)
+Ship runs two services in production: a **Cloudflare Worker** (API + Durable Objects) and a **Next.js web app** (Vercel).
 
-1. Create production D1 database:
-   ```bash
-   cd apps/api
-   npx wrangler d1 create ship-db
-   ```
+### 1. Cloudflare Worker (API)
 
-2. Update `wrangler.toml` with production `database_id`
+The API uses the `production` environment defined in `apps/api/wrangler.toml`, which deploys as `ship-api-production` with its own D1 database.
 
-3. Run migrations:
-   ```bash
-   npx wrangler d1 execute ship-db --file=migrations/0001_create_auth_tables.sql
-   ```
-
-4. Set secrets:
-   ```bash
-   npx wrangler secret put ANTHROPIC_API_KEY
-   npx wrangler secret put API_SECRET
-   ```
-
-5. Deploy:
-   ```bash
-   npx wrangler deploy
-   ```
-
-### Next.js Web App
-
-Deploy to Vercel:
-
-1. Connect your repo to Vercel
-2. Set root directory to `apps/web`
-3. Add environment variables (see `.env.example`)
-4. Deploy
-
-Or deploy to Cloudflare Pages:
+#### First-time setup
 
 ```bash
-cd apps/web
-pnpm build
-npx wrangler pages deploy .next
+cd apps/api
+
+# Create the production D1 database (if not already created)
+npx wrangler d1 create ship-db-production
+
+# Copy the database_id from the output into wrangler.toml under [env.production.d1_databases]
+# The current production database_id is already configured in wrangler.toml
+
+# Run schema migrations against the production database
+npx wrangler d1 execute ship-db-production --file=src/db/schema.sql --env production
+
+# Set required secrets for the production environment
+npx wrangler secret put ANTHROPIC_API_KEY --env production
+npx wrangler secret put API_SECRET --env production
+npx wrangler secret put OPENAI_API_KEY --env production        # optional, for GPT models
+npx wrangler secret put SANDBOX_VERCEL_TOKEN --env production   # for Vercel Sandbox
+npx wrangler secret put SANDBOX_VERCEL_TEAM_ID --env production
+npx wrangler secret put SANDBOX_VERCEL_PROJECT_ID --env production
 ```
+
+#### Deploy
+
+```bash
+cd apps/api
+npx wrangler deploy --env production
+```
+
+This deploys the Worker as `ship-api-production` with Durable Objects (`SessionDO`) and the production D1 database. The deployed URL will be something like `https://ship-api-production.<your-subdomain>.workers.dev`.
+
+#### Monitoring
+
+```bash
+# Stream production logs in real-time
+npx wrangler tail ship-api-production
+
+# Query the production database
+npx wrangler d1 execute ship-db-production --env production --command="SELECT COUNT(*) FROM users"
+```
+
+### 2. Next.js Web App (Vercel)
+
+#### Vercel project setup
+
+1. Go to [vercel.com/new](https://vercel.com/new) and import the Ship repository
+2. Configure the project:
+   - **Framework Preset**: Next.js
+   - **Root Directory**: `apps/web`
+   - **Build Command**: `pnpm build` (auto-detected from turbo)
+   - **Install Command**: `pnpm install`
+3. Add environment variables in Vercel project settings → Environment Variables:
+
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `GITHUB_CLIENT_ID` | Your production OAuth app client ID | Create a **separate** GitHub OAuth App for production with your prod URL as homepage and callback |
+| `GITHUB_CLIENT_SECRET` | Your production OAuth app client secret | |
+| `SESSION_SECRET` | `openssl rand -hex 32` | Generate a unique secret for production |
+| `API_BASE_URL` | `https://ship-api-production.<subdomain>.workers.dev` | Your deployed Cloudflare Worker URL |
+| `NEXT_PUBLIC_API_URL` | Same as `API_BASE_URL` | Needed for client-side API calls |
+| `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` | Your Vercel deployment URL or custom domain |
+
+4. Click **Deploy**
+
+#### GitHub OAuth for production
+
+Create a **separate** GitHub OAuth App for production (don't reuse the dev one):
+
+1. Go to [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
+2. **Homepage URL**: `https://your-app.vercel.app` (or custom domain)
+3. **Authorization callback URL**: `https://your-app.vercel.app/api/auth/github/callback`
+4. Use the production Client ID and Client Secret in Vercel env vars
+
+#### Subsequent deploys
+
+Vercel auto-deploys on push to `main`. For manual deploys:
+
+```bash
+# From repo root — Vercel CLI
+npx vercel --prod
+```
+
+#### Custom domain
+
+1. In Vercel project settings → **Domains**, add your domain
+2. Update DNS records as instructed by Vercel
+3. Update `NEXT_PUBLIC_APP_URL` env var to match
+4. Update your production GitHub OAuth App callback URL to use the custom domain
+
+### Production checklist
+
+- [ ] Cloudflare Worker deployed with `--env production`
+- [ ] All Cloudflare secrets set (`ANTHROPIC_API_KEY`, `API_SECRET`, sandbox creds)
+- [ ] Production D1 database created and schema applied
+- [ ] Vercel project created with `apps/web` root directory
+- [ ] All Vercel env vars set (GitHub OAuth, session secret, API URLs)
+- [ ] Separate GitHub OAuth App created for production URLs
+- [ ] GitHub OAuth callback URL matches production domain
+- [ ] Tested: can sign in, create session, chat with agent
 
 ## How It Works
 
