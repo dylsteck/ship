@@ -37,37 +37,22 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     wsStatus,
     messageQueue,
     setMessageQueue,
-    thinkingReasoning,
-    setThinkingReasoning,
-    thinkingStatus,
-    setThinkingStatus,
-    thinkingExpanded,
-    setThinkingExpanded,
-    thinkingParts,
-    setThinkingParts,
-    activityTools,
-    setActivityTools,
-    reasoningParts,
-    setReasoningParts,
-    statusEvents,
-    setStatusEvents,
     openCodeUrl,
     setOpenCodeUrl,
-    lastStepCost,
-    setLastStepCost,
     sessionTodos,
     setSessionTodos,
     fileDiffs,
     setFileDiffs,
     totalCost,
     setTotalCost,
-    streamStartTime,
-    setStreamStartTime,
+    lastStepCost,
+    setLastStepCost,
     sessionTitle,
     setSessionTitle,
     sessionInfo,
     setSessionInfo,
-    wsRef,
+    streamStartTime,
+    setStreamStartTime,
     streamingMessageRef,
     assistantTextRef,
     connectWebSocket,
@@ -80,16 +65,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     mode,
     setIsStreaming,
     setMessages,
-    setActivityTools,
-    setThinkingParts,
-    setThinkingReasoning,
-    setThinkingStatus,
-    setReasoningParts,
-    setLastStepCost,
     setTotalCost,
+    setLastStepCost,
     setSessionTodos,
     setFileDiffs,
-    setStatusEvents,
     setMessageQueue,
     setOpenCodeUrl,
     setSessionTitle,
@@ -118,9 +97,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
       const session = localSessions.find((s) => s.id === activeSessionId)
       if (session) {
         const repo = repos.find((r) => r.owner === session.repoOwner && r.name === session.repoName)
-        if (repo) {
-          setSelectedRepo(repo)
-        }
+        if (repo) setSelectedRepo(repo)
       }
     }
   }, [activeSessionId, localSessions, repos])
@@ -240,23 +217,15 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
             <div className="flex-1 flex flex-col min-w-0">
               <div
                 className={cn(
-                  'flex-1 overflow-y-auto',
-                  activeSessionId ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden',
+                  'flex-1 overflow-hidden',
+                  activeSessionId ? 'opacity-100' : 'opacity-0 h-0',
                 )}
               >
                 <DashboardMessages
                   activeSessionId={activeSessionId}
                   messages={messages}
                   isStreaming={isStreaming}
-                  activityTools={activityTools}
-                  reasoningParts={reasoningParts}
-                  thinkingParts={thinkingParts}
-                  thinkingReasoning={thinkingReasoning}
-                  thinkingStatus={thinkingStatus}
-                  thinkingExpanded={thinkingExpanded}
-                  onToggleThinking={() => setThinkingExpanded(!thinkingExpanded)}
-                  lastStepCost={lastStepCost}
-                  statusEvents={statusEvents}
+                  streamingMessageId={streamingMessageRef.current}
                   streamStartTime={streamStartTime}
                   sessionTodos={sessionTodos}
                 />

@@ -4,16 +4,20 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { AIMessageList } from './ai-message-list'
 import { EnhancedPromptInput } from './enhanced-prompt-input'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
-import { sendChatMessage, getChatMessages, stopChatStream } from '@/lib/api'
+import { getChatMessages, stopChatStream } from '@/lib/api'
 import type { AgentStatus } from '@/components/session/status-indicator'
-import { aggregateCosts, type CostBreakdown } from '@/lib/cost-tracker'
-import { parseSSEEvent, extractCostInfo } from '@/lib/sse-parser'
-import type { ToolPart as SSEToolPart, StepFinishPart, ReasoningPart, TextPart } from '@/lib/sse-types'
+import { parseSSEEvent } from '@/lib/sse-parser'
+import type { ToolPart as SSEToolPart, ReasoningPart } from '@/lib/sse-types'
 import {
-  adaptToolPart,
-  adaptReasoningPart,
-  buildChainOfThoughtSteps,
-  type ChainOfThoughtStep,
+  type UIMessage,
+  processPartUpdated,
+  createUserMessage,
+  createAssistantPlaceholder,
+  createErrorMessage,
+  createSystemMessage,
+  classifyError,
+  extractStepCost,
+  getStreamingStatus,
 } from '@/lib/ai-elements-adapter'
 import type { Message } from '@/lib/api'
 
@@ -53,35 +57,32 @@ export function ChatInterface({
   agentStatus,
   currentTool,
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<UIMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
   const [wsStatus, setWsStatus] = useState<WebSocketStatus>('disconnected')
   const [hasMore, setHasMore] = useState(false)
 
-  // AI Elements state
-  const [streamingText, setStreamingText] = useState('')
-  const [currentReasoning, setCurrentReasoning] = useState('')
-  const [currentSteps, setCurrentSteps] = useState<ChainOfThoughtStep[]>([])
-
-  // Activity tracking
-  const [activityTools, setActivityTools] = useState<SSEToolPart[]>([])
-  const [reasoningParts, setReasoningParts] = useState<ReasoningPart[]>([])
-  const [streamStartTime, setStreamStartTime] = useState<number | null>(null)
-
   const wsRef = useRef<ReturnType<typeof createReconnectingWebSocket> | null>(null)
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef('')
   const initialPromptSentRef = useRef(false)
-  const costEventsRef = useRef<Array<{ type: string; [key: string]: unknown }>>([])
-  const messageCostsRef = useRef<Map<string, CostBreakdown>>(new Map())
 
   // Load initial messages
   useEffect(() => {
     async function loadMessages() {
       try {
         const msgs = await getChatMessages(sessionId, { limit: 25 })
-        setMessages(msgs)
+        const uiMessages: UIMessage[] = msgs.map((m: Message) => ({
+          id: m.id,
+          role: m.role as UIMessage['role'],
+          content: m.content,
+          type: m.type as UIMessage['type'],
+          errorCategory: m.errorCategory,
+          retryable: m.retryable,
+          createdAt: new Date(m.createdAt * 1000),
+        }))
+        setMessages(uiMessages)
         setHasMore(msgs.length === 25)
       } catch (err) {
         console.error('Failed to load messages:', err)
@@ -105,70 +106,39 @@ export function ChatInterface({
           category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
           retryable?: boolean
           prUrl?: string
-          prNumber?: number
-          status?: string
-          details?: string
         }
 
         if (event.type === 'message') {
           const msg = event.message as Message
+          const uiMsg: UIMessage = {
+            id: msg.id,
+            role: msg.role as UIMessage['role'],
+            content: msg.content,
+            createdAt: new Date(msg.createdAt * 1000),
+          }
           setMessages((prev) => {
-            const exists = prev.some((m) => m.id === msg?.id)
+            const exists = prev.some((m) => m.id === uiMsg.id)
             if (exists) return prev
-            return [...prev, msg]
+            return [...prev, uiMsg]
           })
         }
 
-        if (event.type === 'message-parts') {
-          setMessages((prev) => prev.map((m) => (m.id === event.messageId ? { ...m, parts: event.parts } : m)))
-        }
-
         if (event.type === 'error') {
-          let errorContent = typeof event.message === 'string' ? event.message : 'An error occurred'
-          let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
-          let retryable = event.retryable || false
-
-          if (errorContent.includes('credit balance') || errorContent.includes('Anthropic API')) {
-            errorCategory = 'user-action'
-            retryable = false
-          } else if (errorContent.includes('rate limit') || errorContent.includes('too many requests')) {
-            errorCategory = 'transient'
-            retryable = true
-          } else if (
-            errorContent.includes('network') ||
-            errorContent.includes('connection') ||
-            errorContent.includes('timeout')
-          ) {
-            errorCategory = 'transient'
-            retryable = true
-          }
-
-          const errorMessage: Message = {
-            id: `error-${Date.now()}`,
-            role: 'system',
-            content: errorContent,
-            type: 'error',
-            errorCategory: event.category || errorCategory,
-            retryable: retryable,
-            createdAt: Math.floor(Date.now() / 1000),
-          }
-          setMessages((prev) => [...prev, errorMessage])
+          const content = typeof event.message === 'string' ? event.message : 'An error occurred'
+          const { category, retryable } = classifyError(content)
+          setMessages((prev) => [...prev, createErrorMessage(content, event.category || category, retryable)])
           onStatusChange?.('error')
         }
 
         if (event.type === 'pr-created') {
-          const prMessage: Message = {
-            id: `pr-${Date.now()}`,
-            role: 'system',
-            content: `Draft PR created: ${event.prUrl}`,
-            type: 'pr-notification',
-            createdAt: Math.floor(Date.now() / 1000),
-          }
-          setMessages((prev) => [...prev, prMessage])
+          setMessages((prev) => [
+            ...prev,
+            createSystemMessage(`Draft PR created: ${event.prUrl}`, 'pr-notification'),
+          ])
         }
 
         if (event.type === 'agent-status') {
-          onStatusChange?.(event.status as AgentStatus, event.details)
+          onStatusChange?.((event as { status?: string }).status as AgentStatus, (event as { details?: string }).details)
         }
       },
       onStatusChange: setWsStatus,
@@ -197,33 +167,13 @@ export function ChatInterface({
       onStatusChange?.('planning')
       assistantTextRef.current = ''
 
-      // Reset AI Elements state
-      setStreamingText('')
-      setCurrentReasoning('')
-      setCurrentSteps([])
-      setActivityTools([])
-      setReasoningParts([])
-      setStreamStartTime(Date.now())
-
-      // Optimistically add user message
-      const userMessage: Message = {
-        id: `temp-${Date.now()}`,
-        role: 'user',
-        content,
-        createdAt: Math.floor(Date.now() / 1000),
-      }
+      // Add user message
+      const userMessage = createUserMessage(content)
       setMessages((prev) => [...prev, userMessage])
 
-      // Create placeholder for assistant message
-      const assistantId = `temp-assistant-${Date.now()}`
-      streamingMessageRef.current = assistantId
-      const assistantMessage: Message = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        parts: undefined,
-        createdAt: Math.floor(Date.now() / 1000),
-      }
+      // Create assistant placeholder
+      const assistantMessage = createAssistantPlaceholder()
+      streamingMessageRef.current = assistantMessage.id
       setMessages((prev) => [...prev, assistantMessage])
 
       try {
@@ -239,32 +189,12 @@ export function ChatInterface({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          let errorContent = errorData.error || 'Failed to start agent'
-          let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
-          let retryable = false
+          const errorContent = errorData.error || 'Failed to start agent'
+          const { category, retryable } = classifyError(errorContent)
 
-          if (errorContent.includes('credit balance') || errorContent.includes('Anthropic API')) {
-            errorCategory = 'user-action'
-          } else if (errorContent.includes('rate limit') || errorContent.includes('too many requests')) {
-            errorCategory = 'transient'
-            retryable = true
-          } else if (response.status >= 500) {
-            errorCategory = 'transient'
-            retryable = true
-          }
-
-          const errorMessage: Message = {
-            id: `error-${Date.now()}`,
-            role: 'system',
-            content: errorContent,
-            type: 'error',
-            errorCategory: errorCategory,
-            retryable: retryable,
-            createdAt: Math.floor(Date.now() / 1000),
-          }
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
-            return [...filtered, errorMessage]
+            return [...filtered, createErrorMessage(errorContent, category, retryable)]
           })
 
           setIsStreaming(false)
@@ -280,14 +210,10 @@ export function ChatInterface({
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
-        costEventsRef.current = []
 
         while (true) {
           const { done, value } = await reader.read()
-
-          if (done) {
-            break
-          }
+          if (done) break
 
           const chunk = decoder.decode(value, { stream: true })
           buffer += chunk
@@ -307,192 +233,63 @@ export function ChatInterface({
                   data.type = currentEventType
                 }
 
-                // Handle text parts for streaming content
                 if (data.type === 'message.part.updated') {
                   const part = data.properties?.part
                   const delta = data.properties?.delta
 
-                  if (part?.type === 'text') {
-                    if (typeof delta === 'string') {
-                      assistantTextRef.current += delta
-                      setStreamingText(assistantTextRef.current)
-                    } else if (typeof part.text === 'string') {
-                      assistantTextRef.current = part.text
-                      setStreamingText(assistantTextRef.current)
-                    }
-
+                  if (part) {
                     setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === streamingMessageRef.current ? { ...m, content: assistantTextRef.current } : m,
-                      ),
+                      processPartUpdated(part, delta, streamingMessageRef.current!, prev, assistantTextRef),
                     )
-                    onStatusChange?.('coding', 'Writing response...')
-                  } else if (part?.type === 'tool') {
-                    // Handle tool parts
-                    const toolPart = part as SSEToolPart
-                    const adapted = adaptToolPart(toolPart)
 
-                    setActivityTools((prev) => {
-                      const existing = prev.findIndex((t) => t.callID === toolPart.callID)
-                      if (existing >= 0) {
-                        return prev.map((t, i) => (i === existing ? toolPart : t))
+                    // Status updates
+                    if (part.type === 'text') {
+                      onStatusChange?.('coding', 'Writing response...')
+                    } else if (part.type === 'tool') {
+                      const toolName = part.tool?.toLowerCase() || ''
+                      let status: AgentStatus = 'coding'
+                      if (toolName.includes('read') || toolName.includes('search') || toolName.includes('glob') || toolName.includes('grep')) {
+                        status = 'planning'
+                      } else if (toolName.includes('run') || toolName.includes('exec') || toolName.includes('bash')) {
+                        status = 'executing'
                       }
-                      return [...prev, toolPart]
-                    })
-
-                    // Update chain of thought steps
-                    setCurrentSteps(buildChainOfThoughtSteps([...activityTools, toolPart], reasoningParts))
-
-                    // Update status based on tool type
-                    let status: AgentStatus = 'coding'
-                    if (
-                      adapted.name.includes('read') ||
-                      adapted.name.includes('search') ||
-                      adapted.name.includes('glob') ||
-                      adapted.name.includes('grep')
-                    ) {
-                      status = 'planning'
-                    } else if (
-                      adapted.name.includes('run') ||
-                      adapted.name.includes('exec') ||
-                      adapted.name.includes('bash')
-                    ) {
-                      status = 'executing'
-                    }
-                    onStatusChange?.(status, adapted.name)
-                  } else if (part?.type === 'reasoning') {
-                    // Handle reasoning parts
-                    const reasoningPart = part as ReasoningPart
-                    const adapted = adaptReasoningPart(reasoningPart)
-
-                    setCurrentReasoning((prev) => {
-                      return prev ? `${prev}\n\n${adapted.text}` : adapted.text
-                    })
-
-                    setReasoningParts((prev) => [...prev, reasoningPart])
-
-                    // Update chain of thought
-                    setCurrentSteps(buildChainOfThoughtSteps(activityTools, [...reasoningParts, reasoningPart]))
-                    onStatusChange?.('planning', 'Reasoning...')
-                  } else if (part?.type === 'step-finish') {
-                    const event = parseSSEEvent(data)
-                    if (event) {
-                      const costInfo = extractCostInfo(event)
-                      if (costInfo) {
-                        // Cost info available
-                      }
+                      onStatusChange?.(status, part.tool)
+                    } else if (part.type === 'reasoning') {
+                      onStatusChange?.('planning', 'Reasoning...')
                     }
                   }
                 }
 
-                // Handle session status events
-                if (data.type === 'session.status') {
-                  const status = typeof data.properties?.status === 'string' ? data.properties.status : ''
-                  if (status) {
-                    let agentStatus: AgentStatus = 'planning'
-                    if (status.includes('running') || status.includes('executing')) {
-                      agentStatus = 'executing'
-                    } else if (status.includes('thinking') || status.includes('planning')) {
-                      agentStatus = 'planning'
-                    }
-                    onStatusChange?.(agentStatus, status)
-                  }
-                }
-
-                // Handle done/session.idle
                 if (data.type === 'done' || data.type === 'session.idle') {
-                  // Persist completed tools and reasoning onto the assistant message
-                  if (streamingMessageRef.current) {
-                    const messageId = streamingMessageRef.current
-                    const completedTools = activityTools.map((t) => {
-                      const adapted = adaptToolPart(t)
-                      return adapted
-                    })
-                    const completedReasoning = reasoningParts.map((r) => adaptReasoningPart(r))
-
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === messageId
-                          ? {
-                              ...m,
-                              inlineTools: completedTools.length > 0 ? completedTools : undefined,
-                              reasoningBlocks: completedReasoning.length > 0 ? completedReasoning : undefined,
-                            }
-                          : m,
-                      ),
-                    )
-
-                    // Aggregate costs
-                    if (costEventsRef.current.length > 0) {
-                      const breakdowns = aggregateCosts(costEventsRef.current)
-                      if (breakdowns.length > 0) {
-                        messageCostsRef.current.set(messageId, breakdowns[0])
-                      }
-                    }
-                  }
-
-                  costEventsRef.current = []
                   setIsStreaming(false)
                   streamingMessageRef.current = null
-
-                  // Clear AI Elements streaming state
-                  setStreamingText('')
-                  setCurrentReasoning('')
-                  setCurrentSteps([])
-                  setActivityTools([])
-                  setReasoningParts([])
                   onStatusChange?.('idle')
                 }
 
-                // Handle assistant message finalization
                 if (data.type === 'assistant') {
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === streamingMessageRef.current ? { ...m, content: data.content, id: data.id || m.id } : m,
+                      m.id === streamingMessageRef.current
+                        ? { ...m, content: data.content, id: data.id || m.id }
+                        : m,
                     ),
                   )
                 }
 
-                // Handle errors
                 if (data.error) {
-                  let errorContent = data.error
-                  let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' =
-                    data.category || 'persistent'
-                  let retryable = data.retryable || false
-
-                  if (errorContent.includes('credit balance') || errorContent.includes('Anthropic API')) {
-                    errorCategory = 'user-action'
-                    retryable = false
-                  } else if (errorContent.includes('rate limit') || errorContent.includes('too many requests')) {
-                    errorCategory = 'transient'
-                    retryable = true
-                  }
-
-                  const errorMessage: Message = {
-                    id: `error-${Date.now()}`,
-                    role: 'system',
-                    content: errorContent,
-                    type: 'error',
-                    errorCategory: errorCategory,
-                    retryable: retryable,
-                    createdAt: Math.floor(Date.now() / 1000),
-                  }
-                  setMessages((prev) => [...prev, errorMessage])
+                  const errorContent = typeof data.error === 'string' ? data.error : 'An error occurred'
+                  const { category, retryable } = classifyError(errorContent)
+                  setMessages((prev) => [...prev, createErrorMessage(errorContent, data.category || category, retryable)])
                   setIsStreaming(false)
                   streamingMessageRef.current = null
                   onStatusChange?.('error')
                 }
 
-                // Handle PR creation
                 if (data.prUrl) {
-                  const prMessage: Message = {
-                    id: `pr-${Date.now()}`,
-                    role: 'system',
-                    content: `Draft PR created: ${data.prUrl}`,
-                    type: 'pr-notification',
-                    createdAt: Math.floor(Date.now() / 1000),
-                  }
-                  setMessages((prev) => [...prev, prMessage])
+                  setMessages((prev) => [
+                    ...prev,
+                    createSystemMessage(`Draft PR created: ${data.prUrl}`, 'pr-notification'),
+                  ])
                 }
               } catch {
                 // Ignore parse errors
@@ -507,7 +304,7 @@ export function ChatInterface({
         onStatusChange?.('error')
       }
     },
-    [sessionId, isStreaming, initialMode, activityTools, reasoningParts, onStatusChange],
+    [sessionId, isStreaming, initialMode, onStatusChange],
   )
 
   useEffect(() => {
@@ -524,47 +321,38 @@ export function ChatInterface({
     }
     setIsStreaming(false)
     streamingMessageRef.current = null
-    setStreamingText('')
-    setCurrentReasoning('')
-    setCurrentSteps([])
     onStatusChange?.('idle')
   }, [sessionId, onStatusChange])
 
-  const handleLoadEarlier = useCallback(async () => {
-    if (messages.length === 0) return
-
-    const firstMessage = messages[0]
-    try {
-      const earlier = await getChatMessages(sessionId, {
-        limit: 25,
-        before: firstMessage.id,
-      })
-
-      if (earlier.length < 25) setHasMore(false)
-      setMessages((prev) => [...earlier, ...prev])
-    } catch (err) {
-      console.error('Failed to load earlier messages:', err)
-    }
-  }, [sessionId, messages])
-
   const handleRetryError = useCallback(
     async (messageId: string) => {
-      const errorMsg = messages.find((m) => m.id === messageId)
-      if (!errorMsg) return
-
       setMessages((prev) => prev.filter((m) => m.id !== messageId))
-
       try {
-        await fetch(`${API_URL}/sessions/${sessionId}/retry`, {
-          method: 'POST',
-        })
+        await fetch(`${API_URL}/sessions/${sessionId}/retry`, { method: 'POST' })
       } catch (err) {
         console.error('Retry failed:', err)
-        setMessages((prev) => [...prev, errorMsg])
       }
     },
-    [sessionId, messages],
+    [sessionId],
   )
+
+  // Generate streaming label
+  const streamingLabel = isStreaming
+    ? (() => {
+        const labelMap: Record<AgentStatus, string> = {
+          idle: 'Thinking',
+          planning: 'Planning',
+          coding: 'Coding',
+          testing: 'Testing',
+          executing: 'Executing',
+          stuck: 'Stuck',
+          waiting: 'Waiting',
+          error: 'Error',
+        }
+        const base = agentStatus ? labelMap[agentStatus] : 'Thinking'
+        return currentTool ? `${base} · ${currentTool}` : `${base}...`
+      })()
+    : undefined
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-background">
@@ -580,54 +368,10 @@ export function ChatInterface({
 
       {/* Message List */}
       <AIMessageList
-        messages={messages.map((m) => ({
-          id: m.id,
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-          inlineTools: m.inlineTools,
-          reasoningBlocks: m.reasoningBlocks,
-          error:
-            m.type === 'error'
-              ? {
-                  message: m.content,
-                  category: m.errorCategory,
-                  retryable: m.retryable,
-                }
-              : undefined,
-        }))}
+        messages={messages}
         isStreaming={isStreaming}
-        streamingText={streamingText}
-        currentReasoning={currentReasoning}
-        currentSteps={currentSteps}
-        streamingTools={activityTools.map((t) => {
-          const adapted = adaptToolPart(t)
-          return {
-            callID: t.callID,
-            name: adapted.name,
-            status: adapted.status,
-            input: adapted.input,
-            output: typeof adapted.output === 'string' ? adapted.output : undefined,
-            duration: adapted.duration,
-          }
-        })}
-        streamingLabel={
-          isStreaming
-            ? (() => {
-                const labelMap: Record<AgentStatus, string> = {
-                  idle: 'Thinking',
-                  planning: 'Planning',
-                  coding: 'Coding',
-                  testing: 'Testing',
-                  executing: 'Executing',
-                  stuck: 'Stuck',
-                  waiting: 'Waiting',
-                  error: 'Error',
-                }
-                const base = agentStatus ? labelMap[agentStatus] : 'Thinking'
-                return currentTool ? `${base} · ${currentTool}` : `${base}...`
-              })()
-            : undefined
-        }
+        streamingMessageId={streamingMessageRef.current}
+        streamingLabel={streamingLabel}
         onRetryError={handleRetryError}
         onOpenVSCode={onOpenVSCode}
         onOpenTerminal={onOpenTerminal}

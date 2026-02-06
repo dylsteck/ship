@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { cn } from '@ship/ui/utils'
-import type { SessionInfo as SSESessionInfo, StepFinishPart } from '@/lib/sse-types'
+import type { SessionInfo as SSESessionInfo } from '@/lib/sse-types'
 
 // ============ Types ============
 
@@ -53,6 +53,27 @@ interface SessionPanelProps {
   className?: string
 }
 
+// ============ Section Component ============
+
+function PanelSection({
+  label,
+  children,
+  className,
+}: {
+  label: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('px-4 py-3 border-b border-border/30', className)}>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-1.5">
+        {label}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 // ============ Main Component ============
 
 export function SessionPanel({
@@ -85,123 +106,128 @@ export function SessionPanel({
   const usagePercent = tokens ? Math.min((totalTokens / contextLimit) * 100, 100) : 0
 
   return (
-    <div className={cn('flex flex-col text-xs font-mono overflow-y-auto', className)}>
+    <div className={cn('flex flex-col text-xs overflow-y-auto', className)}>
       {/* Session title */}
       {sessionInfo?.title && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">title</div>
-          <div className="text-foreground truncate" title={sessionInfo.title}>
+        <PanelSection label="Title">
+          <div className="text-foreground font-medium truncate" title={sessionInfo.title}>
             {sessionInfo.title}
           </div>
-        </div>
+        </PanelSection>
       )}
 
       {/* Repo */}
       {repo && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">repo</div>
-          <div className="text-foreground">
+        <PanelSection label="Repository">
+          <div className="text-foreground font-mono text-[11px]">
             {repo.owner}/{repo.name}
           </div>
           {repo.branch && (
-            <div className="text-muted-foreground mt-0.5">{repo.branch}</div>
+            <div className="text-muted-foreground mt-0.5 font-mono text-[10px]">{repo.branch}</div>
           )}
-        </div>
+        </PanelSection>
       )}
 
       {/* Model */}
       {model && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">model</div>
-          <div className="text-foreground">{model.name || model.id}</div>
+        <PanelSection label="Model">
+          <div className="text-foreground text-[11px]">{model.name || model.id}</div>
           {model.mode && (
-            <div className="text-muted-foreground mt-0.5">mode: {model.mode}</div>
+            <div className="mt-1">
+              <span
+                className={cn(
+                  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
+                  model.mode === 'build'
+                    ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                    : 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+                )}
+              >
+                {model.mode}
+              </span>
+            </div>
           )}
-        </div>
+        </PanelSection>
       )}
 
       {/* Context usage */}
       {tokens && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">context</div>
-          <div className="text-foreground">
-            {usagePercent.toFixed(0)}% ({totalTokens.toLocaleString()} / {contextLimit.toLocaleString()})
+        <PanelSection label="Context">
+          <div className="text-foreground text-[11px] mb-1.5">
+            {usagePercent.toFixed(0)}% used
+            <span className="text-muted-foreground ml-1">
+              ({totalTokens.toLocaleString()} / {contextLimit.toLocaleString()})
+            </span>
           </div>
-          <div className="mt-1 h-1 w-full bg-border/50 rounded-full overflow-hidden">
+          <div className="h-1.5 w-full bg-border/50 rounded-full overflow-hidden">
             <div
               className={cn(
-                'h-full rounded-full transition-all',
+                'h-full rounded-full transition-all duration-500',
                 usagePercent > 80 ? 'bg-red-500' : usagePercent > 60 ? 'bg-yellow-500' : 'bg-green-500',
               )}
               style={{ width: `${usagePercent}%` }}
             />
           </div>
-          <div className="flex gap-2 mt-1 text-muted-foreground">
-            <span>in:{tokens.input.toLocaleString()}</span>
-            <span>out:{tokens.output.toLocaleString()}</span>
-            {tokens.reasoning > 0 && <span>think:{tokens.reasoning.toLocaleString()}</span>}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-muted-foreground font-mono">
+            <span>in: {tokens.input.toLocaleString()}</span>
+            <span>out: {tokens.output.toLocaleString()}</span>
+            {tokens.reasoning > 0 && <span>think: {tokens.reasoning.toLocaleString()}</span>}
           </div>
           {(tokens.cache.read > 0 || tokens.cache.write > 0) && (
-            <div className="flex gap-2 mt-0.5 text-muted-foreground">
+            <div className="flex gap-x-3 mt-0.5 text-[10px] font-mono">
               {tokens.cache.read > 0 && (
-                <span className="text-green-500">cache-r:{tokens.cache.read.toLocaleString()}</span>
+                <span className="text-green-500">cache-r: {tokens.cache.read.toLocaleString()}</span>
               )}
               {tokens.cache.write > 0 && (
-                <span className="text-blue-500">cache-w:{tokens.cache.write.toLocaleString()}</span>
+                <span className="text-blue-500">cache-w: {tokens.cache.write.toLocaleString()}</span>
               )}
             </div>
           )}
-        </div>
+        </PanelSection>
       )}
 
       {/* Cost */}
       {cost !== undefined && cost > 0 && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">cost</div>
-          <div className="text-foreground">${cost.toFixed(4)}</div>
-        </div>
+        <PanelSection label="Cost">
+          <div className="text-foreground font-mono text-[11px]">${cost.toFixed(4)}</div>
+        </PanelSection>
       )}
 
       {/* OpenCode URL */}
       {openCodeUrl && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground mb-1.5">opencode</div>
+        <PanelSection label="OpenCode">
           <div className="flex items-center gap-2">
             <a
               href={openCodeUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-400 hover:underline break-all flex-1 min-w-0 text-xs"
+              className="text-blue-500 hover:text-blue-400 hover:underline break-all flex-1 min-w-0 text-[11px] font-mono"
             >
               {openCodeUrl.replace(/^https?:\/\//, '').slice(0, 40)}
               {openCodeUrl.length > 40 ? '...' : ''}
             </a>
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(openCodeUrl)
-              }}
-              className="text-muted-foreground hover:text-foreground transition-colors text-xs px-1.5 py-0.5 rounded hover:bg-muted"
+              onClick={() => navigator.clipboard.writeText(openCodeUrl)}
+              className="text-muted-foreground hover:text-foreground transition-colors text-[10px] px-1.5 py-0.5 rounded hover:bg-muted shrink-0"
               title="Copy URL"
             >
-              📋
+              Copy
             </button>
           </div>
-        </div>
+        </PanelSection>
       )}
 
       {/* Changes */}
       {diffs && diffs.length > 0 && totalChanges && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">changes</div>
-          <div className="flex gap-2">
-            <span className="text-green-500">+{totalChanges.add}</span>
-            <span className="text-red-500">-{totalChanges.del}</span>
+        <PanelSection label="Changes">
+          <div className="flex gap-3 text-[11px] mb-1.5">
+            <span className="text-green-500 font-medium">+{totalChanges.add}</span>
+            <span className="text-red-500 font-medium">-{totalChanges.del}</span>
             <span className="text-muted-foreground">{diffs.length} files</span>
           </div>
-          <div className="mt-1 space-y-0.5">
+          <div className="space-y-0.5">
             {diffs.slice(0, 8).map((d, i) => (
-              <div key={i} className="flex justify-between text-muted-foreground">
-                <span className="truncate flex-1 mr-1">{d.filename.split('/').pop()}</span>
+              <div key={i} className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                <span className="truncate flex-1 mr-2">{d.filename.split('/').pop()}</span>
                 <span className="shrink-0">
                   <span className="text-green-500">+{d.additions}</span>
                   {' '}
@@ -210,52 +236,53 @@ export function SessionPanel({
               </div>
             ))}
             {diffs.length > 8 && (
-              <div className="text-muted-foreground">...{diffs.length - 8} more</div>
+              <div className="text-[10px] text-muted-foreground">...{diffs.length - 8} more</div>
             )}
           </div>
-        </div>
+        </PanelSection>
       )}
 
       {/* Todos */}
       {activeTodos.length > 0 && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">todos ({activeTodos.length})</div>
-          <div className="mt-1 space-y-0.5">
+        <PanelSection label={`Todos (${activeTodos.length})`}>
+          <div className="space-y-1">
             {activeTodos.slice(0, 5).map((t) => (
-              <div key={t.id} className="flex items-start gap-1">
-                <span className={t.status === 'in_progress' ? 'text-blue-500' : 'text-muted-foreground'}>
-                  {t.status === 'in_progress' ? '>' : '-'}
-                </span>
+              <div key={t.id} className="flex items-start gap-1.5 text-[11px]">
+                <span
+                  className={cn(
+                    'mt-0.5 w-1.5 h-1.5 rounded-full shrink-0',
+                    t.status === 'in_progress' ? 'bg-blue-500' : 'bg-muted-foreground/30',
+                  )}
+                />
                 <span className={t.status === 'in_progress' ? 'text-foreground' : 'text-muted-foreground'}>
-                  {t.content.slice(0, 40)}
+                  {t.content.slice(0, 50)}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </PanelSection>
       )}
 
-      {/* Session summary */}
+      {/* Session info */}
       {sessionInfo && (
-        <div className="px-3 py-2 border-b border-border/30">
-          <div className="text-muted-foreground">session</div>
-          <div className="text-foreground truncate" title={sessionInfo.id}>
+        <PanelSection label="Session">
+          <div className="text-foreground font-mono text-[10px] truncate" title={sessionInfo.id}>
             {sessionInfo.id.slice(0, 12)}...
           </div>
           {sessionInfo.summary && (sessionInfo.summary.files > 0 || sessionInfo.summary.additions > 0) && (
-            <div className="flex gap-2 mt-0.5 text-muted-foreground">
+            <div className="flex gap-3 mt-0.5 text-[10px] font-mono text-muted-foreground">
               <span>{sessionInfo.summary.files} files</span>
               <span className="text-green-500">+{sessionInfo.summary.additions}</span>
               <span className="text-red-500">-{sessionInfo.summary.deletions}</span>
             </div>
           )}
-        </div>
+        </PanelSection>
       )}
 
       {/* Empty state */}
       {!repo && !model && !tokens && !activeTodos.length && !diffs?.length && !sessionInfo && !openCodeUrl && (
-        <div className="px-3 py-4 text-muted-foreground text-center">
-          waiting for session...
+        <div className="px-4 py-8 text-muted-foreground text-center text-[11px]">
+          Waiting for session data...
         </div>
       )}
     </div>

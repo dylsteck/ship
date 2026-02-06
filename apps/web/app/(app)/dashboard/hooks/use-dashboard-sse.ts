@@ -1,33 +1,32 @@
 'use client'
 
 import { useCallback } from 'react'
-import { sendChatMessage, type Message } from '@/lib/api'
-import { parseSSEEvent, extractCostInfo, getEventStatus } from '@/lib/sse-parser'
-import type { ToolPart as SSEToolPart, ReasoningPart, StepFinishPart } from '@/lib/sse-types'
-
-type ToolPart = {
-  type: 'tool'
-  callID: string
-  tool: string
-  state: {
-    title: string
-    status?: 'pending' | 'running' | 'complete' | 'error'
-  }
-}
+import { sendChatMessage } from '@/lib/api'
+import { parseSSEEvent } from '@/lib/sse-parser'
+import type { ToolPart as SSEToolPart, StepFinishPart, SessionInfo } from '@/lib/sse-types'
+import {
+  type UIMessage,
+  processPartUpdated,
+  createUserMessage,
+  createAssistantPlaceholder,
+  createErrorMessage,
+  createPermissionMessage,
+  createQuestionMessage,
+  createSystemMessage,
+  updatePromptStatus,
+  classifyError,
+  parseErrorMessage,
+  extractStepCost,
+} from '@/lib/ai-elements-adapter'
 
 interface UseDashboardSSEParams {
   activeSessionId: string | null
   isStreaming: boolean
   mode: 'build' | 'plan'
   setIsStreaming: (value: boolean) => void
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>
-  setActivityTools: React.Dispatch<React.SetStateAction<SSEToolPart[]>>
-  setThinkingParts: React.Dispatch<React.SetStateAction<ToolPart[]>>
-  setThinkingReasoning: React.Dispatch<React.SetStateAction<string>>
-  setThinkingStatus: React.Dispatch<React.SetStateAction<string>>
-  setReasoningParts: React.Dispatch<React.SetStateAction<ReasoningPart[]>>
-  setLastStepCost: React.Dispatch<React.SetStateAction<{ cost: number; tokens: StepFinishPart['tokens'] } | null>>
+  setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
   setTotalCost: React.Dispatch<React.SetStateAction<number>>
+  setLastStepCost: React.Dispatch<React.SetStateAction<{ cost: number; tokens: StepFinishPart['tokens'] } | null>>
   setSessionTodos: React.Dispatch<
     React.SetStateAction<
       Array<{
@@ -41,13 +40,10 @@ interface UseDashboardSSEParams {
   setFileDiffs: React.Dispatch<
     React.SetStateAction<Array<{ filename: string; additions: number; deletions: number }>>
   >
-  setStatusEvents: React.Dispatch<
-    React.SetStateAction<Array<{ status: string; message: string; time: number }>>
-  >
   setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
   setOpenCodeUrl: React.Dispatch<React.SetStateAction<string>>
   setSessionTitle: React.Dispatch<React.SetStateAction<string>>
-  setSessionInfo: React.Dispatch<React.SetStateAction<import('@/lib/sse-types').SessionInfo | null>>
+  setSessionInfo: React.Dispatch<React.SetStateAction<SessionInfo | null>>
   streamingMessageRef: React.MutableRefObject<string | null>
   assistantTextRef: React.MutableRefObject<string>
   setStreamStartTime: (value: number | null) => void
@@ -59,16 +55,10 @@ export function useDashboardSSE({
   mode,
   setIsStreaming,
   setMessages,
-  setActivityTools,
-  setThinkingParts,
-  setThinkingReasoning,
-  setThinkingStatus,
-  setReasoningParts,
-  setLastStepCost,
   setTotalCost,
+  setLastStepCost,
   setSessionTodos,
   setFileDiffs,
-  setStatusEvents,
   setMessageQueue,
   setOpenCodeUrl,
   setSessionTitle,
@@ -88,32 +78,17 @@ export function useDashboardSSE({
       }
 
       setIsStreaming(true)
-      setThinkingParts([])
-      setThinkingReasoning('')
-      setThinkingStatus('Starting')
       assistantTextRef.current = ''
-      setActivityTools([])
-      setReasoningParts([])
       setLastStepCost(null)
-      setStatusEvents([]) // Clear previous status events
       setStreamStartTime(Date.now())
 
-      const userMessage: Message = {
-        id: `temp-${Date.now()}`,
-        role: 'user',
-        content,
-        createdAt: Math.floor(Date.now() / 1000),
-      }
+      // Add user message
+      const userMessage = createUserMessage(content)
       setMessages((prev) => [...prev, userMessage])
 
-      const assistantId = `temp-assistant-${Date.now()}`
-      streamingMessageRef.current = assistantId
-      const assistantMessage: Message = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        createdAt: Math.floor(Date.now() / 1000),
-      }
+      // Add assistant placeholder
+      const assistantMessage = createAssistantPlaceholder()
+      streamingMessageRef.current = assistantMessage.id
       setMessages((prev) => [...prev, assistantMessage])
 
       try {
@@ -121,24 +96,15 @@ export function useDashboardSSE({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          console.error('Chat request failed:', errorData)
+          const errorContent = errorData.error || errorData.details || 'Failed to start agent'
+          const { category, retryable } = classifyError(errorContent)
 
-          const errorMessage: Message = {
-            id: `error-${Date.now()}`,
-            role: 'system',
-            content: errorData.error || errorData.details || 'Failed to start agent',
-            type: 'error',
-            errorCategory: 'persistent',
-            retryable: false,
-            createdAt: Math.floor(Date.now() / 1000),
-          }
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
-            return [...filtered, errorMessage]
+            return [...filtered, createErrorMessage(errorContent, category, retryable)]
           })
 
           setIsStreaming(false)
-          setThinkingStatus('')
           streamingMessageRef.current = null
           return
         }
@@ -179,141 +145,35 @@ export function useDashboardSSE({
                     const part = event.properties.part
                     const delta = event.properties.delta
 
-                    if (part.type === 'text') {
-                      if (typeof delta === 'string') {
-                        assistantTextRef.current += delta
-                      } else if (part.text) {
-                        assistantTextRef.current = part.text
-                      }
-                      setMessages((prev) =>
-                        prev.map((m) =>
-                          m.id === streamingMessageRef.current
-                            ? { ...m, content: assistantTextRef.current }
-                            : m,
-                        ),
-                      )
-                    }
+                    // Use adapter for all message part updates
+                    setMessages((prev) =>
+                      processPartUpdated(part, delta, streamingMessageRef.current!, prev, assistantTextRef),
+                    )
 
-                    if (part.type === 'tool') {
-                      const toolPart: SSEToolPart = {
-                        id: part.id,
-                        sessionID: part.sessionID,
-                        messageID: part.messageID,
-                        type: 'tool',
-                        callID: part.callID,
-                        tool: part.tool,
-                        state: part.state,
-                      }
-
-                      setActivityTools((prev) => {
-                        const existing = prev.findIndex((t) => t.callID === toolPart.callID)
-                        if (existing >= 0) {
-                          return prev.map((t, i) => (i === existing ? toolPart : t))
-                        }
-                        return [...prev, toolPart]
-                      })
-
-                      const oldToolPart: ToolPart = {
-                        type: 'tool',
-                        callID: part.callID,
-                        tool: part.tool,
-                        state: {
-                          title: part.state.title || '',
-                          status: part.state.status === 'completed' ? 'complete' : part.state.status,
-                        },
-                      }
-                      setThinkingParts((prev) => {
-                        const existing = prev.findIndex((p) => p.callID === oldToolPart.callID)
-                        if (existing >= 0) {
-                          return prev.map((p, i) => (i === existing ? oldToolPart : p))
-                        }
-                        return [...prev, oldToolPart]
-                      })
-
-                      const statusInfo = getEventStatus(event)
-                      if (statusInfo) {
-                        setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
-                      }
-                    }
-
-                    if (part.type === 'reasoning' && part.text) {
-                      setThinkingReasoning((prev) => (prev ? `${prev}\n\n${part.text}` : part.text))
-                      setThinkingStatus('💭 Reasoning...')
-
-                      const reasoningPart: ReasoningPart = {
-                        id: part.id,
-                        sessionID: part.sessionID,
-                        messageID: part.messageID,
-                        type: 'reasoning',
-                        text: part.text,
-                      }
-                      setReasoningParts((prev) => [...prev, reasoningPart])
-                    }
-
+                    // Extract cost from step-finish
                     if (part.type === 'step-finish') {
-                      const costInfo = extractCostInfo(event)
+                      const costInfo = extractStepCost(part)
                       if (costInfo) {
-                        setLastStepCost({
-                          cost: costInfo.cost,
-                          tokens: {
-                            input: costInfo.tokens.input,
-                            output: costInfo.tokens.output,
-                            reasoning: costInfo.tokens.reasoning,
-                            cache: { read: costInfo.tokens.cacheRead, write: costInfo.tokens.cacheWrite },
-                          },
-                        })
+                        setLastStepCost(costInfo)
                         setTotalCost((prev) => prev + costInfo.cost)
                       }
                     }
                     break
                   }
 
-                  case 'status': {
-                    const statusInfo = getEventStatus(event)
-                    if (statusInfo) {
-                      setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
-                      // Deduplicate: only add if message differs from the last entry
-                      setStatusEvents((prev) => {
-                        const last = prev[prev.length - 1]
-                        if (last && last.message === event.message) {
-                          // Same message - just update the timestamp on the last entry
-                          return prev.map((e, i) => (i === prev.length - 1 ? { ...e, time: Date.now() } : e))
-                        }
-                        return [
-                          ...prev,
-                          {
-                            status: event.status,
-                            message: event.message,
-                            time: Date.now(),
-                          },
-                        ]
-                      })
-                    }
+                  case 'message.updated': {
+                    // Message completed - update metadata if needed
                     break
                   }
 
-                  case 'session.status': {
-                    const statusInfo = getEventStatus(event)
-                    if (statusInfo) {
-                      setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
-                      setStatusEvents((prev) => [
-                        ...prev,
-                        {
-                          status: `session-${event.properties.status.type}`,
-                          message: statusInfo.label,
-                          time: Date.now(),
-                        },
-                      ])
-                    }
+                  case 'message.removed': {
+                    const messageID = event.properties.messageID
+                    setMessages((prev) => prev.filter((m) => m.id !== messageID))
                     break
                   }
 
                   case 'todo.updated': {
-                    const todos = event.properties.todos
-                    setSessionTodos(todos)
-                    if (todos.length > 0) {
-                      setThinkingStatus(`📋 Task: ${todos[0].content.slice(0, 40)}`)
-                    }
+                    setSessionTodos(event.properties.todos)
                     break
                   }
 
@@ -322,321 +182,124 @@ export function useDashboardSSE({
                     break
                   }
 
-                  case 'file-watcher.updated': {
-                    const { event: fileEvent, path } = event.properties
-                    setThinkingStatus(`📝 ${fileEvent}: ${path.split('/').pop()}`)
-                    setStatusEvents((prev) => [
-                      ...prev,
-                      {
-                        status: 'file-changed',
-                        message: `${fileEvent}: ${path.split('/').pop()}`,
-                        time: Date.now(),
-                      },
-                    ])
+                  case 'session.updated': {
+                    const info = event.properties.info
+                    if (info) {
+                      if (info.title) setSessionTitle(info.title)
+                      setSessionInfo(info)
+                    }
                     break
                   }
 
                   case 'opencode-url': {
                     const url = (event as { url?: string }).url
-                    if (url) {
-                      setOpenCodeUrl(url)
-                      setStatusEvents((prev) => [
-                        ...prev,
-                        { status: 'opencode-ready', message: 'OpenCode server ready', time: Date.now() },
-                      ])
-                    }
+                    if (url) setOpenCodeUrl(url)
                     break
                   }
 
-                  case 'session.updated': {
-                    const sessionInfoData = event.properties.info
-                    if (sessionInfoData) {
-                      const title = sessionInfoData.title
-                      if (title) {
-                        setSessionTitle(title)
-                        setSessionInfo(sessionInfoData)
-                        setStatusEvents((prev) => [
-                          ...prev,
-                          { status: 'session-updated', message: `Session: ${title}`, time: Date.now() },
-                        ])
-                      }
-                    }
-                    break
-                  }
-
-                  case 'message.updated': {
-                    // Message was updated (e.g., completed)
-                    const messageInfo = event.properties.info
-                    if (messageInfo) {
-                      setMessages((prev) =>
-                        prev.map((m) => (m.id === messageInfo.id ? { ...m, ...messageInfo } : m)),
-                      )
-                    }
-                    break
-                  }
-
-                  case 'heartbeat': {
-                    const statusInfo = getEventStatus(event)
-                    if (statusInfo) {
-                      setThinkingStatus(`${statusInfo.icon} ${statusInfo.label}`)
-                    }
-                    setStatusEvents((prev) => [
+                  case 'permission.asked': {
+                    const props = event.properties
+                    setMessages((prev) => [
                       ...prev,
-                      {
-                        status: 'heartbeat',
-                        message: statusInfo?.label || 'Waiting for agent response...',
-                        time: Date.now(),
-                      },
+                      createPermissionMessage(props.id, props.permission, props.description, props.patterns),
                     ])
+                    break
+                  }
+
+                  case 'permission.granted': {
+                    setMessages((prev) => updatePromptStatus(event.properties.id, 'granted', prev))
+                    break
+                  }
+
+                  case 'permission.denied': {
+                    setMessages((prev) => updatePromptStatus(event.properties.id, 'denied', prev))
+                    break
+                  }
+
+                  case 'question.asked': {
+                    const props = event.properties
+                    setMessages((prev) => [...prev, createQuestionMessage(props.id, props.text)])
+                    break
+                  }
+
+                  case 'question.replied': {
+                    setMessages((prev) => updatePromptStatus(event.properties.id, 'replied', prev))
+                    break
+                  }
+
+                  case 'question.rejected': {
+                    setMessages((prev) => updatePromptStatus(event.properties.id, 'rejected', prev))
                     break
                   }
 
                   case 'done':
                   case 'session.idle': {
                     setIsStreaming(false)
-                    setThinkingStatus('')
                     streamingMessageRef.current = null
-                    setTimeout(() => {
-                      setActivityTools([])
-                      setThinkingParts([])
-                      setLastStepCost(null)
-                      setReasoningParts([])
-                      setStatusEvents([])
-                    }, 3000)
                     break
                   }
 
                   case 'session.error': {
-                    // Extract error message from nested structure
                     const errorData = event.properties.error
                     let errorMessage = 'An error occurred'
-                    let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
-                    let retryable = false
-
                     if (errorData?.data?.message) {
                       errorMessage = errorData.data.message
                     } else if (errorData?.message) {
                       errorMessage = errorData.message
-                    } else if (typeof errorData === 'string') {
-                      errorMessage = errorData
                     }
 
-                    // Classify error type
-                    if (errorMessage.includes('credit balance') || errorMessage.includes('Anthropic API')) {
-                      errorCategory = 'user-action'
-                      retryable = false
-                    } else if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
-                      errorCategory = 'transient'
-                      retryable = true
-                    } else if (
-                      errorMessage.includes('network') ||
-                      errorMessage.includes('connection') ||
-                      errorMessage.includes('timeout')
-                    ) {
-                      errorCategory = 'transient'
-                      retryable = true
-                    }
-
-                    const message: Message = {
-                      id: `error-${Date.now()}`,
-                      role: 'system',
-                      content: errorMessage,
-                      type: 'error',
-                      errorCategory,
-                      retryable,
-                      createdAt: Math.floor(Date.now() / 1000),
-                    }
-                    setMessages((prev) => [...prev, message])
+                    const { category, retryable } = classifyError(errorMessage)
+                    setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
                     setIsStreaming(false)
-                    setThinkingStatus('')
                     streamingMessageRef.current = null
                     break
                   }
 
                   case 'error': {
-                    // Parse error - it might be a JSON string
-                    let errorMessage = event.error
-                    let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = event.category || 'persistent'
-                    let retryable = event.retryable || false
-
-                    // Try to parse if it's a JSON string
-                    if (typeof errorMessage === 'string' && errorMessage.startsWith('{')) {
-                      try {
-                        const parsed = JSON.parse(errorMessage)
-                        if (parsed.data?.message) {
-                          errorMessage = parsed.data.message
-                        } else if (parsed.message) {
-                          errorMessage = parsed.message
-                        } else if (parsed.error?.message) {
-                          errorMessage = parsed.error.message
-                        }
-                      } catch {
-                        // If parsing fails, use the string as-is
-                      }
-                    }
-
-                    // Classify error type
-                    if (typeof errorMessage === 'string') {
-                      if (errorMessage.includes('credit balance') || errorMessage.includes('Anthropic API')) {
-                        errorCategory = 'user-action'
-                        retryable = false
-                      } else if (errorMessage.includes('rate limit') || errorMessage.includes('too many requests')) {
-                        errorCategory = 'transient'
-                        retryable = true
-                      } else if (
-                        errorMessage.includes('network') ||
-                        errorMessage.includes('connection') ||
-                        errorMessage.includes('timeout')
-                      ) {
-                        errorCategory = 'transient'
-                        retryable = true
-                      }
-                    }
-
-                    const message: Message = {
-                      id: `error-${Date.now()}`,
-                      role: 'system',
-                      content: typeof errorMessage === 'string' ? errorMessage : 'An error occurred',
-                      type: 'error',
-                      errorCategory,
-                      retryable,
-                      createdAt: Math.floor(Date.now() / 1000),
-                    }
-                    setMessages((prev) => [...prev, message])
+                    const errorMessage = parseErrorMessage(event.error)
+                    const { category, retryable } = classifyError(errorMessage)
+                    setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
                     setIsStreaming(false)
-                    setThinkingStatus('')
                     streamingMessageRef.current = null
                     break
                   }
 
-                  // Handle additional event types
+                  case 'status':
+                  case 'session.status':
+                  case 'heartbeat':
+                  case 'file-watcher.updated':
                   case 'session.created':
                   case 'session.deleted':
-                  case 'session.compacted': {
-                    setStatusEvents((prev) => [
-                      ...prev,
-                      {
-                        status: event.type,
-                        message: `Session ${event.type.split('.')[1]}`,
-                        time: Date.now(),
-                      },
-                    ])
+                  case 'session.compacted':
+                  case 'command.executed':
+                  case 'server.connected':
+                  case 'server.heartbeat':
+                    // These events are informational - no message state changes needed
                     break
-                  }
-
-                  case 'permission.asked':
-                  case 'permission.granted':
-                  case 'permission.denied': {
-                    const permissionEvent = event as {
-                      type: string
-                      properties?: {
-                        permission?: string
-                        description?: string
-                      }
-                    }
-                    const description = permissionEvent.properties?.description || permissionEvent.properties?.permission || ''
-                    setStatusEvents((prev) => [
-                      ...prev,
-                      {
-                        status: event.type,
-                        message: `Permission ${event.type.split('.')[1]}: ${description}`,
-                        time: Date.now(),
-                      },
-                    ])
-                    break
-                  }
-
-                  case 'question.asked':
-                  case 'question.replied':
-                  case 'question.rejected': {
-                    const questionEvent = event as {
-                      type: string
-                      properties?: {
-                        text?: string
-                      }
-                    }
-                    const text = questionEvent.properties?.text || ''
-                    setStatusEvents((prev) => [
-                      ...prev,
-                      {
-                        status: event.type,
-                        message: `Question ${event.type.split('.')[1]}: ${text.slice(0, 50)}`,
-                        time: Date.now(),
-                      },
-                    ])
-                    break
-                  }
-
-                  case 'command.executed': {
-                    const commandEvent = event as {
-                      type: string
-                      properties?: {
-                        command?: string
-                      }
-                    }
-                    const command = commandEvent.properties?.command || ''
-                    setStatusEvents((prev) => [
-                      ...prev,
-                      {
-                        status: 'command-executed',
-                        message: `Command: ${command.slice(0, 50)}`,
-                        time: Date.now(),
-                      },
-                    ])
-                    break
-                  }
 
                   default: {
-                    // Log unhandled events for debugging
                     if (process.env.NODE_ENV === 'development') {
-                      console.warn('[SSE] Unhandled event type:', event.type, event)
+                      console.warn('[SSE] Unhandled event type:', (event as { type: string }).type)
                     }
-                    // Still add to status events for visibility
-                    setStatusEvents((prev) => [
-                      ...prev,
-                      {
-                        status: `unhandled-${event.type}`,
-                        message: `Unhandled event: ${event.type}`,
-                        time: Date.now(),
-                      },
-                    ])
                     break
                   }
                 }
 
-                // Handle events that might not be parsed correctly
+                // Handle wrapped event fallbacks
                 if (rawData.type === 'event' && rawData.properties) {
                   const innerEvent = rawData.properties as { type?: string; error?: unknown }
                   if (innerEvent.type === 'session.error') {
-                    // Handle session.error that came through as event: event
                     const errorData = innerEvent.error as { name?: string; data?: { message?: string }; message?: string }
                     let errorMessage = 'An error occurred'
-                    let errorCategory: 'transient' | 'persistent' | 'user-action' | 'fatal' = 'persistent'
-                    let retryable = false
-
                     if (errorData?.data?.message) {
                       errorMessage = errorData.data.message
                     } else if (errorData?.message) {
                       errorMessage = errorData.message
                     }
 
-                    if (errorMessage.includes('credit balance') || errorMessage.includes('Anthropic API')) {
-                      errorCategory = 'user-action'
-                      retryable = false
-                    }
-
-                    const message: Message = {
-                      id: `error-${Date.now()}`,
-                      role: 'system',
-                      content: errorMessage,
-                      type: 'error',
-                      errorCategory,
-                      retryable,
-                      createdAt: Math.floor(Date.now() / 1000),
-                    }
-                    setMessages((prev) => [...prev, message])
+                    const { category, retryable } = classifyError(errorMessage)
+                    setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
                     setIsStreaming(false)
-                    setThinkingStatus('')
                     streamingMessageRef.current = null
                   }
                 }
@@ -652,14 +315,10 @@ export function useDashboardSSE({
                 }
 
                 if (rawData.prUrl) {
-                  const prMessage: Message = {
-                    id: `pr-${Date.now()}`,
-                    role: 'system',
-                    content: `Draft PR created: ${rawData.prUrl}`,
-                    type: 'pr-notification',
-                    createdAt: Math.floor(Date.now() / 1000),
-                  }
-                  setMessages((prev) => [...prev, prMessage])
+                  setMessages((prev) => [
+                    ...prev,
+                    createSystemMessage(`Draft PR created: ${rawData.prUrl}`, 'pr-notification'),
+                  ])
                 }
               } catch {
                 // Ignore parse errors
@@ -670,25 +329,19 @@ export function useDashboardSSE({
       } catch (err) {
         console.error('Chat error:', err)
 
-        const errorMessage: Message = {
-          id: `error-${Date.now()}`,
-          role: 'system',
-          content: err instanceof Error ? err.message : 'Connection lost. Please refresh and try again.',
-          type: 'error',
-          errorCategory: 'transient',
-          retryable: true,
-          createdAt: Math.floor(Date.now() / 1000),
-        }
-
         setMessages((prev) => {
           const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
-          return [...filtered, errorMessage]
+          return [
+            ...filtered,
+            createErrorMessage(
+              err instanceof Error ? err.message : 'Connection lost. Please refresh and try again.',
+              'transient',
+              true,
+            ),
+          ]
         })
 
         setIsStreaming(false)
-        setThinkingStatus('')
-        setThinkingParts([])
-        setActivityTools([])
         streamingMessageRef.current = null
       }
     },
