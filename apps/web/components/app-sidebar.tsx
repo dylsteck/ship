@@ -125,17 +125,14 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
               />
               <DropdownMenuContent align="end" className="w-40">
                 <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    router.push('/settings')
-                  }}
+                  onClick={() => router.push('/settings')}
                   className="cursor-pointer"
                 >
                   <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} />
                   Settings
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => {
+                  onClick={() => {
                     window.location.href = '/api/auth/logout'
                   }}
                   className="cursor-pointer"

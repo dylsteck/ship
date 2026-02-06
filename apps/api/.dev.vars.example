@@ -13,3 +13,7 @@ E2B_API_KEY=e2b_...
 # Internal API Secret (for authentication between web and API services)
 # Generate with: openssl rand -hex 32
 API_SECRET=your-api-secret-here
+
+# Allowed CORS Origins (comma-separated)
+# In production, set via: wrangler secret put ALLOWED_ORIGINS --env production
+ALLOWED_ORIGINS=http://localhost:3000
