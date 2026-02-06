@@ -8,12 +8,17 @@ export interface CostBreakdown {
 
 // Model pricing per 1M tokens (input/output)
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  // Claude models
+  // Claude models (via OpenCode Zen)
+  'opencode/claude-opus-4-6': { input: 15, output: 75 },
+  'opencode/claude-opus-4-5': { input: 15, output: 75 },
+  'opencode/claude-sonnet-4-5': { input: 3, output: 15 },
+  // Claude models (direct Anthropic)
   'anthropic/claude-sonnet-4-20250514': { input: 3, output: 15 },
   'anthropic/claude-opus-4-20250514': { input: 15, output: 75 },
   'anthropic/claude-haiku-3-20250514': { input: 0.25, output: 1.25 },
   'claude-sonnet-4': { input: 3, output: 15 },
   'claude-opus-4': { input: 15, output: 75 },
+  'claude-opus-4-6': { input: 15, output: 75 },
   'claude-haiku-3': { input: 0.25, output: 1.25 },
   // OpenAI models
   'gpt-4': { input: 10, output: 30 },

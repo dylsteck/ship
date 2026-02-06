@@ -129,10 +129,22 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
     if (historyLoadedRef.current === activeSessionId) return
     historyLoadedRef.current = activeSessionId
 
-    // Restore opencode URL from localStorage
+    // Restore persisted sidebar data from localStorage
     try {
       const savedUrl = localStorage.getItem(`opencode-url-${activeSessionId}`)
       if (savedUrl) setOpenCodeUrl(savedUrl)
+
+      const savedCost = localStorage.getItem(`total-cost-${activeSessionId}`)
+      if (savedCost) setTotalCost(Number(savedCost))
+
+      const savedStepCost = localStorage.getItem(`step-cost-${activeSessionId}`)
+      if (savedStepCost) setLastStepCost(JSON.parse(savedStepCost))
+
+      const savedSessionInfo = localStorage.getItem(`session-info-${activeSessionId}`)
+      if (savedSessionInfo) setSessionInfo(JSON.parse(savedSessionInfo))
+
+      const savedTitle = localStorage.getItem(`session-title-${activeSessionId}`)
+      if (savedTitle) setSessionTitle(savedTitle)
     } catch {}
 
     // Load historical messages
@@ -149,6 +161,17 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
         console.error('Failed to load messages:', err)
       })
   }, [activeSessionId, setMessages, setOpenCodeUrl])
+
+  // Persist sidebar stats to localStorage when they change
+  useEffect(() => {
+    if (!activeSessionId) return
+    try {
+      if (totalCost > 0) localStorage.setItem(`total-cost-${activeSessionId}`, String(totalCost))
+      if (lastStepCost) localStorage.setItem(`step-cost-${activeSessionId}`, JSON.stringify(lastStepCost))
+      if (sessionInfo) localStorage.setItem(`session-info-${activeSessionId}`, JSON.stringify(sessionInfo))
+      if (sessionTitle) localStorage.setItem(`session-title-${activeSessionId}`, sessionTitle)
+    } catch {}
+  }, [activeSessionId, totalCost, lastStepCost, sessionInfo, sessionTitle])
 
   const handleStop = useCallback(async () => {
     if (!activeSessionId) return

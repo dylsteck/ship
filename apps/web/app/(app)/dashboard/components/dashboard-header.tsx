@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useSidebar } from '@ship/ui'
 import type { WebSocketStatus } from '@/lib/websocket'
 
@@ -19,7 +18,6 @@ export function DashboardHeader({
   rightSidebarOpen,
   onToggleRightSidebar,
 }: DashboardHeaderProps) {
-  const router = useRouter()
   const { toggleSidebar } = useSidebar()
 
   return (
@@ -52,21 +50,6 @@ export function DashboardHeader({
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             {wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}
           </div>
-        )}
-
-        {/* New chat button */}
-        {activeSessionId && (
-          <button
-            onClick={() => {
-              router.push('/')
-            }}
-            className="p-1.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-            title="New chat"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
-            </svg>
-          </button>
         )}
 
         {/* Right sidebar toggle */}
