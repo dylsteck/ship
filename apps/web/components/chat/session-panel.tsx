@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import { cn } from '@ship/ui/utils'
+import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible'
 import type { SessionInfo as SSESessionInfo } from '@/lib/sse-types'
+import type { UIMessage } from '@/lib/ai-elements-adapter'
 
 // ============ Types ============
 
@@ -50,32 +52,8 @@ interface SessionPanelProps {
   diffs?: DiffSummary[]
   sessionInfo?: SSESessionInfo
   openCodeUrl?: string
+  messages?: UIMessage[]
   className?: string
-}
-
-// ============ Section Component ============
-
-function PanelSection({
-  label,
-  children,
-  className,
-}: {
-  label: string
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <div className={cn('px-4 py-3', className)}>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-2">
-        {label}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function SectionDivider() {
-  return <div className="mx-4 border-t border-border/20" />
 }
 
 // ============ Helpers ============
@@ -86,30 +64,159 @@ function formatTokenCount(n: number): string {
   return String(n)
 }
 
-function TokenPill({ label, value, color }: { label: string; value: number; color?: string }) {
-  if (value === 0) return null
+function formatCost(n: number): string {
+  if (n >= 1) return `$${n.toFixed(2)}`
+  return `$${n.toFixed(4)}`
+}
+
+function formatDate(ts: number): string {
+  const d = new Date(ts * 1000)
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatRelative(ts: number): string {
+  const now = Date.now() / 1000
+  const diff = now - ts
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
+// ============ Grid Row ============
+
+function StatRow({ label, value, mono }: { label: string; value: string | number; mono?: boolean }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-muted/60',
-        color || 'text-muted-foreground',
-      )}
-    >
-      <span className="text-muted-foreground/50">{label}</span>
-      {formatTokenCount(value)}
-    </span>
+    <div className="flex items-baseline justify-between py-0.5">
+      <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">{label}</span>
+      <span className={cn('text-[11px] text-foreground/80', mono && 'font-mono')}>{value}</span>
+    </div>
   )
 }
 
-function DiffBar({ additions, deletions }: { additions: number; deletions: number }) {
-  const total = additions + deletions
+// ============ Context Breakdown Bar ============
+
+function ContextBreakdownBar({ tokens }: { tokens: TokenInfo }) {
+  const total = tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
   if (total === 0) return null
-  const addPercent = (additions / total) * 100
+
+  const segments = [
+    { label: 'Input', value: tokens.input, color: 'bg-green-500/70' },
+    { label: 'Output', value: tokens.output, color: 'bg-pink-500/70' },
+    { label: 'Reasoning', value: tokens.reasoning, color: 'bg-blue-500/70' },
+    { label: 'Cache', value: tokens.cache.read + tokens.cache.write, color: 'bg-yellow-500/70' },
+  ].filter((s) => s.value > 0)
+
   return (
-    <div className="flex h-1 rounded-full overflow-hidden bg-muted/40 w-12">
-      <div className="bg-green-500/70 h-full" style={{ width: `${addPercent}%` }} />
-      <div className="bg-red-500/70 h-full" style={{ width: `${100 - addPercent}%` }} />
+    <div className="space-y-1.5">
+      <div className="flex h-2 w-full rounded-full overflow-hidden bg-muted/30">
+        {segments.map((seg) => (
+          <div
+            key={seg.label}
+            className={cn('h-full transition-all', seg.color)}
+            style={{ width: `${(seg.value / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+        {segments.map((seg) => (
+          <div key={seg.label} className="flex items-center gap-1">
+            <div className={cn('w-1.5 h-1.5 rounded-full', seg.color)} />
+            <span className="text-[9px] text-muted-foreground/50">
+              {seg.label} {Math.round((seg.value / total) * 100)}%
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
+  )
+}
+
+// ============ Raw Messages Section ============
+
+function RawMessagesSection({ messages }: { messages: UIMessage[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  if (!messages.length) return null
+
+  return (
+    <CollapsiblePrimitive.Root>
+      <CollapsiblePrimitive.Trigger className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/20 transition-colors">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+          Raw Messages ({messages.length})
+        </span>
+        <svg className="w-3 h-3 text-muted-foreground/40" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </CollapsiblePrimitive.Trigger>
+      <CollapsiblePrimitive.Panel>
+        <div className="px-3 pb-2 space-y-0.5 max-h-64 overflow-y-auto">
+          {messages.map((msg) => (
+            <div key={msg.id}>
+              <button
+                onClick={() => setExpandedId(expandedId === msg.id ? null : msg.id)}
+                className="w-full flex items-center justify-between px-1.5 py-1 rounded hover:bg-muted/30 transition-colors text-left"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={cn(
+                      'text-[9px] font-mono px-1 py-0.5 rounded',
+                      msg.role === 'user'
+                        ? 'bg-green-500/10 text-green-500'
+                        : msg.role === 'assistant'
+                          ? 'bg-pink-500/10 text-pink-500'
+                          : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {msg.role}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground/40 font-mono truncate">
+                    {msg.id.slice(0, 8)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {msg.createdAt && (
+                    <span className="text-[9px] text-muted-foreground/30">
+                      {msg.createdAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  <svg
+                    className={cn('w-2.5 h-2.5 text-muted-foreground/30 transition-transform', expandedId === msg.id && 'rotate-180')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+              {expandedId === msg.id && (
+                <pre className="text-[9px] font-mono text-muted-foreground/60 bg-muted/20 rounded p-2 mx-1 mt-0.5 mb-1 overflow-x-auto max-h-40 overflow-y-auto">
+                  {JSON.stringify(
+                    {
+                      id: msg.id,
+                      role: msg.role,
+                      content: msg.content.slice(0, 500) + (msg.content.length > 500 ? '...' : ''),
+                      toolInvocations: msg.toolInvocations?.length || 0,
+                      reasoning: msg.reasoning?.length || 0,
+                      type: msg.type,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      </CollapsiblePrimitive.Panel>
+    </CollapsiblePrimitive.Root>
   )
 }
 
@@ -125,9 +232,18 @@ export function SessionPanel({
   diffs,
   sessionInfo,
   openCodeUrl,
+  messages = [],
   className,
 }: SessionPanelProps) {
-  const [copied, setCopied] = useState(false)
+  const totalTokens = tokens ? tokens.input + tokens.output + tokens.reasoning : 0
+  const contextLimit = tokens?.contextLimit || 200000
+  const usagePercent = tokens ? Math.min((totalTokens / contextLimit) * 100, 100) : 0
+
+  const messageCounts = useMemo(() => {
+    const userMessages = messages.filter((m) => m.role === 'user').length
+    const assistantMessages = messages.filter((m) => m.role === 'assistant').length
+    return { total: messages.length, user: userMessages, assistant: assistantMessages }
+  }, [messages])
 
   const totalChanges = useMemo(() => {
     if (!diffs || diffs.length === 0) return null
@@ -137,195 +253,118 @@ export function SessionPanel({
     )
   }, [diffs])
 
-  const activeTodos = useMemo(
-    () => (todos || []).filter((t) => t.status !== 'completed' && t.status !== 'cancelled'),
-    [todos],
-  )
-
-  const totalTokens = tokens ? tokens.input + tokens.output + tokens.reasoning : 0
-  const contextLimit = tokens?.contextLimit || 200000
-  const usagePercent = tokens ? Math.min((totalTokens / contextLimit) * 100, 100) : 0
-
-  const cacheTotal = tokens ? tokens.cache.read + tokens.cache.write : 0
-  const cacheHitPercent = tokens && cacheTotal > 0
-    ? Math.round((tokens.cache.read / (tokens.input + tokens.cache.read)) * 100)
-    : null
-
-  const handleCopy = () => {
-    if (!openCodeUrl) return
-    navigator.clipboard.writeText(openCodeUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-
   return (
     <div className={cn('flex flex-col text-xs overflow-y-auto', className)}>
-      {/* Session title */}
-      {sessionInfo?.title && (
-        <>
-          <PanelSection label="Session">
-            <div className="text-foreground font-medium text-[12px] leading-snug" title={sessionInfo.title}>
-              {sessionInfo.title}
-            </div>
-            <div className="text-muted-foreground/50 font-mono text-[9px] mt-1">
-              {sessionInfo.id.slice(0, 8)}
-            </div>
-          </PanelSection>
-          <SectionDivider />
-        </>
-      )}
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-border/20">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">Context</div>
+        {sessionInfo?.title && (
+          <div className="text-foreground font-medium text-[12px] leading-snug" title={sessionInfo.title}>
+            {sessionInfo.title}
+          </div>
+        )}
+      </div>
 
-      {/* Repo */}
-      {repo && (
-        <>
-          <PanelSection label="Repository">
-            <div className="text-foreground font-mono text-[11px]">
-              {repo.owner}/{repo.name}
-            </div>
-            {repo.branch && (
-              <div className="text-muted-foreground/60 mt-0.5 font-mono text-[10px]">{repo.branch}</div>
-            )}
-          </PanelSection>
-          <SectionDivider />
-        </>
-      )}
+      {/* Stats Grid */}
+      <div className="px-4 py-3 space-y-0.5">
+        {/* Session & Messages */}
+        <StatRow label="Session" value={sessionInfo?.id?.slice(0, 8) || sessionId.slice(0, 8)} mono />
+        <StatRow label="Messages" value={messageCounts.total} />
 
-      {/* Model */}
-      {model && (
-        <>
-          <PanelSection label="Model">
-            <div className="text-foreground text-[11px]">{model.name || model.id}</div>
+        {/* Provider & Model */}
+        {model && (
+          <>
+            {model.provider && <StatRow label="Provider" value={model.provider} />}
+            <StatRow label="Model" value={model.name || model.id} />
             {model.mode && (
-              <div className="mt-1.5">
+              <div className="flex items-baseline justify-between py-0.5">
+                <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">Mode</span>
                 <span
                   className={cn(
-                    'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium',
+                    'text-[10px] font-medium px-1.5 py-0.5 rounded',
                     model.mode === 'build'
-                      ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                      : 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+                      ? 'bg-green-500/10 text-green-500'
+                      : 'bg-blue-500/10 text-blue-500',
                   )}
                 >
                   {model.mode}
                 </span>
               </div>
             )}
-          </PanelSection>
-          <SectionDivider />
-        </>
-      )}
+          </>
+        )}
 
-      {/* Context usage */}
-      {tokens && (
-        <>
-          <PanelSection label="Context">
-            <div className="flex items-baseline justify-between mb-2">
-              <span className="text-foreground text-[12px] font-medium">{usagePercent.toFixed(0)}%</span>
-              <span className="text-muted-foreground/50 text-[10px]">
-                {formatTokenCount(totalTokens)} / {formatTokenCount(contextLimit)}
-              </span>
-            </div>
-            <div className="h-2 w-full bg-muted/40 rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all duration-500',
-                  usagePercent > 80 ? 'bg-red-500' : usagePercent > 60 ? 'bg-yellow-500' : 'bg-green-500',
-                )}
-                style={{ width: `${usagePercent}%` }}
-              />
-            </div>
-            <div className="flex flex-wrap gap-1 mt-2">
-              <TokenPill label="in" value={tokens.input} />
-              <TokenPill label="out" value={tokens.output} />
-              {tokens.reasoning > 0 && <TokenPill label="think" value={tokens.reasoning} />}
-            </div>
+        {/* Repo */}
+        {repo && (
+          <StatRow label="Repo" value={`${repo.owner}/${repo.name}`} mono />
+        )}
+
+        {/* Token stats */}
+        {tokens && (
+          <>
+            <div className="pt-1.5 mt-1.5 border-t border-border/10" />
+            <StatRow label="Context Limit" value={formatTokenCount(contextLimit)} mono />
+            <StatRow label="Total Tokens" value={formatTokenCount(totalTokens)} mono />
+            <StatRow label="Usage" value={`${usagePercent.toFixed(0)}%`} />
+            <StatRow label="Input" value={formatTokenCount(tokens.input)} mono />
+            <StatRow label="Output" value={formatTokenCount(tokens.output)} mono />
+            {tokens.reasoning > 0 && <StatRow label="Reasoning" value={formatTokenCount(tokens.reasoning)} mono />}
             {(tokens.cache.read > 0 || tokens.cache.write > 0) && (
-              <div className="flex items-center gap-2 mt-1.5">
-                <div className="flex gap-1">
-                  {tokens.cache.read > 0 && <TokenPill label="cache-r" value={tokens.cache.read} color="text-green-500" />}
-                  {tokens.cache.write > 0 && <TokenPill label="cache-w" value={tokens.cache.write} color="text-blue-500" />}
-                </div>
-                {cacheHitPercent !== null && (
-                  <span className="text-[10px] text-muted-foreground/50">{cacheHitPercent}% hit</span>
-                )}
-              </div>
+              <StatRow label="Cache" value={formatTokenCount(tokens.cache.read + tokens.cache.write)} mono />
             )}
-          </PanelSection>
-          <SectionDivider />
-        </>
-      )}
+            <StatRow label="User Msgs" value={messageCounts.user} />
+            <StatRow label="Asst Msgs" value={messageCounts.assistant} />
+          </>
+        )}
 
-      {/* Cost */}
-      {cost !== undefined && cost > 0 && (
-        <>
-          <PanelSection label="Cost">
-            <div className="text-foreground font-mono text-[14px] font-medium">${cost.toFixed(4)}</div>
-          </PanelSection>
-          <SectionDivider />
-        </>
-      )}
+        {/* Cost */}
+        {cost !== undefined && cost > 0 && (
+          <StatRow label="Total Cost" value={formatCost(cost)} mono />
+        )}
 
-      {/* OpenCode URL */}
-      {openCodeUrl && (
+        {/* Timing */}
+        {sessionInfo?.time && (
+          <>
+            <div className="pt-1.5 mt-1.5 border-t border-border/10" />
+            <StatRow label="Created" value={formatDate(sessionInfo.time.created)} />
+            <StatRow label="Last Activity" value={formatRelative(sessionInfo.time.updated)} />
+          </>
+        )}
+      </div>
+
+      {/* Context Breakdown */}
+      {tokens && totalTokens > 0 && (
         <>
-          <PanelSection label="OpenCode">
-            <div className="flex items-center gap-1.5">
-              <a
-                href={openCodeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary/70 hover:text-primary hover:underline truncate flex-1 min-w-0 text-[11px] font-mono"
-                title={openCodeUrl}
-              >
-                {(() => {
-                  try {
-                    const url = new URL(openCodeUrl)
-                    const path = url.pathname.length > 20 ? url.pathname.slice(0, 17) + '...' : url.pathname
-                    return url.host + path
-                  } catch {
-                    return openCodeUrl.replace(/^https?:\/\//, '').slice(0, 30)
-                  }
-                })()}
-              </a>
-              <button
-                onClick={handleCopy}
-                className={cn(
-                  'text-[10px] px-1.5 py-0.5 rounded-md transition-all shrink-0',
-                  copied
-                    ? 'text-green-500 bg-green-500/10'
-                    : 'text-muted-foreground/50 hover:text-foreground hover:bg-muted/60',
-                )}
-                title="Copy URL"
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </button>
+          <div className="mx-4 border-t border-border/20" />
+          <div className="px-4 py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-2">
+              Context Breakdown
             </div>
-          </PanelSection>
-          <SectionDivider />
+            <ContextBreakdownBar tokens={tokens} />
+          </div>
         </>
       )}
 
       {/* Changes */}
       {diffs && diffs.length > 0 && totalChanges && (
         <>
-          <PanelSection label="Changes">
+          <div className="mx-4 border-t border-border/20" />
+          <div className="px-4 py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-2">
+              Changes
+            </div>
             <div className="flex items-center gap-3 text-[11px] mb-2">
               <span className="text-green-500 font-medium">+{totalChanges.add}</span>
               <span className="text-red-500 font-medium">-{totalChanges.del}</span>
               <span className="text-muted-foreground/50">{diffs.length} file{diffs.length !== 1 ? 's' : ''}</span>
-              <DiffBar additions={totalChanges.add} deletions={totalChanges.del} />
             </div>
             <div className="space-y-1">
               {diffs.slice(0, 8).map((d, i) => (
                 <div key={i} className="flex items-center justify-between text-[10px] text-muted-foreground font-mono gap-2">
                   <span className="truncate flex-1">{d.filename.split('/').pop()}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <DiffBar additions={d.additions} deletions={d.deletions} />
-                    <span className="w-8 text-right">
-                      <span className="text-green-500">+{d.additions}</span>
-                    </span>
-                    <span className="w-8 text-right">
-                      <span className="text-red-500">-{d.deletions}</span>
-                    </span>
+                    <span className="text-green-500">+{d.additions}</span>
+                    <span className="text-red-500">-{d.deletions}</span>
                   </div>
                 </div>
               ))}
@@ -333,55 +372,49 @@ export function SessionPanel({
                 <div className="text-[10px] text-muted-foreground/50 mt-1">...{diffs.length - 8} more</div>
               )}
             </div>
-          </PanelSection>
-          <SectionDivider />
+          </div>
         </>
       )}
 
-      {/* Todos */}
-      {activeTodos.length > 0 && (
+      {/* OpenCode URL */}
+      {openCodeUrl && (
         <>
-          <PanelSection label={`Todos (${activeTodos.length})`}>
-            <div className="space-y-1.5">
-              {activeTodos.slice(0, 5).map((t) => (
-                <div key={t.id} className="flex items-start gap-2 text-[11px]">
-                  <span
-                    className={cn(
-                      'mt-1 w-1.5 h-1.5 rounded-full shrink-0',
-                      t.status === 'in_progress' ? 'bg-blue-500' : 'bg-muted-foreground/30',
-                    )}
-                  />
-                  <span className={t.status === 'in_progress' ? 'text-foreground' : 'text-muted-foreground'}>
-                    {t.content.slice(0, 50)}
-                  </span>
-                </div>
-              ))}
+          <div className="mx-4 border-t border-border/20" />
+          <div className="px-4 py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">
+              OpenCode
             </div>
-          </PanelSection>
-          <SectionDivider />
+            <a
+              href={openCodeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary/70 hover:text-primary hover:underline truncate text-[11px] font-mono block"
+              title={openCodeUrl}
+            >
+              {(() => {
+                try {
+                  const url = new URL(openCodeUrl)
+                  const path = url.pathname.length > 20 ? url.pathname.slice(0, 17) + '...' : url.pathname
+                  return url.host + path
+                } catch {
+                  return openCodeUrl.replace(/^https?:\/\//, '').slice(0, 30)
+                }
+              })()}
+            </a>
+          </div>
         </>
       )}
 
-      {/* Session info (only if no title section above) */}
-      {sessionInfo && !sessionInfo.title && (
+      {/* Raw Messages */}
+      {messages.length > 0 && (
         <>
-          <PanelSection label="Session">
-            <div className="text-foreground font-mono text-[10px] truncate" title={sessionInfo.id}>
-              {sessionInfo.id.slice(0, 12)}...
-            </div>
-            {sessionInfo.summary && (sessionInfo.summary.files > 0 || sessionInfo.summary.additions > 0) && (
-              <div className="flex gap-3 mt-1 text-[10px] font-mono text-muted-foreground">
-                <span>{sessionInfo.summary.files} files</span>
-                <span className="text-green-500">+{sessionInfo.summary.additions}</span>
-                <span className="text-red-500">-{sessionInfo.summary.deletions}</span>
-              </div>
-            )}
-          </PanelSection>
+          <div className="mx-4 border-t border-border/20" />
+          <RawMessagesSection messages={messages} />
         </>
       )}
 
       {/* Empty state */}
-      {!repo && !model && !tokens && !activeTodos.length && !diffs?.length && !sessionInfo && !openCodeUrl && (
+      {!repo && !model && !tokens && !sessionInfo && !openCodeUrl && messages.length === 0 && (
         <div className="px-4 py-8 text-muted-foreground/50 text-center text-[11px]">
           Waiting for session data...
         </div>

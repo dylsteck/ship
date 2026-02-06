@@ -7,7 +7,7 @@ A background agent platform for building software. Sign in with GitHub, chat wit
 ## Tech Stack
 
 - **Monorepo**: Turborepo 2.x with pnpm workspaces
-- **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/ui, AI Elements components
+- **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, Base UI, AI Elements components
 - **Backend**: Cloudflare Workers (Hono framework), Durable Objects for session state
 - **Database**: Cloudflare D1 (SQLite) for user/auth data
 - **Auth**: GitHub OAuth (Arctic) + JWT sessions (jose)
@@ -21,25 +21,63 @@ A background agent platform for building software. Sign in with GitHub, chat wit
 ```
 ship/
 ├── apps/
-│   ├── web/              # Next.js 16 App Router
-│   │   ├── app/          # Routes and layouts
-│   │   │   ├── api/      # API routes (proxy to Cloudflare Worker)
-│   │   │   ├── auth/     # Auth pages
-│   │   │   └── page.tsx  # Home page
-│   │   ├── components/   # React components
-│   │   ├── lib/          # Utilities and business logic
-│   │   │   ├── dal/      # Data Access Layer (session verification)
-│   │   │   └── utils/    # Helpers
-│   │   └── .env.example  # Environment template
-│   └── api/              # Cloudflare Worker
+│   ├── web/                  # Next.js 16 App Router
+│   │   ├── app/              # Routes and layouts
+│   │   │   ├── (app)/        # Authenticated app routes
+│   │   │   │   └── dashboard/# Dashboard with chat UI
+│   │   │   │       ├── hooks/     # useDashboardChat, useDashboardSSE
+│   │   │   │       └── components/# DashboardHeader, Messages, Composer
+│   │   │   ├── api/          # API routes (auth, proxy)
+│   │   │   └── page.tsx      # Home → redirects to dashboard
+│   │   ├── components/       # React components
+│   │   │   ├── chat/         # session-panel.tsx (Context sidebar)
+│   │   │   ├── session/      # Session management UI
+│   │   │   └── app-sidebar.tsx
+│   │   └── lib/              # Utilities and business logic
+│   │       ├── ai-elements-adapter.ts  # SSE → UIMessage transforms
+│   │       ├── sse-types.ts            # SSE event type definitions
+│   │       ├── sse-parser.ts           # SSE stream parser
+│   │       ├── api/                    # API client + SWR hooks
+│   │       └── dal/                    # Data Access Layer
+│   └── api/                  # Cloudflare Worker
 │       ├── src/
-│       │   ├── index.ts  # Hono app entry point
-│       │   └── env.d.ts  # Environment types
-│       ├── wrangler.toml # Worker configuration
+│       │   ├── index.ts      # Hono app entry point
+│       │   └── env.d.ts      # Environment types
+│       ├── wrangler.toml     # Worker configuration
 │       └── .dev.vars.example # Local secrets template
 ├── packages/
-│   └── ui/               # Shared UI components
-└── .planning/            # GSD planning artifacts
+│   └── ui/                   # Shared UI components (@ship/ui)
+│       └── src/
+│           ├── ai-elements/  # Chat UI primitives
+│           │   ├── code-block.tsx  # Shiki syntax highlighting
+│           │   ├── steps.tsx       # Collapsible steps (OpenCode-style)
+│           │   ├── tool.tsx        # Tool invocation cards with icons
+│           │   ├── reasoning.tsx   # Reasoning display
+│           │   └── markdown.tsx    # Markdown renderer
+│           └── index.ts
+└── .planning/                # GSD planning artifacts
+```
+
+## Key Architecture Patterns
+
+### Message Flow
+
+1. **SSE Streaming**: Agent events stream via SSE from the OpenCode API
+2. **Adapter Layer** (`ai-elements-adapter.ts`): Transforms SSE events into `UIMessage` objects — the single source of truth for all message state
+3. **UIMessage**: Contains text content, tool invocations, reasoning blocks, elapsed time, and prompt data all on one object
+4. **Reload Persistence**: The `parts` JSON string from the API is parsed on reload to restore reasoning, tools, and timing data
+
+### Chat Hooks
+
+- `use-dashboard-chat.ts` — State management, WebSocket connection, history loading
+- `use-dashboard-sse.ts` — SSE streaming handler, transforms events via adapter
+
+### UI Components (`@ship/ui`)
+
+- **Steps**: Collapsible "Show steps / Hide steps" with step count and elapsed time
+- **Tool**: Tool invocation cards with per-tool icons (Read → glasses, Bash → terminal, etc.)
+- **CodeBlock**: Syntax-highlighted code blocks using Shiki with `github-dark` theme
+- **Session Panel**: OpenCode-style Context sidebar with stats grid, token breakdown bar, and raw messages viewer
 
 ## Quick Start
 
@@ -80,6 +118,7 @@ SESSION_SECRET=your-32-char-secret-key-here-min
 
 # API Configuration (defaults work for local development)
 API_BASE_URL=http://localhost:8787
+NEXT_PUBLIC_API_URL=http://localhost:8787
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 # Optional: Context7 API key for documentation search MCP
@@ -173,7 +212,7 @@ From the root directory:
 
 ```bash
 pnpm dev         # Start all development servers
-pnpm build       # Build all apps
+pnpm build       # Build all apps (uses turbo)
 pnpm lint        # Lint all packages
 pnpm type-check  # TypeScript checks
 ```

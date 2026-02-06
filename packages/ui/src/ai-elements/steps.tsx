@@ -44,28 +44,26 @@ export function Steps({ children, isStreaming = false, elapsed, toolCount, class
   if (elapsed && elapsed > 0) {
     summaryParts.push(formatElapsed(elapsed))
   }
+  const summaryText = summaryParts.length > 0 ? ` · ${summaryParts.join(' · ')}` : ''
 
   return (
     <CollapsiblePrimitive.Root open={isOpen} onOpenChange={setIsOpen}>
       <CollapsiblePrimitive.Trigger
         className={cn(
-          'flex items-center gap-2 text-[13px] text-muted-foreground/70 hover:text-muted-foreground transition-colors py-1 group',
+          'flex items-center gap-1.5 text-[13px] text-muted-foreground/70 hover:text-muted-foreground transition-colors py-1 group',
           className,
         )}
       >
+        {/* Triangle caret icon */}
         <svg
           className={cn(
-            'w-3 h-3 transition-transform text-muted-foreground/40',
+            'w-3 h-3 transition-transform duration-150 text-muted-foreground/50',
             isOpen && 'rotate-90',
           )}
           fill="currentColor"
-          viewBox="0 0 20 20"
+          viewBox="0 0 16 16"
         >
-          <path
-            fillRule="evenodd"
-            d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-            clipRule="evenodd"
-          />
+          <path d="M6 3l6 5-6 5V3z" />
         </svg>
         {isStreaming ? (
           <span className="flex items-center gap-2">
@@ -74,14 +72,13 @@ export function Steps({ children, isStreaming = false, elapsed, toolCount, class
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary/60" />
             </span>
             Working...
+            {summaryText && <span className="text-muted-foreground/40">{summaryText}</span>}
           </span>
         ) : (
           <span>
-            Show steps
-            {summaryParts.length > 0 && (
-              <span className="ml-1.5 text-muted-foreground/40">
-                {summaryParts.join(' · ')}
-              </span>
+            {isOpen ? 'Hide steps' : 'Show steps'}
+            {summaryText && (
+              <span className="text-muted-foreground/40">{summaryText}</span>
             )}
           </span>
         )}

@@ -221,15 +221,16 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         }}
       />
       <SidebarInset>
-        <div className="flex h-screen flex-col relative overflow-hidden">
-          <DashboardHeader
-            activeSessionId={activeSessionId}
-            selectedRepo={selectedRepo}
-            wsStatus={wsStatus}
-          />
+        <div className="flex h-screen relative overflow-hidden">
+          {/* Main column: header + content + composer */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <DashboardHeader
+              activeSessionId={activeSessionId}
+              selectedRepo={selectedRepo}
+              wsStatus={wsStatus}
+            />
 
-          <div className="flex-1 flex relative z-10 overflow-hidden">
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
               <div
                 className={cn(
                   'flex-1 overflow-hidden',
@@ -270,39 +271,41 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                 canSubmit={canSubmit}
               />
             </div>
-
-            {activeSessionId && (
-              <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden md:block overflow-y-auto h-full no-scrollbar">
-                <SessionPanel
-                  sessionId={activeSessionId}
-                  repo={selectedRepo ? { owner: selectedRepo.owner, name: selectedRepo.name } : undefined}
-                  model={
-                    selectedModel
-                      ? {
-                          id: selectedModel.id,
-                          name: selectedModel.name,
-                          provider: selectedModel.provider,
-                          mode: mode,
-                        }
-                      : undefined
-                  }
-                  tokens={
-                    lastStepCost?.tokens
-                      ? {
-                          ...lastStepCost.tokens,
-                          contextLimit: 200000,
-                        }
-                      : undefined
-                  }
-                  cost={totalCost > 0 ? totalCost : undefined}
-                  todos={sessionTodos}
-                  diffs={fileDiffs}
-                  openCodeUrl={openCodeUrl || undefined}
-                  sessionInfo={sessionInfo || undefined}
-                />
-              </div>
-            )}
           </div>
+
+          {/* Right sidebar — spans full page height */}
+          {activeSessionId && (
+            <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden md:block overflow-y-auto no-scrollbar">
+              <SessionPanel
+                sessionId={activeSessionId}
+                repo={selectedRepo ? { owner: selectedRepo.owner, name: selectedRepo.name } : undefined}
+                model={
+                  selectedModel
+                    ? {
+                        id: selectedModel.id,
+                        name: selectedModel.name,
+                        provider: selectedModel.provider,
+                        mode: mode,
+                      }
+                    : undefined
+                }
+                tokens={
+                  lastStepCost?.tokens
+                    ? {
+                        ...lastStepCost.tokens,
+                        contextLimit: 200000,
+                      }
+                    : undefined
+                }
+                cost={totalCost > 0 ? totalCost : undefined}
+                todos={sessionTodos}
+                diffs={fileDiffs}
+                openCodeUrl={openCodeUrl || undefined}
+                sessionInfo={sessionInfo || undefined}
+                messages={messages}
+              />
+            </div>
+          )}
         </div>
       </SidebarInset>
 

@@ -17,9 +17,10 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "nanoid": "^5.1.5",
+    "shiki": "^3.22.0",
     "tailwind-merge": "^3.4.0",
-    "use-stick-to-bottom": "^1.0.0",
-    "nanoid": "^5.1.5"
+    "use-stick-to-bottom": "^1.0.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",

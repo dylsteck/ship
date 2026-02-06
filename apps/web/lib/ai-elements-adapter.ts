@@ -371,6 +371,7 @@ interface ApiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt: number
+  parts?: string // JSON string of MessagePart[]
   inlineTools?: Array<{
     name: string
     status: 'pending' | 'in_progress' | 'completed' | 'failed'
@@ -382,7 +383,8 @@ interface ApiMessage {
 }
 
 /**
- * Map an array of API messages to UIMessages (for loading history on reload)
+ * Map an array of API messages to UIMessages (for loading history on reload).
+ * Parses the `parts` JSON string to restore reasoning, tool invocations, and elapsed time.
  */
 export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
   return apiMessages.map((msg) => {
@@ -392,6 +394,59 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
       content: msg.content,
       createdAt: new Date(msg.createdAt * 1000),
     }
+
+    // Try to parse the `parts` JSON string first — it's the most complete source
+    if (msg.parts) {
+      try {
+        const parts = JSON.parse(msg.parts) as MessagePart[]
+        const tools: ToolInvocation[] = []
+        const reasoningTexts: string[] = []
+        let textContent = ''
+        let elapsed: number | undefined
+
+        for (const part of parts) {
+          switch (part.type) {
+            case 'tool': {
+              const tp = part as ToolPart
+              tools.push(createToolInvocation(tp))
+              break
+            }
+            case 'reasoning': {
+              const rp = part as ReasoningPart
+              if (rp.text) reasoningTexts.push(rp.text)
+              break
+            }
+            case 'text': {
+              const txp = part as TextPart
+              if (txp.text) textContent += txp.text
+              break
+            }
+            case 'step-finish': {
+              const sfp = part as StepFinishPart
+              if (sfp.cost !== undefined) {
+                // Use timing from the part if available
+                const time = (sfp as StepFinishPart & { time?: { start: number; end?: number } }).time
+                if (time?.start && time?.end) {
+                  elapsed = time.end - time.start
+                }
+              }
+              break
+            }
+          }
+        }
+
+        if (tools.length > 0) uiMsg.toolInvocations = tools
+        if (reasoningTexts.length > 0) uiMsg.reasoning = reasoningTexts
+        if (!uiMsg.content && textContent) uiMsg.content = textContent
+        if (elapsed) uiMsg.elapsed = elapsed
+
+        return uiMsg
+      } catch {
+        // Fall through to legacy fields
+      }
+    }
+
+    // Fallback: use inlineTools and reasoningBlocks
     if (msg.inlineTools?.length) {
       uiMsg.toolInvocations = msg.inlineTools.map((t) => ({
         toolCallId: `${msg.id}-${t.name}`,
