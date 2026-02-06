@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcpServers": {
+    "vercel": {
+      "type": "sse",
+      "url": "http://localhost:8787/mcp/vercel",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    "grep": {
+      "type": "sse",
+      "url": "https://mcp.grep.app"
+    },
+    "context7": {
+      "type": "sse",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+      }
+    }
+  },
+  "tools": {
+    "vercel*": true,
+    "grep*": true,
+    "context7*": true
+  }
+}

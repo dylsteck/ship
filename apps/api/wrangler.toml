@@ -1,0 +1,63 @@
+name = "ship-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects
+[durable_objects]
+bindings = [
+  { name = "SESSION_DO", class_name = "SessionDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionDO"]
+
+# D1 Database
+# Create database: wrangler d1 create ship-db
+# Copy the database_id from the output to replace "local" below
+[[d1_databases]]
+binding = "DB"
+database_name = "ship-db"
+database_id = "5f252459-a754-4506-b9be-4004a5751af5"  # Replace with actual database_id from wrangler d1 create
+
+# Environment Variables
+# Non-secret configuration
+[vars]
+ENVIRONMENT = "development"
+
+# Secrets (not stored in wrangler.toml - set via wrangler secret put)
+#
+# ANTHROPIC_API_KEY: LLM API key for agent operations (Phase 3)
+#   Set with: wrangler secret put ANTHROPIC_API_KEY
+#   Get from: https://console.anthropic.com/settings/keys
+#
+# API_SECRET: Internal API authentication between web and API services
+#   Set with: wrangler secret put API_SECRET
+#   Generate with: openssl rand -hex 32
+
+# Production Environment
+[env.production]
+name = "ship-api-production"
+vars = { ENVIRONMENT = "production" }
+compatibility_flags = ["nodejs_compat"]
+
+[env.production.durable_objects]
+bindings = [
+  { name = "SESSION_DO", class_name = "SessionDO" }
+]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ship-db-production"
+database_id = "86472e95-9841-4cec-85e9-655e3c7706b8"
+
+# Staging Environment
+[env.staging]
+name = "ship-api-staging"
+vars = { ENVIRONMENT = "staging" }
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "ship-db-staging"
+database_id = "TBD"  # Replace with staging database_id
