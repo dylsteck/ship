@@ -179,9 +179,11 @@ export function DashboardMessages({
 
               {/* Assistant response content — always visible, outside steps */}
               {message.role === 'assistant' && message.content && (
-                <Response>
-                  <Markdown content={message.content} />
-                </Response>
+                <div className={hasSteps ? 'mt-3' : undefined}>
+                  <Response>
+                    <Markdown content={message.content} />
+                  </Response>
+                </div>
               )}
             </Message>
           )

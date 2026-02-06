@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Refresh01Icon, Search01Icon, Settings01Icon, Logout01Icon, Cancel01Icon } from '@hugeicons/core-free-icons'
+import { Search01Icon, Settings01Icon, Logout01Icon, Cancel01Icon } from '@hugeicons/core-free-icons'
 import { useDeleteSession, type ChatSession } from '@/lib/api'
 import {
   Sidebar,
@@ -41,6 +41,7 @@ interface AppSidebarProps {
   onSearchChange: (value: string) => void
   currentSessionId?: string
   onSessionDeleted?: (sessionId: string) => void
+  isStreaming?: boolean
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -51,14 +52,14 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(seconds / 86400)}d`
 }
 
-export function AppSidebar({ sessions, user, searchQuery, onSearchChange, currentSessionId, onSessionDeleted }: AppSidebarProps) {
+export function AppSidebar({ sessions, user, searchQuery, onSearchChange, currentSessionId, onSessionDeleted, isStreaming = false }: AppSidebarProps) {
   const router = useRouter()
   const { deleteSession } = useDeleteSession()
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
-  
+
   const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
-  const filtered = sessions.filter(s => 
-    searchQuery === '' || 
+  const filtered = sessions.filter(s =>
+    searchQuery === '' ||
     s.repoName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.repoOwner.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -71,22 +72,16 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
 
     try {
       setDeletingSessionId(session.id)
-      // Delete from API first
       await deleteSession({ sessionId: session.id })
-      // Update local state for immediate UI feedback
       onSessionDeleted?.(session.id)
-      // If we deleted the currently viewed session, redirect to home and refresh
       if (currentSessionId === session.id) {
         router.push('/')
-        // Force a full page refresh to ensure clean state
         window.location.href = '/'
       } else {
-        // Refresh server state to ensure consistency
         router.refresh()
       }
     } catch (error) {
       console.error('Failed to delete session:', error)
-      // Refresh to get correct state
       router.refresh()
     } finally {
       setDeletingSessionId(null)
@@ -106,8 +101,11 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
             <span className="text-sm font-semibold text-foreground group-data-[collapsible=icon]:hidden">Ship</span>
           </div>
           <div className="flex items-center gap-1 group-data-[collapsible=icon]:hidden">
-            <Button variant="ghost" size="icon" className="size-7" onClick={() => router.refresh()}>
-              <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-3.5" />
+            {/* New chat button */}
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => router.push('/')} title="New chat">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+              </svg>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -170,31 +168,40 @@ export function AppSidebar({ sessions, user, searchQuery, onSearchChange, curren
             <SidebarGroupLabel className="text-[9px] uppercase tracking-wide text-muted-foreground/70">Active</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {activeSessions.map((session) => (
-                  <SidebarMenuItem key={session.id}>
-                    <SidebarMenuButton render={<Link href={`/session/${session.id}`} />} tooltip={`${session.repoOwner}/${session.repoName}`}>
-                      <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
-                        <span className="text-xs font-medium truncate">{session.repoOwner}/{session.repoName}</span>
-                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(session.lastActivity)}</span>
-                      </div>
-                    </SidebarMenuButton>
-                    <SidebarMenuAction
-                      showOnHover
-                      title="Delete session"
-                      aria-label="Delete session"
-                      disabled={deletingSessionId === session.id}
-                      className="cursor-pointer disabled:opacity-50"
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        if (deletingSessionId) return
-                        handleDeleteSession(session)
-                      }}
-                    >
-                      <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-                    </SidebarMenuAction>
-                  </SidebarMenuItem>
-                ))}
+                {activeSessions.map((session) => {
+                  const isCurrentAndStreaming = isStreaming && currentSessionId === session.id
+                  return (
+                    <SidebarMenuItem key={session.id}>
+                      <SidebarMenuButton render={<Link href={`/session/${session.id}`} />} tooltip={`${session.repoOwner}/${session.repoName}`}>
+                        <div className="flex items-center gap-2 min-w-0 group-data-[collapsible=icon]:hidden">
+                          {/* Spinner when this session is actively streaming */}
+                          {isCurrentAndStreaming && (
+                            <span className="shrink-0 w-3 h-3 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin" />
+                          )}
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-medium truncate">{session.repoOwner}/{session.repoName}</span>
+                            <span className="text-[10px] text-muted-foreground">{formatRelativeTime(session.lastActivity)}</span>
+                          </div>
+                        </div>
+                      </SidebarMenuButton>
+                      <SidebarMenuAction
+                        showOnHover
+                        title="Delete session"
+                        aria-label="Delete session"
+                        disabled={deletingSessionId === session.id}
+                        className="cursor-pointer disabled:opacity-50"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (deletingSessionId) return
+                          handleDeleteSession(session)
+                        }}
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
+                      </SidebarMenuAction>
+                    </SidebarMenuItem>
+                  )
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SidebarProvider, SidebarInset, cn } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -203,6 +203,27 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     activeRepos: new Set(localSessions.map((s) => `${s.repoOwner}/${s.repoName}`)).size,
   }
 
+  // Right sidebar state — persisted in localStorage
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ship-right-sidebar')
+      if (saved !== null) setRightSidebarOpen(saved !== 'false')
+    } catch {}
+  }, [])
+  const toggleRightSidebar = useCallback(() => {
+    setRightSidebarOpen((prev) => {
+      const next = !prev
+      try { localStorage.setItem('ship-right-sidebar', String(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  // Derive the display title from sessionInfo or sessionTitle state
+  const displayTitle = useMemo(() => {
+    return sessionInfo?.title || sessionTitle || undefined
+  }, [sessionInfo?.title, sessionTitle])
+
   const sidebarDefaultOpen = !!activeSessionId
   const canSubmit = Boolean(
     activeSessionId ? prompt.trim() && !isStreaming : selectedRepo && prompt.trim() && !isCreating,
@@ -219,6 +240,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         onSessionDeleted={(sessionId) => {
           setLocalSessions((prev) => prev.filter((s) => s.id !== sessionId))
         }}
+        isStreaming={isStreaming}
       />
       <SidebarInset>
         <div className="flex h-screen relative overflow-hidden">
@@ -226,8 +248,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           <div className="flex-1 flex flex-col min-w-0">
             <DashboardHeader
               activeSessionId={activeSessionId}
-              selectedRepo={selectedRepo}
+              sessionTitle={displayTitle}
               wsStatus={wsStatus}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={toggleRightSidebar}
             />
 
             <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
@@ -274,7 +298,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           </div>
 
           {/* Right sidebar — spans full page height */}
-          {activeSessionId && (
+          {activeSessionId && rightSidebarOpen && (
             <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden md:block overflow-y-auto no-scrollbar">
               <SessionPanel
                 sessionId={activeSessionId}
