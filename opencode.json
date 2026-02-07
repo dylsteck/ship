@@ -18,11 +18,16 @@
       "headers": {
         "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
       }
+    },
+    "deepwiki": {
+      "type": "remote",
+      "url": "https://mcp.deepwiki.com/mcp"
     }
   },
   "tools": {
     "vercel*": true,
     "grep*": true,
-    "context7*": true
+    "context7*": true,
+    "deepwiki*": true
   }
 }
