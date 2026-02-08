@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Button,
   DropdownMenu,
@@ -11,6 +12,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
   cn,
 } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -57,6 +59,11 @@ export function ChatComposer({
   onSubmit,
   isCreating,
 }: ChatComposerProps) {
+  const [repoSearch, setRepoSearch] = useState('')
+  const filteredRepos = repoSearch
+    ? repos.filter((r) => r.fullName.toLowerCase().includes(repoSearch.toLowerCase()))
+    : repos
+
   return (
     <div className="rounded-3xl border border-border/60 bg-card shadow-sm overflow-hidden transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-foreground/10">
       {/* Main input area */}
@@ -107,25 +114,36 @@ export function ChatComposer({
                   </Button>
                 }
               />
-              <DropdownMenuContent align="start" className="w-[280px] max-h-[300px] overflow-y-auto">
-                {reposLoading ? (
-                  <div className="p-3 text-center text-sm text-muted-foreground">Loading repos...</div>
-                ) : repos.length === 0 ? (
-                  <div className="p-3 text-center text-sm text-muted-foreground">No repos found</div>
-                ) : (
-                  <DropdownMenuGroup>
-                    {repos.slice(0, 100).map((repo) => (
-                      <DropdownMenuItem key={repo.id} onClick={() => onRepoSelect(repo)}>
-                        <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
-                        <span className="truncate flex-1">{repo.fullName}</span>
-                        {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
-                        {selectedRepo?.id === repo.id && (
-                          <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="text-foreground" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                )}
+              <DropdownMenuContent align="start" className="w-[280px]">
+                <div className="p-2 pb-1">
+                  <Input
+                    placeholder="Search repos..."
+                    value={repoSearch}
+                    onChange={(e) => setRepoSearch(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-[250px] overflow-y-auto">
+                  {reposLoading ? (
+                    <div className="p-3 text-center text-sm text-muted-foreground">Loading repos...</div>
+                  ) : filteredRepos.length === 0 ? (
+                    <div className="p-3 text-center text-sm text-muted-foreground">No repos found</div>
+                  ) : (
+                    <DropdownMenuGroup>
+                      {filteredRepos.slice(0, 100).map((repo) => (
+                        <DropdownMenuItem key={repo.id} onClick={() => onRepoSelect(repo)}>
+                          <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
+                          <span className="truncate flex-1">{repo.fullName}</span>
+                          {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
+                          {selectedRepo?.id === repo.id && (
+                            <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="text-foreground" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  )}
+                </div>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
