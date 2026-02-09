@@ -15,8 +15,6 @@ interface AIMessageListProps {
   streamingMessageId?: string | null
   streamingLabel?: string
   onRetryError?: (messageId: string) => void
-  onOpenVSCode?: () => void
-  onOpenTerminal?: () => void
   className?: string
 }
 
@@ -42,8 +40,6 @@ function MessageListContent({
   streamingMessageId,
   streamingLabel,
   onRetryError,
-  onOpenVSCode,
-  onOpenTerminal,
   className,
 }: AIMessageListProps) {
   const { openSubagent, closeSubagent, viewState } = useSubagent()
@@ -90,8 +86,6 @@ function MessageListContent({
                     category={msg.errorCategory || 'persistent'}
                     retryable={msg.retryable || false}
                     onRetry={onRetryError ? () => onRetryError(msg.id) : undefined}
-                    onOpenVSCode={onOpenVSCode}
-                    onOpenTerminal={onOpenTerminal}
                   />
                 </div>
               )

@@ -26,8 +26,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 interface ChatInterfaceProps {
   sessionId: string
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void
-  onOpenVSCode?: () => void
-  onOpenTerminal?: () => void
   onOpenCodeUrl?: (url: string) => void
   initialPrompt?: string | null
   initialMode?: 'build' | 'plan'
@@ -49,8 +47,6 @@ interface ChatInterfaceProps {
 export function ChatInterface({
   sessionId,
   onStatusChange,
-  onOpenVSCode,
-  onOpenTerminal,
   onOpenCodeUrl,
   initialPrompt,
   initialMode = 'build',
@@ -375,8 +371,6 @@ export function ChatInterface({
         streamingMessageId={streamingMessageRef.current}
         streamingLabel={streamingLabel}
         onRetryError={handleRetryError}
-        onOpenVSCode={onOpenVSCode}
-        onOpenTerminal={onOpenTerminal}
       />
 
       {/* Input Area */}

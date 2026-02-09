@@ -4,9 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { ChatInterface } from '@/components/chat/chat-interface'
 import { SessionSidebar } from '@/components/chat/session-sidebar'
 import { AgentStatus } from '@/components/session/status-indicator'
-import { SandboxToolbar } from '@/components/sandbox/sandbox-toolbar'
-import { VSCodeDrawer } from '@/components/sandbox/vscode-drawer'
-import { TerminalDrawer } from '@/components/sandbox/terminal-drawer'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -65,9 +62,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   const [sandboxProgress, setSandboxProgress] = useState<string | null>(null)
   const [opencodeUrl, setOpencodeUrl] = useState<string | null>(null)
   const [opencodeSessionId, setOpencodeSessionId] = useState<string | null>(null)
-  const [vscodeOpen, setVscodeOpen] = useState(false)
-  const [terminalOpen, setTerminalOpen] = useState(false)
-
   // Refs to track current values (avoids stale closures in intervals)
   const sandboxStatusRef = useRef(sandboxStatus)
   useEffect(() => {
@@ -335,18 +329,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
     }
   }
 
-  const handleOpenVSCode = () => {
-    if (sandboxId && sandboxStatus === 'ready') {
-      setVscodeOpen(true)
-    }
-  }
-
-  const handleOpenTerminal = () => {
-    if (sandboxId && sandboxStatus === 'ready') {
-      setTerminalOpen(true)
-    }
-  }
-
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar
@@ -377,13 +359,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               </div>
             </div>
 
-            {/* Sandbox Toolbar */}
-            <SandboxToolbar
-              sandboxId={sandboxId}
-              sandboxStatus={sandboxStatus}
-              onOpenVSCode={() => setVscodeOpen(true)}
-              onOpenTerminal={() => setTerminalOpen(true)}
-            />
           </header>
 
           {/* Main content: Chat + Side Panel */}
@@ -419,8 +394,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
                 <ChatInterface
                   sessionId={sessionId}
                   onStatusChange={handleStatusChange}
-                  onOpenVSCode={handleOpenVSCode}
-                  onOpenTerminal={handleOpenTerminal}
                   onOpenCodeUrl={setOpencodeUrl}
                   initialPrompt={initialPrompt ?? searchParams.get('prompt')}
                   initialMode={(() => {
@@ -449,9 +422,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
             />
           </div>
 
-          {/* Sandbox Drawers */}
-          <VSCodeDrawer sandboxId={sandboxId} isOpen={vscodeOpen} onOpenChange={setVscodeOpen} />
-          <TerminalDrawer sandboxId={sandboxId} isOpen={terminalOpen} onOpenChange={setTerminalOpen} />
         </div>
       </SidebarInset>
     </SidebarProvider>

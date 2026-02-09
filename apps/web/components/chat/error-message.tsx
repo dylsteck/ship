@@ -16,8 +16,6 @@ export interface ErrorMessageProps {
   category: ErrorCategory
   retryable: boolean
   onRetry?: () => void
-  onOpenVSCode?: () => void
-  onOpenTerminal?: () => void
 }
 
 /**
@@ -132,7 +130,6 @@ function getErrorStyles(category: ErrorCategory): {
  * ErrorMessage component
  *
  * Displays error inline in chat with category-based styling and action buttons.
- * Provides retry, open VS Code, and open terminal actions.
  *
  * Pattern: Inline in chat (not modal) to keep context
  */
@@ -141,8 +138,6 @@ export function ErrorMessage({
   category,
   retryable,
   onRetry,
-  onOpenVSCode,
-  onOpenTerminal,
 }: ErrorMessageProps) {
   const styles = getErrorStyles(category)
   const title = getErrorTitle(category)
@@ -157,32 +152,14 @@ export function ErrorMessage({
           <p className="text-sm text-foreground mt-1 whitespace-pre-wrap">{formattedMessage}</p>
 
           {/* Action buttons */}
-          {(retryable || onOpenVSCode || onOpenTerminal) && (
+          {retryable && onRetry && (
             <div className="flex flex-wrap gap-2 mt-3">
-              {retryable && onRetry && (
-                <button
-                  onClick={onRetry}
-                  className="text-xs px-3 py-1.5 rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Retry
-                </button>
-              )}
-              {onOpenVSCode && (
-                <button
-                  onClick={onOpenVSCode}
-                  className="text-xs px-3 py-1.5 rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Open VS Code
-                </button>
-              )}
-              {onOpenTerminal && (
-                <button
-                  onClick={onOpenTerminal}
-                  className="text-xs px-3 py-1.5 rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Open Terminal
-                </button>
-              )}
+              <button
+                onClick={onRetry}
+                className="text-xs px-3 py-1.5 rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
