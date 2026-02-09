@@ -15,6 +15,7 @@ import {
 } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SessionPanel } from '@/components/chat/session-panel'
+import { TaskDetailSheet } from '@/components/chat/task-detail-sheet'
 import { CreateSessionDialog } from '@/components/session/create-session-dialog'
 import { useGitHubRepos, useModels, useCreateSession, type ChatSession, type GitHubRepo, type ModelInfo, type User } from '@/lib/api'
 import { useDashboardChat } from './hooks/use-dashboard-chat'
@@ -235,6 +236,28 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     }
   }, [isMobile])
 
+  // Task detail sheet state — for sidebar todo clicks
+  const [sidebarSelectedTodo, setSidebarSelectedTodo] = useState<{
+    id: string
+    content: string
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+    priority: 'high' | 'medium' | 'low'
+  } | null>(null)
+  const [sidebarTaskSheetOpen, setSidebarTaskSheetOpen] = useState(false)
+  const handleSidebarTodoClick = useCallback((todo: {
+    id: string
+    content: string
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+    priority: 'high' | 'medium' | 'low'
+  }) => {
+    setSidebarSelectedTodo(todo)
+    setSidebarTaskSheetOpen(true)
+  }, [])
+  const handleSidebarTaskSheetClose = useCallback(() => {
+    setSidebarTaskSheetOpen(false)
+    setTimeout(() => setSidebarSelectedTodo(null), 200)
+  }, [])
+
   // Derive the display title from sessionInfo or sessionTitle state
   const displayTitle = useMemo(() => {
     return sessionInfo?.title || sessionTitle || undefined
@@ -344,6 +367,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                 openCodeUrl={openCodeUrl || undefined}
                 sessionInfo={sessionInfo || undefined}
                 messages={messages}
+                onTodoClick={handleSidebarTodoClick}
               />
             </div>
           )}
@@ -383,6 +407,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   openCodeUrl={openCodeUrl || undefined}
                   sessionInfo={sessionInfo || undefined}
                   messages={messages}
+                  onTodoClick={handleSidebarTodoClick}
                 />
               </SheetContent>
             </Sheet>
@@ -396,6 +421,16 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         onCreate={handleCreate}
         userId={userId}
       />
+
+      {/* Task Detail Sheet — opened from sidebar todo clicks */}
+      {activeSessionId && (
+        <TaskDetailSheet
+          isOpen={sidebarTaskSheetOpen}
+          onClose={handleSidebarTaskSheetClose}
+          todo={sidebarSelectedTodo}
+          messages={messages}
+        />
+      )}
     </SidebarProvider>
   )
 }

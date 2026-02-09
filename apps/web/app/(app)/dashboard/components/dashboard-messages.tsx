@@ -1,12 +1,21 @@
 'use client'
 
+import { useState, useCallback } from 'react'
 import { Message, Tool, Response, Loader, Task, Steps, Conversation, ConversationScrollButton } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
+import { TaskDetailSheet } from '@/components/chat/task-detail-sheet'
 import { PermissionPrompt } from './permission-prompt'
 import { QuestionPrompt } from './question-prompt'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { getStreamingStatus } from '@/lib/ai-elements-adapter'
+
+interface TodoItem {
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  priority: 'high' | 'medium' | 'low'
+}
 
 interface DashboardMessagesProps {
   activeSessionId: string | null
@@ -14,12 +23,7 @@ interface DashboardMessagesProps {
   isStreaming: boolean
   streamingMessageId: string | null
   streamStartTime: number | null
-  sessionTodos?: Array<{
-    id: string
-    content: string
-    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-    priority: 'high' | 'medium' | 'low'
-  }>
+  sessionTodos?: TodoItem[]
 }
 
 export function DashboardMessages({
@@ -30,6 +34,19 @@ export function DashboardMessages({
   streamStartTime,
   sessionTodos = [],
 }: DashboardMessagesProps) {
+  const [selectedTodo, setSelectedTodo] = useState<TodoItem | null>(null)
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false)
+
+  const handleTodoClick = useCallback((todo: TodoItem) => {
+    setSelectedTodo(todo)
+    setTaskSheetOpen(true)
+  }, [])
+
+  const handleTaskSheetClose = useCallback(() => {
+    setTaskSheetOpen(false)
+    // Clear after animation
+    setTimeout(() => setSelectedTodo(null), 200)
+  }, [])
   if (!activeSessionId) return null
 
   const statusLabel = isStreaming ? getStreamingStatus(messages, streamingMessageId) : ''
@@ -192,7 +209,7 @@ export function DashboardMessages({
         {/* Todos */}
         {sessionTodos.length > 0 && (
           <Message role="assistant">
-            <div className="space-y-2">
+            <div className="space-y-1">
               {sessionTodos.map((todo) => {
                 const statusMap: Record<string, 'pending' | 'in_progress' | 'completed' | 'failed'> = {
                   pending: 'pending',
@@ -206,6 +223,7 @@ export function DashboardMessages({
                     title={todo.content}
                     status={statusMap[todo.status] || 'pending'}
                     description={todo.priority !== 'medium' ? `Priority: ${todo.priority}` : undefined}
+                    onClick={() => handleTodoClick(todo)}
                   />
                 )
               })}
@@ -215,6 +233,14 @@ export function DashboardMessages({
       </div>
 
       <ConversationScrollButton />
+
+      {/* Task Detail Sheet */}
+      <TaskDetailSheet
+        isOpen={taskSheetOpen}
+        onClose={handleTaskSheetClose}
+        todo={selectedTodo}
+        messages={messages}
+      />
     </Conversation>
   )
 }

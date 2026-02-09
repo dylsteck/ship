@@ -54,6 +54,7 @@ interface SessionPanelProps {
   openCodeUrl?: string
   messages?: UIMessage[]
   className?: string
+  onTodoClick?: (todo: Todo) => void
 }
 
 // ============ Helpers ============
@@ -303,6 +304,7 @@ export function SessionPanel({
   openCodeUrl,
   messages = [],
   className,
+  onTodoClick,
 }: SessionPanelProps) {
   const totalTokens = tokens ? tokens.input + tokens.output + tokens.reasoning : 0
   const contextLimit = tokens?.contextLimit || 200000
@@ -322,6 +324,31 @@ export function SessionPanel({
     )
   }, [diffs])
 
+  // Separate active/completed todos
+  const activeTodos = useMemo(
+    () => (todos || []).filter((t) => t.status === 'pending' || t.status === 'in_progress'),
+    [todos],
+  )
+  const completedTodos = useMemo(
+    () => (todos || []).filter((t) => t.status === 'completed' || t.status === 'cancelled'),
+    [todos],
+  )
+
+  // Extract currently running tools from messages
+  const activeTools = useMemo(() => {
+    const tools: Array<{ toolCallId: string; toolName: string; title?: string }> = []
+    for (let i = messages.length - 1; i >= 0 && tools.length < 5; i--) {
+      const msg = messages[i]
+      if (!msg.toolInvocations) continue
+      for (const tool of msg.toolInvocations) {
+        if (tool.state === 'call' || tool.state === 'partial-call') {
+          tools.push({ toolCallId: tool.toolCallId, toolName: tool.toolName, title: tool.title })
+        }
+      }
+    }
+    return tools
+  }, [messages])
+
   return (
     <div className={cn('flex flex-col text-xs overflow-y-auto', className)}>
       {/* Header */}
@@ -333,6 +360,92 @@ export function SessionPanel({
           </div>
         )}
       </div>
+
+      {/* Active Tools */}
+      {activeTools.length > 0 && (
+        <>
+          <div className="px-4 py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-2">
+              Running
+            </div>
+            <div className="space-y-1.5">
+              {activeTools.map((tool) => (
+                <div key={tool.toolCallId} className="flex items-center gap-2">
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+                  </span>
+                  <span className="text-[11px] text-foreground/80 font-medium">{tool.toolName}</span>
+                  {tool.title && (
+                    <span className="text-[10px] text-muted-foreground/50 truncate">{tool.title}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mx-4 border-t border-border/20" />
+        </>
+      )}
+
+      {/* Active Tasks / Todos */}
+      {activeTodos.length > 0 && (
+        <>
+          <div className="px-4 py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-2">
+              Tasks ({activeTodos.length})
+            </div>
+            <div className="space-y-1">
+              {activeTodos.map((todo) => {
+                const isInProgress = todo.status === 'in_progress'
+                const isClickable = Boolean(onTodoClick)
+                return (
+                  <div
+                    key={todo.id}
+                    className={cn(
+                      'flex items-start gap-2 py-1 rounded-md transition-colors',
+                      isClickable && 'cursor-pointer hover:bg-muted/30 px-1.5 -mx-1.5',
+                    )}
+                    onClick={onTodoClick ? () => onTodoClick(todo) : undefined}
+                    role={isClickable ? 'button' : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
+                  >
+                    {isInProgress ? (
+                      <span className="relative flex h-3 w-3 shrink-0 mt-0.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/30 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 border-[1.5px] border-primary/30 border-t-primary animate-spin" />
+                      </span>
+                    ) : (
+                      <span className="w-3 h-3 rounded-full border border-muted-foreground/30 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className={cn(
+                        'text-[11px] leading-tight',
+                        isInProgress ? 'text-foreground/90 font-medium' : 'text-muted-foreground/70',
+                      )}>
+                        {todo.content}
+                      </p>
+                      {todo.priority === 'high' && (
+                        <span className="text-[9px] text-orange-500/70">high priority</span>
+                      )}
+                    </div>
+                    {isClickable && (
+                      <svg className="w-3 h-3 text-muted-foreground/30 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {completedTodos.length > 0 && (
+              <div className="text-[10px] text-muted-foreground/40 mt-1.5">
+                {completedTodos.length} completed
+              </div>
+            )}
+          </div>
+          <div className="mx-4 border-t border-border/20" />
+        </>
+      )}
 
       {/* Stats Grid */}
       <div className="px-4 py-3 space-y-0.5">
