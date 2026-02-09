@@ -26,8 +26,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 interface ChatInterfaceProps {
   sessionId: string
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void
-  onOpenVSCode?: () => void
-  onOpenTerminal?: () => void
   onOpenCodeUrl?: (url: string) => void
   initialPrompt?: string | null
   initialMode?: 'build' | 'plan'
@@ -49,8 +47,6 @@ interface ChatInterfaceProps {
 export function ChatInterface({
   sessionId,
   onStatusChange,
-  onOpenVSCode,
-  onOpenTerminal,
   onOpenCodeUrl,
   initialPrompt,
   initialMode = 'build',
@@ -357,7 +353,7 @@ export function ChatInterface({
     : undefined
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-background">
+    <div className="flex h-full flex-col bg-background">
       {/* Connection status indicator */}
       {wsStatus !== 'connected' && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200">
@@ -375,12 +371,10 @@ export function ChatInterface({
         streamingMessageId={streamingMessageRef.current}
         streamingLabel={streamingLabel}
         onRetryError={handleRetryError}
-        onOpenVSCode={onOpenVSCode}
-        onOpenTerminal={onOpenTerminal}
       />
 
       {/* Input Area */}
-      <div className="border-t bg-white dark:bg-background p-4">
+      <div className="border-t bg-white dark:bg-background p-3 sm:p-4">
         <div className="max-w-3xl mx-auto">
           <EnhancedPromptInput
             onSend={handleSend}

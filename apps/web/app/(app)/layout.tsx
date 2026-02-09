@@ -8,7 +8,7 @@ export default async function AppLayout({
   await verifySession()
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen min-h-[100dvh] bg-background">
       {children}
     </div>
   )

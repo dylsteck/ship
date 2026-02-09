@@ -97,8 +97,8 @@ export function DashboardComposer({
       className={cn(
         'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
         activeSessionId
-          ? 'mt-auto pb-4 px-6' // Bottom position
-          : 'absolute inset-0 flex items-center justify-center px-6', // Center position
+          ? 'mt-auto pb-3 px-3 sm:pb-4 sm:px-6' // Bottom position
+          : 'absolute inset-0 flex items-center justify-center px-3 sm:px-6', // Center position
       )}
     >
       <div
@@ -153,11 +153,11 @@ export function DashboardComposer({
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button variant="ghost" className="h-8 px-3 rounded-full gap-1.5">
-                          <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
-                          <span className="max-w-[150px] truncate text-sm">
-                            {selectedRepo ? selectedRepo.fullName : 'Select repo'}
-                          </span>
+                  <Button variant="ghost" className="h-8 px-2 sm:px-3 rounded-full gap-1.5">
+                    <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
+                    <span className="max-w-[100px] sm:max-w-[150px] truncate text-sm">
+                      {selectedRepo ? selectedRepo.fullName : 'Select repo'}
+                    </span>
                           <HugeiconsIcon
                             icon={ArrowDown01Icon}
                             strokeWidth={2}

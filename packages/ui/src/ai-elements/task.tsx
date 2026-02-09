@@ -8,9 +8,10 @@ interface TaskProps {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   description?: string
   className?: string
+  onClick?: () => void
 }
 
-export function Task({ title, status, description, className }: TaskProps) {
+export function Task({ title, status, description, className, onClick }: TaskProps) {
   const statusConfig = {
     pending: {
       icon: <span className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />,
@@ -48,12 +49,30 @@ export function Task({ title, status, description, className }: TaskProps) {
   }
 
   const config = statusConfig[status]
+  const isClickable = Boolean(onClick)
 
   return (
-    <div className={cn('flex items-start gap-3 py-2', className)}>
+    <div
+      className={cn(
+        'flex items-start gap-3 py-2 rounded-md transition-colors',
+        isClickable && 'cursor-pointer hover:bg-muted/40 px-2 -mx-2',
+        className,
+      )}
+      onClick={onClick}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.() } } : undefined}
+    >
       <div className="flex-shrink-0 mt-0.5">{config.icon}</div>
       <div className="flex-1 min-w-0">
-        <p className={cn('text-sm font-medium', config.textClass)}>{title}</p>
+        <div className="flex items-center gap-1.5">
+          <p className={cn('text-sm font-medium', config.textClass)}>{title}</p>
+          {isClickable && (
+            <svg className="w-3 h-3 text-muted-foreground/40 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          )}
+        </div>
         {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
       </div>
     </div>

@@ -1,17 +1,21 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SidebarProvider, SidebarInset, cn } from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
-import { SessionPanel } from '@/components/chat/session-panel'
+import { TaskDetailSheet } from '@/components/chat/task-detail-sheet'
 import { CreateSessionDialog } from '@/components/session/create-session-dialog'
 import { useGitHubRepos, useModels, useCreateSession, type ChatSession, type GitHubRepo, type ModelInfo, type User } from '@/lib/api'
 import { useDashboardChat } from './hooks/use-dashboard-chat'
 import { useDashboardSSE } from './hooks/use-dashboard-sse'
+import { useRightSidebar } from './hooks/use-right-sidebar'
+import { useTaskDetailSheet } from './hooks/use-task-detail-sheet'
+import { useSessionSync } from './hooks/use-session-sync'
 import { DashboardHeader } from './components/dashboard-header'
 import { DashboardMessages } from './components/dashboard-messages'
 import { DashboardComposer } from './components/dashboard-composer'
+import { RightSidebar } from './components/right-sidebar'
 
 interface DashboardClientProps {
   sessions: ChatSession[]
@@ -27,105 +31,60 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const [mode, setMode] = useState<'build' | 'plan'>('build')
   const [prompt, setPrompt] = useState('')
 
-  const {
-    localSessions,
-    setLocalSessions,
-    activeSessionId,
-    setActiveSessionId,
-    messages,
-    setMessages,
-    isStreaming,
-    setIsStreaming,
-    wsStatus,
-    messageQueue,
-    setMessageQueue,
-    openCodeUrl,
-    setOpenCodeUrl,
-    sessionTodos,
-    setSessionTodos,
-    fileDiffs,
-    setFileDiffs,
-    totalCost,
-    setTotalCost,
-    lastStepCost,
-    setLastStepCost,
-    sessionTitle,
-    setSessionTitle,
-    sessionInfo,
-    setSessionInfo,
-    streamStartTime,
-    setStreamStartTime,
-    streamingMessageRef,
-    assistantTextRef,
-    reasoningRef,
-    connectWebSocket,
-    handleStop,
-  } = useDashboardChat(initialSessions)
+  // ---- Core chat state ----
+  const chat = useDashboardChat(initialSessions)
 
+  // ---- SSE streaming ----
   const { handleSend } = useDashboardSSE({
-    activeSessionId,
-    isStreaming,
+    activeSessionId: chat.activeSessionId,
+    isStreaming: chat.isStreaming,
     mode,
-    setIsStreaming,
-    setMessages,
-    setTotalCost,
-    setLastStepCost,
-    setSessionTodos,
-    setFileDiffs,
-    setMessageQueue,
-    setOpenCodeUrl,
-    setSessionTitle,
-    setSessionInfo,
-    streamingMessageRef,
-    assistantTextRef,
-    reasoningRef,
-    setStreamStartTime,
+    setIsStreaming: chat.setIsStreaming,
+    setMessages: chat.setMessages,
+    setTotalCost: chat.setTotalCost,
+    setLastStepCost: chat.setLastStepCost,
+    setSessionTodos: chat.setSessionTodos,
+    setFileDiffs: chat.setFileDiffs,
+    setMessageQueue: chat.setMessageQueue,
+    setOpenCodeUrl: chat.setOpenCodeUrl,
+    setSessionTitle: chat.setSessionTitle,
+    setSessionInfo: chat.setSessionInfo,
+    streamingMessageRef: chat.streamingMessageRef,
+    assistantTextRef: chat.assistantTextRef,
+    reasoningRef: chat.reasoningRef,
+    setStreamStartTime: chat.setStreamStartTime,
   })
 
+  // ---- Data fetching ----
   const { repos, isLoading: reposLoading } = useGitHubRepos(userId)
   const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
   const { createSession, isCreating } = useCreateSession()
 
-  // Activate session from URL param (e.g., /?session=abc123 from /session/[id] redirect)
-  useEffect(() => {
-    const sessionFromUrl = searchParams.get('session')
-    if (sessionFromUrl && !activeSessionId) {
-      setActiveSessionId(sessionFromUrl)
-      connectWebSocket(sessionFromUrl)
-      // Clean up the URL
-      window.history.replaceState({}, '', `/session/${sessionFromUrl}`)
-    }
-  }, [searchParams, activeSessionId, setActiveSessionId, connectWebSocket])
+  // ---- Sync effects (URL param, default model, repo, message queue) ----
+  useSessionSync({
+    sessionParam: searchParams.get('session'),
+    activeSessionId: chat.activeSessionId,
+    setActiveSessionId: chat.setActiveSessionId,
+    connectWebSocket: chat.connectWebSocket,
+    models,
+    selectedModel,
+    setSelectedModel,
+    repos,
+    localSessions: chat.localSessions,
+    setSelectedRepo,
+    isStreaming: chat.isStreaming,
+    messageQueue: chat.messageQueue,
+    setMessageQueue: chat.setMessageQueue,
+    handleSend,
+  })
 
-  // Set default model once loaded
-  useEffect(() => {
-    if (!selectedModel && models.length > 0) {
-      const preferredDefault = models.find((m) => m.id === 'opencode/kimi-k2.5-free' || m.id === 'kimi-k2.5-free')
-      const markedDefault = models.find((m) => m.isDefault)
-      setSelectedModel(preferredDefault || markedDefault || models[0])
-    }
-  }, [models, selectedModel])
+  // ---- Right sidebar ----
+  const rightSidebar = useRightSidebar()
 
-  // Update selectedRepo when activeSessionId changes
-  useEffect(() => {
-    if (activeSessionId) {
-      const session = localSessions.find((s) => s.id === activeSessionId)
-      if (session) {
-        const repo = repos.find((r) => r.owner === session.repoOwner && r.name === session.repoName)
-        if (repo) setSelectedRepo(repo)
-      }
-    }
-  }, [activeSessionId, localSessions, repos])
+  // ---- Task detail sheet (opened from sidebar todo clicks) ----
+  const taskSheet = useTaskDetailSheet()
 
-  // Process queued messages when streaming completes
-  useEffect(() => {
-    if (!isStreaming && messageQueue.length > 0 && activeSessionId) {
-      const [next, ...rest] = messageQueue
-      setMessageQueue(rest)
-      handleSend(next)
-    }
-  }, [isStreaming, messageQueue, activeSessionId, handleSend, setMessageQueue])
-
+  // ---- Session creation ----
   const handleCreate = useCallback(
     async (data: { repoOwner: string; repoName: string; model?: string }) => {
       try {
@@ -148,29 +107,28 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
             archivedAt: null,
             messageCount: 0,
           }
-          setLocalSessions((prev) => [newSessionData, ...prev])
-
-          setActiveSessionId(newSession.id)
+          chat.setLocalSessions((prev) => [newSessionData, ...prev])
+          chat.setActiveSessionId(newSession.id)
           window.history.replaceState({}, '', `/session/${newSession.id}`)
-          connectWebSocket(newSession.id)
+          chat.connectWebSocket(newSession.id)
 
           const trimmedPrompt = prompt.trim()
           if (trimmedPrompt) {
-            const savedPrompt = trimmedPrompt
             setPrompt('')
-            handleSend(savedPrompt, mode, newSession.id)
+            handleSend(trimmedPrompt, mode, newSession.id)
           }
         }
       } catch (error) {
         console.error('Failed to create session:', error)
       }
     },
-    [createSession, userId, selectedModel, prompt, mode, setLocalSessions, setActiveSessionId, connectWebSocket, handleSend, setPrompt],
+    [createSession, userId, selectedModel, prompt, mode, chat, handleSend],
   )
 
+  // ---- Submit / keyboard ----
   const handleSubmit = useCallback(() => {
-    if (activeSessionId) {
-      if (!prompt.trim() || isStreaming) return
+    if (chat.activeSessionId) {
+      if (!prompt.trim() || chat.isStreaming) return
       const content = prompt.trim()
       setPrompt('')
       handleSend(content, mode)
@@ -182,7 +140,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         model: selectedModel?.id,
       })
     }
-  }, [activeSessionId, prompt, isStreaming, selectedRepo, isCreating, selectedModel, handleSend, handleCreate, mode, setPrompt])
+  }, [chat.activeSessionId, chat.isStreaming, prompt, selectedRepo, isCreating, selectedModel, handleSend, handleCreate, mode])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -194,86 +152,66 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     [handleSubmit],
   )
 
-  // Calculate stats
-  const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
-  const recentSessions = localSessions.filter((s) => s.lastActivity > oneWeekAgo)
-  const stats = {
-    sessionsPastWeek: recentSessions.length,
-    messagesPastWeek: recentSessions.reduce((acc, s) => acc + (s.messageCount || 0), 0),
-    activeRepos: new Set(localSessions.map((s) => `${s.repoOwner}/${s.repoName}`)).size,
-  }
-
-  // Right sidebar state — persisted in localStorage
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('ship-right-sidebar')
-      if (saved !== null) setRightSidebarOpen(saved !== 'false')
-    } catch {}
-  }, [])
-  const toggleRightSidebar = useCallback(() => {
-    setRightSidebarOpen((prev) => {
-      const next = !prev
-      try { localStorage.setItem('ship-right-sidebar', String(next)) } catch {}
-      return next
-    })
-  }, [])
-
-  // Derive the display title from sessionInfo or sessionTitle state
-  const displayTitle = useMemo(() => {
-    return sessionInfo?.title || sessionTitle || undefined
-  }, [sessionInfo?.title, sessionTitle])
-
-  const sidebarDefaultOpen = !!activeSessionId
-  const canSubmit = Boolean(
-    activeSessionId ? prompt.trim() && !isStreaming : selectedRepo && prompt.trim() && !isCreating,
+  // ---- Derived values ----
+  const displayTitle = useMemo(
+    () => chat.sessionInfo?.title || chat.sessionTitle || undefined,
+    [chat.sessionInfo?.title, chat.sessionTitle],
   )
 
+  const stats = useMemo(() => {
+    const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
+    const recent = chat.localSessions.filter((s) => s.lastActivity > oneWeekAgo)
+    return {
+      sessionsPastWeek: recent.length,
+      messagesPastWeek: recent.reduce((acc, s) => acc + (s.messageCount || 0), 0),
+      activeRepos: new Set(chat.localSessions.map((s) => `${s.repoOwner}/${s.repoName}`)).size,
+    }
+  }, [chat.localSessions])
+
+  const canSubmit = Boolean(
+    chat.activeSessionId ? prompt.trim() && !chat.isStreaming : selectedRepo && prompt.trim() && !isCreating,
+  )
+
+  // ---- Render ----
   return (
-    <SidebarProvider defaultOpen={sidebarDefaultOpen}>
+    <SidebarProvider defaultOpen={!!chat.activeSessionId}>
       <AppSidebar
-        sessions={localSessions}
+        sessions={chat.localSessions}
         user={user}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        currentSessionId={activeSessionId || undefined}
+        currentSessionId={chat.activeSessionId || undefined}
         currentSessionTitle={displayTitle}
-        onSessionDeleted={(sessionId) => {
-          setLocalSessions((prev) => prev.filter((s) => s.id !== sessionId))
-        }}
-        isStreaming={isStreaming}
+        onSessionDeleted={(id) => chat.setLocalSessions((prev) => prev.filter((s) => s.id !== id))}
+        isStreaming={chat.isStreaming}
       />
+
       <SidebarInset>
-        <div className="flex h-screen relative overflow-hidden">
-          {/* Main column: header + content + composer */}
+        <div className="flex h-screen h-[100dvh] relative overflow-hidden">
+          {/* Main column */}
           <div className="flex-1 flex flex-col min-w-0">
             <DashboardHeader
-              activeSessionId={activeSessionId}
+              activeSessionId={chat.activeSessionId}
               sessionTitle={displayTitle}
-              wsStatus={wsStatus}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={toggleRightSidebar}
+              wsStatus={chat.wsStatus}
+              rightSidebarOpen={rightSidebar.desktopOpen}
+              onToggleRightSidebar={rightSidebar.toggle}
             />
 
             <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
-              <div
-                className={cn(
-                  'flex-1 overflow-hidden',
-                  activeSessionId ? 'opacity-100' : 'opacity-0 h-0',
-                )}
-              >
+              <div className={cn('flex-1 overflow-hidden', chat.activeSessionId ? 'opacity-100' : 'opacity-0 h-0')}>
                 <DashboardMessages
-                  activeSessionId={activeSessionId}
-                  messages={messages}
-                  isStreaming={isStreaming}
-                  streamingMessageId={streamingMessageRef.current}
-                  streamStartTime={streamStartTime}
-                  sessionTodos={sessionTodos}
+                  activeSessionId={chat.activeSessionId}
+                  messages={chat.messages}
+                  isStreaming={chat.isStreaming}
+                  streamingMessageId={chat.streamingMessageRef.current}
+                  streamStartTime={chat.streamStartTime}
+                  sessionTodos={chat.sessionTodos}
                 />
               </div>
 
               <DashboardComposer
-                activeSessionId={activeSessionId}
+                activeSessionId={chat.activeSessionId}
                 prompt={prompt}
                 onPromptChange={setPrompt}
                 onKeyDown={handleKeyDown}
@@ -288,58 +226,53 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                 mode={mode}
                 onModeChange={setMode}
                 onSubmit={handleSubmit}
-                onStop={handleStop}
+                onStop={chat.handleStop}
                 isCreating={isCreating}
-                isStreaming={isStreaming}
-                messageQueueLength={messageQueue.length}
+                isStreaming={chat.isStreaming}
+                messageQueueLength={chat.messageQueue.length}
                 stats={stats}
                 canSubmit={canSubmit}
               />
             </div>
           </div>
 
-          {/* Right sidebar — spans full page height */}
-          {activeSessionId && rightSidebarOpen && (
-            <div className="w-64 border-l border-border/40 bg-background/60 backdrop-blur-sm hidden md:block overflow-y-auto no-scrollbar">
-              <SessionPanel
-                sessionId={activeSessionId}
-                repo={selectedRepo ? { owner: selectedRepo.owner, name: selectedRepo.name } : undefined}
-                model={
-                  selectedModel
-                    ? {
-                        id: selectedModel.id,
-                        name: selectedModel.name,
-                        provider: selectedModel.provider,
-                        mode: mode,
-                      }
-                    : undefined
-                }
-                tokens={
-                  lastStepCost?.tokens
-                    ? {
-                        ...lastStepCost.tokens,
-                        contextLimit: 200000,
-                      }
-                    : undefined
-                }
-                cost={totalCost > 0 ? totalCost : undefined}
-                todos={sessionTodos}
-                diffs={fileDiffs}
-                openCodeUrl={openCodeUrl || undefined}
-                sessionInfo={sessionInfo || undefined}
-                messages={messages}
-              />
-            </div>
+          {/* Right sidebar (desktop + mobile) */}
+          {chat.activeSessionId && (
+            <RightSidebar
+              data={{
+                sessionId: chat.activeSessionId,
+                selectedRepo,
+                selectedModel,
+                mode,
+                lastStepCost: chat.lastStepCost,
+                totalCost: chat.totalCost,
+                sessionTodos: chat.sessionTodos,
+                fileDiffs: chat.fileDiffs,
+                openCodeUrl: chat.openCodeUrl,
+                sessionInfo: chat.sessionInfo,
+                messages: chat.messages,
+              }}
+              desktopOpen={rightSidebar.desktopOpen}
+              mobileOpen={rightSidebar.mobileOpen}
+              isMobile={rightSidebar.isMobile}
+              onMobileOpenChange={rightSidebar.setMobileOpen}
+              onTodoClick={taskSheet.open}
+            />
           )}
         </div>
       </SidebarInset>
 
-      <CreateSessionDialog
-        isOpen={false}
-        onClose={() => {}}
-        onCreate={handleCreate}
-        userId={userId}
-      />
+      <CreateSessionDialog isOpen={false} onClose={() => {}} onCreate={handleCreate} userId={userId} />
+
+      {/* Task Detail Sheet — opened from sidebar todo clicks */}
+      {chat.activeSessionId && (
+        <TaskDetailSheet
+          isOpen={taskSheet.isOpen}
+          onClose={taskSheet.close}
+          todo={taskSheet.selectedTodo}
+          messages={chat.messages}
+        />
+      )}
     </SidebarProvider>
   )
 }

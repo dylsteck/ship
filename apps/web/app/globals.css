@@ -146,3 +146,16 @@
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Mobile touch improvements */
+@media (max-width: 767px) {
+  /* Prevent text selection on interactive elements during tap */
+  button, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Better touch targets */
+  input, textarea, select {
+    font-size: 16px; /* Prevent iOS zoom on focus */
+  }
+}

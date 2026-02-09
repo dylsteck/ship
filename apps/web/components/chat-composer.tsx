@@ -65,9 +65,9 @@ export function ChatComposer({
     : repos
 
   return (
-    <div className="rounded-3xl border border-border/60 bg-card shadow-sm overflow-hidden transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-foreground/10">
+    <div className="rounded-2xl sm:rounded-3xl border border-border/60 bg-card shadow-sm overflow-hidden transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-foreground/10">
       {/* Main input area */}
-      <div className="p-4 pb-3">
+      <div className="p-3 pb-2 sm:p-4 sm:pb-3">
         <textarea
           placeholder="Ask or build anything"
           value={prompt}
@@ -105,9 +105,9 @@ export function ChatComposer({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="ghost" className="h-8 px-3 rounded-full gap-1.5">
+                  <Button variant="ghost" className="h-8 px-2 sm:px-3 rounded-full gap-1.5">
                     <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
-                    <span className="max-w-[150px] truncate text-sm">
+                    <span className="max-w-[100px] sm:max-w-[150px] truncate text-sm">
                       {selectedRepo ? selectedRepo.fullName : 'Select repo'}
                     </span>
                     <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5" />

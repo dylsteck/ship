@@ -110,7 +110,7 @@ export function SubagentSheet({ sessionId, toolName, isOpen, onClose }: Subagent
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-[600px] sm:max-w-[600px] p-0">
+      <SheetContent side="right" className="w-[90vw] sm:w-[600px] sm:max-w-[600px] p-0">
         <SheetHeader className="border-b px-6 py-4 space-y-2">
           <div className="flex items-center gap-2">
             <svg
