@@ -5,12 +5,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { PanelRightIcon, Settings01Icon, Logout01Icon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
+import { ClientOnly } from '@/components/client-only'
 
 interface DashboardHeaderProps {
   activeSessionId: string | null
@@ -48,20 +48,21 @@ export function DashboardHeader({
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 relative z-10">
-      {/* Back button - mobile only */}
-      {activeSessionId && showBackButton && (
-        <button
-          onClick={() => (window.location.href = '/')}
-          className="sm:hidden p-1 -ml-1 text-muted-foreground hover:text-foreground"
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
-        </button>
-      )}
-
-      {/* Session title */}
+      {/* Back button + Session title */}
       {activeSessionId && (
-        <div className="flex items-center gap-2 text-xs sm:text-sm min-w-0 flex-1">
-          <span className="font-medium truncate">{sessionTitle || 'Untitled session'}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {showBackButton && (
+            <button
+              onClick={() => (window.location.href = '/')}
+              className="shrink-0 p-1 -ml-1 text-muted-foreground hover:text-foreground"
+              aria-label="Back to home"
+            >
+              <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
+            </button>
+          )}
+          <span className="font-medium truncate text-xs sm:text-sm">
+            {sessionTitle || 'Untitled session'}
+          </span>
         </div>
       )}
 
@@ -104,40 +105,60 @@ export function DashboardHeader({
         {/* User avatar with dropdown - mobile only, homepage only */}
         {!activeSessionId && (
           <div className="shrink-0 ml-2 md:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button className="focus:outline-none rounded-full cursor-pointer">
-                    {user?.avatarUrl ? (
-                      <img
-                        src={user.avatarUrl}
-                        alt={user.username}
-                        width={28}
-                        height={28}
-                        className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
-                      />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
-                        {user?.username?.[0]?.toUpperCase() || '?'}
-                      </div>
-                    )}
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => (window.location.href = '/settings')} className="cursor-pointer">
-                  <HugeiconsIcon icon={Settings01Icon} className="mr-2 h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => (window.location.href = '/api/auth/signout')}
-                  className="cursor-pointer text-red-600 dark:text-red-400"
-                >
-                  <HugeiconsIcon icon={Logout01Icon} className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <ClientOnly
+              fallback={
+                <a href="/settings" className="focus:outline-none rounded-full cursor-pointer block">
+                  {user?.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.username}
+                      width={28}
+                      height={28}
+                      className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
+                      {user?.username?.[0]?.toUpperCase() || '?'}
+                    </div>
+                  )}
+                </a>
+              }
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button className="focus:outline-none rounded-full cursor-pointer">
+                      {user?.avatarUrl ? (
+                        <img
+                          src={user.avatarUrl}
+                          alt={user.username}
+                          width={28}
+                          height={28}
+                          className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
+                          {user?.username?.[0]?.toUpperCase() || '?'}
+                        </div>
+                      )}
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => (window.location.href = '/settings')} className="cursor-pointer">
+                    <HugeiconsIcon icon={Settings01Icon} className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => (window.location.href = '/api/auth/signout')}
+                    className="cursor-pointer text-red-600 dark:text-red-400"
+                  >
+                    <HugeiconsIcon icon={Logout01Icon} className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ClientOnly>
           </div>
         )}
       </div>

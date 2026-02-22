@@ -5,11 +5,6 @@ export default function LoginPage() {
     <div className="flex flex-col items-center space-y-6 px-4">
       {/* Ship Logo */}
       <div className="text-center">
-        <div className="w-10 h-10 bg-foreground rounded-lg flex items-center justify-center mx-auto mb-4">
-          <svg className="w-6 h-6 text-background" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-          </svg>
-        </div>
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Ship
         </h1>

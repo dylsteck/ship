@@ -80,11 +80,12 @@ function MessageListContent({
                   <div className="text-foreground whitespace-pre-wrap">{msg.content}</div>
                 )}
 
-                {/* Assistant reasoning only = still thinking, show Loader */}
+                {/* Assistant reasoning only = still thinking, show Loader (hide when content exists) */}
                 {msg.role === 'assistant' &&
                   msg.reasoning &&
                   msg.reasoning.length > 0 &&
-                  !msg.toolInvocations?.length && (
+                  !msg.toolInvocations?.length &&
+                  !msg.content && (
                     <Loader message={streamingLabel || 'Thinking...'} />
                   )}
 

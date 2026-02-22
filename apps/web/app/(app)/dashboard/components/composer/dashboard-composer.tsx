@@ -2,11 +2,12 @@
 
 import { cn } from '@ship/ui'
 import type { GitHubRepo, ModelInfo } from '@/lib/api/types'
+import { ClientOnly } from '@/components/client-only'
 import { DashboardStats } from '@/components/dashboard-stats'
 import { ComposerProvider, type ComposerContextValue } from './composer-context'
 import { ComposerTextarea } from './composer-textarea'
 import { ComposerFooter } from './composer-footer'
-import { RepoSelector } from './repo-selector'
+import { ComposerRepoSelector } from './repo-selector'
 import { SubmitButton } from './submit-button'
 
 interface DashboardComposerProps {
@@ -18,6 +19,9 @@ interface DashboardComposerProps {
   onRepoSelect: (repo: GitHubRepo) => void
   repos: GitHubRepo[]
   reposLoading: boolean
+  reposLoadMore: () => void
+  reposHasMore: boolean
+  reposLoadingMore: boolean
   selectedModel: ModelInfo | null
   onModelSelect: (model: ModelInfo) => void
   modelsLoading: boolean
@@ -38,12 +42,12 @@ interface DashboardComposerProps {
     activeReposChartData: number[]
   }
   canSubmit: boolean
-  /** When true, use normal flow instead of absolute centering (for mobile with session list below) */
+  /** When true, use normal flow instead of absolute centering (for mobile with session list below). Default false. */
   compactLayout?: boolean
 }
 
 export function DashboardComposer(props: DashboardComposerProps) {
-  const { activeSessionId, stats, compactLayout } = props
+  const { activeSessionId, stats, compactLayout = false } = props
 
   const contextValue: ComposerContextValue = {
     activeSessionId: props.activeSessionId,
@@ -54,6 +58,9 @@ export function DashboardComposer(props: DashboardComposerProps) {
     onRepoSelect: props.onRepoSelect,
     repos: props.repos,
     reposLoading: props.reposLoading,
+    reposLoadMore: props.reposLoadMore,
+    reposHasMore: props.reposHasMore,
+    reposLoadingMore: props.reposLoadingMore,
     selectedModel: props.selectedModel,
     onModelSelect: props.onModelSelect,
     modelsLoading: props.modelsLoading,
@@ -101,7 +108,9 @@ export function DashboardComposer(props: DashboardComposerProps) {
               {!activeSessionId && (
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-1">
-                    <RepoSelector />
+                    <ClientOnly>
+                      <ComposerRepoSelector />
+                    </ClientOnly>
                   </div>
                   <SubmitButton />
                 </div>

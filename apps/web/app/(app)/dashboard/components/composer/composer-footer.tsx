@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@ship/ui'
+import { ClientOnly } from '@/components/client-only'
 import { useComposer } from './composer-context'
 import { ModelSelector } from './model-selector'
 import { ModeToggle } from './mode-toggle'
@@ -17,7 +18,9 @@ export function ComposerFooter() {
       )}
     >
       <div className="flex items-center gap-2">
-        <ModelSelector />
+        <ClientOnly>
+          <ModelSelector />
+        </ClientOnly>
         {activeSessionId && messageQueueLength > 0 && (
           <span className="text-[10px] text-muted-foreground/40">{messageQueueLength} queued</span>
         )}

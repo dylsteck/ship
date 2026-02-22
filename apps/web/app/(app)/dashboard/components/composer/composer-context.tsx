@@ -12,6 +12,9 @@ export interface ComposerContextValue {
   onRepoSelect: (repo: GitHubRepo) => void
   repos: GitHubRepo[]
   reposLoading: boolean
+  reposLoadMore: () => void
+  reposHasMore: boolean
+  reposLoadingMore: boolean
   selectedModel: ModelInfo | null
   onModelSelect: (model: ModelInfo) => void
   modelsLoading: boolean

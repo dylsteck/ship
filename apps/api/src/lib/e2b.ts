@@ -407,6 +407,30 @@ export async function startOpenCodeServer(
     throw new Error('Could not find opencode binary after installation')
   }
 
+  // Write opencode.json with MCP servers (grep, deepwiki, context7, exa) so they load in the sandbox session
+  const opencodeConfig = {
+    $schema: 'https://opencode.ai/config.json',
+    mcp: {
+      grep: { type: 'remote', url: 'https://mcp.grep.app', enabled: true },
+      deepwiki: { type: 'remote', url: 'https://mcp.deepwiki.com/mcp', enabled: true },
+      context7: {
+        type: 'remote',
+        url: 'https://mcp.context7.com/mcp',
+        headers: { CONTEXT7_API_KEY: '{env:CONTEXT7_API_KEY}' },
+        enabled: true,
+      },
+      exa: { type: 'remote', url: 'https://mcp.exa.ai/mcp', enabled: true },
+    },
+    tools: { 'grep*': true, 'deepwiki*': true, 'context7*': true, 'exa*': true },
+  }
+  const configPath = `${homeDir}/opencode.json`
+  try {
+    await sandbox.files.write(configPath, JSON.stringify(opencodeConfig, null, 2))
+    console.log(`[opencode:${sandboxId}] Wrote opencode.json with MCP servers (grep, deepwiki, context7, exa)`)
+  } catch (writeErr) {
+    console.warn(`[opencode:${sandboxId}] Failed to write opencode.json (MCPs may not load):`, writeErr)
+  }
+
   // Set up environment and start server
   console.log(`[opencode:${sandboxId}] Starting OpenCode server on port 4096...`)
 

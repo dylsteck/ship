@@ -137,24 +137,6 @@ function formatOutput(output: unknown): [string, boolean] {
   return [text, false]
 }
 
-function StatusIndicator({ status }: { status: ToolProps['status'] }) {
-  if (status === 'in_progress') {
-    return (
-      <span className="relative flex h-2 w-2 shrink-0">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-      </span>
-    )
-  }
-  if (status === 'completed') {
-    return <span className="flex h-2 w-2 shrink-0 rounded-full bg-green-500" />
-  }
-  if (status === 'failed') {
-    return <span className="flex h-2 w-2 shrink-0 rounded-full bg-red-500" />
-  }
-  return null
-}
-
 export function Tool({
   name,
   status,
@@ -200,7 +182,6 @@ export function Tool({
             {durationLabel && (
               <span className="text-xs text-muted-foreground/60">{durationLabel}</span>
             )}
-            <StatusIndicator status={status} />
             {isSubagent ? (
               <svg
                 className="w-4 h-4 text-muted-foreground/40"

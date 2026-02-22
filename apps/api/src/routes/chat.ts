@@ -799,6 +799,49 @@ app.post('/:sessionId/stop', async (c) => {
   return c.json({ success: true })
 })
 
+// GET /chat/:sessionId/subagent/:subagentSessionId/stream - SSE stream for sub-agent session
+app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
+  const sessionId = c.req.param('sessionId')
+  const subagentSessionId = c.req.param('subagentSessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  const metaRes = await stub.fetch(new Request('https://do/meta'))
+  const meta = (await metaRes.json()) as Record<string, string>
+  const opencodeUrl = meta.opencode_url
+  const repoPath = meta.repo_path || '/home/user/repo'
+
+  if (!opencodeUrl) {
+    return c.json({ error: 'OpenCode server not available' }, 400)
+  }
+
+  return streamSSE(c, async (stream) => {
+    try {
+      const eventStream = await subscribeToEvents(opencodeUrl, repoPath)
+      const filteredStream = filterSessionEvents(eventStream, subagentSessionId, 300000)
+
+      for await (const event of filteredStream) {
+        await stream.writeSSE({
+          event: event.type,
+          data: JSON.stringify({ type: event.type, properties: event.properties }),
+        })
+        if (event.type === 'session.idle' || event.type === 'session.error') {
+          break
+        }
+      }
+    } catch (error) {
+      console.error(`[chat:${sessionId}] Subagent stream error:`, error)
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({ error: error instanceof Error ? error.message : 'Stream failed' }),
+      })
+    } finally {
+      await stream.close()
+    }
+  })
+})
+
 // GET /chat/:sessionId/messages - Get message history
 app.get('/:sessionId/messages', async (c) => {
   const sessionId = c.req.param('sessionId')

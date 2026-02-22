@@ -78,7 +78,13 @@ export function DashboardMessages({
   // If we're viewing a sub-agent, render that instead
   if (subagentStack.length > 0) {
     const currentSubagent = subagentStack[subagentStack.length - 1]
-    return <SubagentView subagent={currentSubagent} onBack={handleSubagentBack} />
+    return (
+      <SubagentView
+        subagent={currentSubagent}
+        onBack={handleSubagentBack}
+        parentSessionId={activeSessionId}
+      />
+    )
   }
 
   // Track if we've rendered the todo progress card inline
@@ -197,7 +203,8 @@ export function DashboardMessages({
             const hasOnlyReasoning =
               message.role === 'assistant' &&
               (message.reasoning && message.reasoning.length > 0) &&
-              (!message.toolInvocations || message.toolInvocations.length === 0)
+              (!message.toolInvocations || message.toolInvocations.length === 0) &&
+              !message.content
 
             const hasSteps =
               message.role === 'assistant' &&

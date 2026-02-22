@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { ModelSelector, ModelBadge } from '@/components/model/model-selector'
+import { RepoSelector } from '@/components/repo-selector'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import {
   Button,
@@ -11,17 +12,12 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from '@ship/ui'
 import {
   useModels,
   useDefaultModel,
   useSetDefaultModel,
-  useGitHubRepos,
+  useFilteredGitHubRepos,
   useDefaultRepo,
   useSetDefaultRepo,
 } from '@/lib/api'
@@ -39,10 +35,21 @@ export function SettingsClient({ userId }: { userId: string }) {
   const { defaultModelId, isLoading: defaultModelLoading, mutate: mutateDefaultModel } = useDefaultModel(userId)
   const { setDefaultModel: saveDefaultModel, isSetting: isSettingModel } = useSetDefaultModel()
 
-  // Repo hooks
-  const { repos, isLoading: reposLoading } = useGitHubRepos(userId)
+  // Repo hooks (paginated, cached)
+  const {
+    repos,
+    isLoading: reposLoading,
+    loadMore: reposLoadMore,
+    hasMore: reposHasMore,
+    isLoadingMore: reposLoadingMore,
+  } = useFilteredGitHubRepos(userId, '')
   const { defaultRepoFullName, isLoading: defaultRepoLoading, mutate: mutateDefaultRepo } = useDefaultRepo(userId)
   const { setDefaultRepo: saveDefaultRepo, isSetting: isSettingRepo } = useSetDefaultRepo()
+
+  const selectedRepoObj = useMemo(
+    () => (selectedRepo ? repos.find((r) => r.fullName === selectedRepo) ?? null : null),
+    [repos, selectedRepo]
+  )
 
   const loading = modelsLoading || defaultModelLoading || reposLoading || defaultRepoLoading
 
@@ -95,11 +102,6 @@ export function SettingsClient({ userId }: { userId: string }) {
         <header className="h-11 border-b border-border bg-background">
           <div className="h-full flex items-center px-4">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
-                <svg className="w-3 h-3 text-background" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-              </div>
               <span className="text-[13px] font-semibold text-foreground">Ship</span>
             </Link>
           </div>
@@ -116,11 +118,6 @@ export function SettingsClient({ userId }: { userId: string }) {
       <header className="h-11 border-b border-border bg-background">
         <div className="h-full flex items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
-              <svg className="w-3 h-3 text-background" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-              </svg>
-            </div>
             <span className="text-[13px] font-semibold text-foreground">Ship</span>
           </Link>
           <a
@@ -192,23 +189,20 @@ export function SettingsClient({ userId }: { userId: string }) {
           <CardContent className="space-y-3">
             <div>
               <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">Repository</label>
-              <Select
-                value={selectedRepo}
-                onValueChange={(value) => setSelectedRepo(value || '')}
+              <RepoSelector
+                repos={repos}
+                selectedRepo={selectedRepoObj}
+                onRepoSelect={(repo) => setSelectedRepo(repo.fullName)}
+                onClear={() => setSelectedRepo('')}
+                allowNone
+                isLoading={reposLoading}
+                loadMore={reposLoadMore}
+                hasMore={reposHasMore}
+                isLoadingMore={reposLoadingMore}
                 disabled={isSettingRepo}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a repository" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {repos.map((repo) => (
-                    <SelectItem key={repo.id} value={repo.fullName}>
-                      {repo.fullName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="Select a repository"
+                fullWidth
+              />
             </div>
             {selectedRepo && (
               <div className="text-[11px] text-muted-foreground">

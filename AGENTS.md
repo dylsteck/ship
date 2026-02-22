@@ -108,16 +108,16 @@ pnpm db:migrate   # Run migrations
 
 ## MCP Servers
 
-The following MCP (Model Context Protocol) servers are configured in `opencode.json`:
-
-- **Vercel**: Deployment tools (`vercel_deploy_preview`, `vercel_deploy_production`, `vercel_get_deployment`, `vercel_list_deployments`)
-  - URL: `http://localhost:8787/mcp/vercel` (local server)
-  - Provides Vercel deployment capabilities
+The following MCP (Model Context Protocol) servers are configured in `opencode.json` and loaded into the OpenCode sandbox session:
 
 - **Grep**: GitHub code search (`grep_searchGitHub`)
   - URL: `https://mcp.grep.app`
   - Search across millions of public GitHub repositories for code examples
   - Use `use grep` in prompts to leverage this tool
+
+- **DeepWiki**: Deep documentation search
+  - URL: `https://mcp.deepwiki.com/mcp`
+  - Search documentation and knowledge bases
 
 - **Context7**: Documentation search (`context7_query-docs`)
   - URL: `https://mcp.context7.com/mcp`
@@ -125,7 +125,11 @@ The following MCP (Model Context Protocol) servers are configured in `opencode.j
   - Search up-to-date documentation for libraries and frameworks
   - Use `use context7` in prompts to leverage this tool
 
-All MCP servers are enabled by default. Configure in `opencode.json` using the `mcpServers` key with `type: "sse"` for remote servers.
+- **Exa**: Web search (`web_search_exa`, `get_code_context_exa`)
+  - URL: `https://mcp.exa.ai/mcp`
+  - Fast web search and code context discovery
+
+All MCP servers are enabled by default. The sandbox writes `opencode.json` to the E2B environment before starting OpenCode so these tools load in each session. Configure in `opencode.json` using the `mcp` key with `type: "remote"` for remote servers.
 
 ## Testing
 

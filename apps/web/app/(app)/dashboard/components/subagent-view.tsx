@@ -21,6 +21,7 @@ interface SubagentViewState {
 interface SubagentViewProps {
   subagent: SubagentViewState
   onBack: () => void
+  parentSessionId: string | null
 }
 
 function formatDuration(ms: number): string {
@@ -32,15 +33,14 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-export function SubagentView({ subagent, onBack }: SubagentViewProps) {
-  // Only try WebSocket if we have a sessionId
+export function SubagentView({ subagent, onBack, parentSessionId }: SubagentViewProps) {
   const { messages, isStreaming, status } = useSubagentStream({
-    sessionId: subagent.sessionId || null,
+    parentSessionId,
+    subagentSessionId: subagent.sessionId || null,
   })
 
-  const hasStreamData = subagent.sessionId && messages.some(
-    (m) => m.content || m.toolInvocations?.length || m.reasoning?.length,
-  )
+  // Show stream area when we're connected and have stream state (even if just placeholder)
+  const hasStreamData = subagent.sessionId && messages.length > 0
 
   // Determine what to show
   const showStreamData = hasStreamData
@@ -137,7 +137,8 @@ export function SubagentView({ subagent, onBack }: SubagentViewProps) {
                   message.role === 'assistant' &&
                   message.reasoning &&
                   message.reasoning.length > 0 &&
-                  !message.toolInvocations?.length
+                  !message.toolInvocations?.length &&
+                  !message.content
 
                 return (
                   <Message key={message.id} role={message.role}>

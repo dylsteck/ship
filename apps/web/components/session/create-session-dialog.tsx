@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useMemo } from 'react'
+import { useState, useTransition, useCallback } from 'react'
 import { Button, Input, Card, Badge, cn } from '@ship/ui'
 import { ModelSelector } from '@/components/model/model-selector'
 import { useFilteredGitHubRepos } from '@/lib/api'
@@ -22,11 +22,24 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
   // Use SWR hook for repos - only fetch when dialog is open
   const {
     repos: filteredRepos,
-    allRepos,
     isLoading: reposLoading,
+    isLoadingMore: reposLoadingMore,
+    hasMore: reposHasMore,
+    loadMore: reposLoadMore,
     isError,
     mutate,
   } = useFilteredGitHubRepos(isOpen ? userId : undefined, searchQuery)
+
+  const handleReposScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+      if (nearBottom && reposHasMore && !reposLoadingMore) {
+        reposLoadMore()
+      }
+    },
+    [reposHasMore, reposLoadingMore, reposLoadMore]
+  )
 
   const reposError = isError ? 'Failed to load repositories' : null
 
@@ -84,7 +97,10 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                 disabled={reposLoading}
                 className="mb-2"
               />
-              <div className="border border-border rounded-md overflow-hidden max-h-[180px] overflow-y-auto">
+              <div
+                className="border border-border rounded-md overflow-hidden max-h-[220px] overflow-y-auto"
+                onScroll={handleReposScroll}
+              >
                 {reposLoading ? (
                   <div className="p-3 text-center">
                     <div className="w-4 h-4 border-2 border-muted border-t-foreground rounded-full animate-spin mx-auto"></div>
@@ -108,7 +124,8 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                     </p>
                   </div>
                 ) : (
-                  filteredRepos.map((repo) => (
+                  <>
+                  {filteredRepos.map((repo) => (
                     <button
                       key={repo.id}
                       type="button"
@@ -157,7 +174,13 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
                         )}
                       </div>
                     </button>
-                  ))
+                  ))}
+                  {reposLoadingMore && (
+                    <div className="px-2.5 py-2 text-center text-[11px] text-muted-foreground border-b border-border">
+                      Loading more...
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             </div>

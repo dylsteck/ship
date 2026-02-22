@@ -152,13 +152,26 @@ accounts.post('/github/default-repo', async (c) => {
   }
 })
 
+const REPOS_CACHE_MAX_AGE = 300 // 5 minutes
+const REPOS_PER_PAGE = 50
+
 /**
  * GET /accounts/github/repos/:userId
- * Fetch user's GitHub repositories
+ * Fetch user's GitHub repositories (paginated, cached)
+ * Query params: page (default 1), per_page (default 50, max 100)
  */
 accounts.get('/github/repos/:userId', async (c) => {
   try {
     const userId = c.req.param('userId')
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
+    const perPage = Math.min(100, Math.max(10, parseInt(c.req.query('per_page') || String(REPOS_PER_PAGE), 10)))
+
+    // Check cache (Cache API - data center local, 5 min TTL via Cache-Control)
+    const cache = caches.default
+    const cached = await cache.match(c.req.raw)
+    if (cached) {
+      return cached
+    }
 
     // Get GitHub account with token
     const account = await c.env.DB.prepare(
@@ -171,29 +184,38 @@ accounts.get('/github/repos/:userId', async (c) => {
       return c.json({ error: 'GitHub account not found or no access token' }, 404)
     }
 
-    // Fetch repos from GitHub API
+    // Fetch repos from GitHub API (paginated)
     const octokit = new Octokit({ auth: account.access_token })
-    
     const { data: repos } = await octokit.repos.listForAuthenticatedUser({
       sort: 'updated',
-      per_page: 100,
+      per_page: perPage,
+      page,
       type: 'all',
     })
 
     // Map to simplified response
-    const simplifiedRepos = repos.map((repo: GitHubRepo) => ({
+    const simplifiedRepos = repos.map((repo) => ({
       id: repo.id,
       name: repo.name,
       fullName: repo.full_name,
       owner: repo.owner.login,
       description: repo.description,
       private: repo.private,
-      updatedAt: repo.updated_at,
+      updatedAt: repo.updated_at ?? '',
       language: repo.language,
       stars: repo.stargazers_count,
     }))
 
-    return c.json(simplifiedRepos)
+    const hasMore = repos.length === perPage
+    const nextPage = hasMore ? page + 1 : null
+
+    const body = { repos: simplifiedRepos, hasMore, nextPage }
+    const response = c.json(body, 200, {
+      'Cache-Control': `public, max-age=${REPOS_CACHE_MAX_AGE}, s-maxage=${REPOS_CACHE_MAX_AGE}`,
+    })
+
+    await cache.put(c.req.raw, response.clone())
+    return response
   } catch (error) {
     console.error('Error fetching GitHub repos:', error)
     return c.json({ error: 'Failed to fetch GitHub repos' }, 500)

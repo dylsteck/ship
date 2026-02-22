@@ -126,7 +126,13 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   })
 
   // ---- Data fetching ----
-  const { repos, isLoading: reposLoading } = useGitHubRepos(userId)
+  const {
+    repos,
+    isLoading: reposLoading,
+    loadMore: reposLoadMore,
+    hasMore: reposHasMore,
+    isLoadingMore: reposLoadingMore,
+  } = useGitHubRepos(userId)
   const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
   const { defaultModelId, isLoading: defaultModelLoading } = useDefaultModel(userId)
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
@@ -358,7 +364,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   <>
                     <div className="shrink-0">
                       <DashboardComposer
-                        compactLayout
+                        compactLayout={true}
                         activeSessionId={chat.activeSessionId}
                         prompt={prompt}
                         onPromptChange={setPrompt}
@@ -366,20 +372,23 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                         selectedRepo={selectedRepo}
                         onRepoSelect={setSelectedRepo}
                         repos={repos}
-                        reposLoading={reposLoading}
+                        reposLoading={reposLoading ?? false}
+                        reposLoadMore={reposLoadMore}
+                        reposHasMore={reposHasMore ?? false}
+                        reposLoadingMore={reposLoadingMore ?? false}
                         selectedModel={selectedModel}
                         onModelSelect={setSelectedModel}
-                        modelsLoading={modelsLoading}
+                        modelsLoading={modelsLoading ?? false}
                         groupedByProvider={groupedByProvider}
                         mode={mode}
                         onModeChange={setMode}
                         onSubmit={handleSubmit}
                         onStop={chat.handleStop}
-                        isCreating={isCreating}
-                        isStreaming={chat.isStreaming}
+                        isCreating={!!isCreating}
+                        isStreaming={!!chat.isStreaming}
                         messageQueueLength={chat.messageQueue.length}
                         stats={stats}
-                        canSubmit={canSubmit}
+                        canSubmit={!!canSubmit}
                       />
                     </div>
 
@@ -397,7 +406,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                 return (
                                   <div
                                     key={session.id}
-                                    className="relative flex items-center gap-2 group/item rounded-lg px-3 py-2.5 transition-colors border border-transparent hover:bg-muted/50 hover:border-border/50"
+                                    className="group/item relative flex items-stretch gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/40"
                                   >
                                     <button
                                       onClick={() => {
@@ -405,34 +414,34 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                         chat.connectWebSocket(session.id)
                                         window.history.replaceState({}, '', `/session/${session.id}`)
                                       }}
-                                      className="flex-1 min-w-0 text-left"
+                                      className="flex-1 min-w-0 text-left py-0.5"
                                     >
-                                      <div className="text-sm font-medium truncate">{sessionName}</div>
-                                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                                        <span className="text-xs text-muted-foreground truncate">
+                                      <div className="text-sm font-medium text-foreground truncate leading-tight">
+                                        {sessionName}
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[11px] text-muted-foreground/80 truncate">
                                           {repoPath}
                                         </span>
-                                        <div className="flex flex-col items-end shrink-0">
-                                          {isMobile && (
-                                            <button
-                                              type="button"
-                                              title="Delete chat"
-                                              disabled={deletingSessionId === session.id}
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleDeleteSession(session, true)
-                                              }}
-                                              className="p-1 -m-1 rounded hover:bg-muted/80 transition-colors disabled:opacity-30 text-muted-foreground/60 hover:text-foreground"
-                                            >
-                                              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-4" />
-                                            </button>
-                                          )}
-                                          <span className="text-xs text-muted-foreground">
-                                            {formatRelativeTime(session.lastActivity)}
-                                          </span>
-                                        </div>
+                                        <span className="text-[11px] text-muted-foreground/50 shrink-0">
+                                          {formatRelativeTime(session.lastActivity)}
+                                        </span>
                                       </div>
                                     </button>
+                                    {isMobile && (
+                                      <button
+                                        type="button"
+                                        title="Delete chat"
+                                        disabled={deletingSessionId === session.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleDeleteSession(session, true)
+                                        }}
+                                        className="shrink-0 self-center p-1.5 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-30"
+                                      >
+                                        <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
+                                      </button>
+                                    )}
                                     {!isMobile && (
                                       <DropdownMenu>
                                         <DropdownMenuTrigger
@@ -442,9 +451,9 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                               title="Delete chat"
                                               disabled={deletingSessionId === session.id}
                                               onClick={(e) => e.stopPropagation()}
-                                              className="shrink-0 p-2 rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-30 text-muted-foreground/60 hover:text-foreground opacity-0 group-hover/item:opacity-100"
+                                              className="shrink-0 self-center p-1.5 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-30 opacity-0 group-hover/item:opacity-100"
                                             >
-                                              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-4" />
+                                              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
                                             </button>
                                           }
                                         />
@@ -501,6 +510,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       />
                     </div>
                     <DashboardComposer
+                      compactLayout={false}
                       activeSessionId={chat.activeSessionId}
                       prompt={prompt}
                       onPromptChange={setPrompt}
@@ -508,7 +518,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       selectedRepo={selectedRepo}
                       onRepoSelect={setSelectedRepo}
                       repos={repos}
-                      reposLoading={reposLoading}
+                      reposLoading={reposLoading ?? false}
+                      reposLoadMore={reposLoadMore}
+                      reposHasMore={reposHasMore ?? false}
+                      reposLoadingMore={reposLoadingMore ?? false}
                       selectedModel={selectedModel}
                       onModelSelect={setSelectedModel}
                       modelsLoading={modelsLoading}
@@ -517,11 +530,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                       onModeChange={setMode}
                       onSubmit={handleSubmit}
                       onStop={chat.handleStop}
-                      isCreating={isCreating}
-                      isStreaming={chat.isStreaming}
+                      isCreating={!!isCreating}
+                      isStreaming={!!chat.isStreaming}
                       messageQueueLength={chat.messageQueue.length}
                       stats={stats}
-                      canSubmit={canSubmit}
+                      canSubmit={!!canSubmit}
                     />
                   </div>
                 )}
@@ -549,7 +562,10 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   selectedRepo={selectedRepo}
                   onRepoSelect={setSelectedRepo}
                   repos={repos}
-                  reposLoading={reposLoading}
+                  reposLoading={reposLoading ?? false}
+                  reposLoadMore={reposLoadMore}
+                  reposHasMore={reposHasMore ?? false}
+                  reposLoadingMore={reposLoadingMore ?? false}
                   selectedModel={selectedModel}
                   onModelSelect={setSelectedModel}
                   modelsLoading={modelsLoading}
@@ -558,11 +574,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                   onModeChange={setMode}
                   onSubmit={handleSubmit}
                   onStop={chat.handleStop}
-                  isCreating={isCreating}
-                  isStreaming={chat.isStreaming}
+                  isCreating={!!isCreating}
+                  isStreaming={!!chat.isStreaming}
                   messageQueueLength={chat.messageQueue.length}
                   stats={stats}
-                  canSubmit={canSubmit}
+                  canSubmit={!!canSubmit}
                 />
               </div>
             </div>
@@ -586,7 +602,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
               }}
               desktopOpen={rightSidebar.desktopOpen}
               mobileOpen={rightSidebar.mobileOpen}
-              isMobile={rightSidebar.isMobile}
+              isMobile={rightSidebar.isMobile ?? false}
               onMobileOpenChange={rightSidebar.setMobileOpen}
             />
           )}
