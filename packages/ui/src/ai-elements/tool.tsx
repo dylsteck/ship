@@ -182,16 +182,12 @@ export function Tool({
   return (
     <CollapsiblePrimitive.Root open={isOpen} onOpenChange={isSubagent ? undefined : setIsOpen}>
       <div
-        className={cn(
-          'rounded-lg border border-border/30 bg-muted/40 overflow-hidden',
-          isSubagent && 'cursor-pointer',
-          className,
-        )}
+        className={cn('group/tool', isSubagent && 'cursor-pointer', className)}
         onClick={isSubagent ? onClick : undefined}
       >
         <CollapsiblePrimitive.Trigger
           className={cn(
-            'w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-muted/60 transition-colors min-h-[36px]',
+            'w-full flex items-center gap-2 py-1 -mx-1 px-1 rounded hover:bg-muted/40 transition-colors text-left',
             isSubagent && 'pointer-events-none',
           )}
         >
@@ -224,7 +220,7 @@ export function Tool({
         </CollapsiblePrimitive.Trigger>
         {hasDetails && !isSubagent && (
           <CollapsiblePrimitive.Panel>
-            <div className="border-t border-border/30 px-4 py-3 space-y-3 text-[11px]">
+            <div className="pl-5 pr-2 py-2 border-l border-border/30 ml-1.5 space-y-3 text-[11px]">
               {input && Object.keys(input).length > 0 && (
                 <div>
                   <p className="font-medium mb-1.5 text-muted-foreground/40 text-[10px] uppercase tracking-wider">

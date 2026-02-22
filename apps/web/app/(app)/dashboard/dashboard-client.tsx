@@ -1,13 +1,22 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { SidebarProvider, SidebarInset, cn } from '@ship/ui'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Cancel01Icon } from '@hugeicons/core-free-icons'
+import { SidebarProvider, SidebarInset, cn, useIsMobile } from '@ship/ui'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@ship/ui'
 import { AppSidebar } from '@/components/app-sidebar'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
 import { useModels, useDefaultModel } from '@/lib/api/hooks/use-models'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
-import { useCreateSession } from '@/lib/api/hooks/use-sessions'
+import { useCreateSession, useDeleteSession } from '@/lib/api/hooks/use-sessions'
+import { replyPermission } from '@/lib/api/hooks/use-chat'
 import type { ChatSession } from '@/lib/api/server'
 import type { GitHubRepo, ModelInfo, User } from '@/lib/api/types'
 import { useDashboardChat } from './hooks/use-dashboard-chat'
@@ -70,15 +79,29 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ sessions: initialSessions, userId, user }: DashboardClientProps) {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
   const [mode, setMode] = useState<'build' | 'plan'>('build')
   const [prompt, setPrompt] = useState('')
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const { deleteSession } = useDeleteSession()
+  const isMobile = useIsMobile()
 
   // ---- Core chat state ----
   const chat = useDashboardChat(initialSessions)
+
+  const handlePermissionReply = useCallback(
+    async (permissionId: string, approved: boolean) => {
+      if (!chat.activeSessionId) return
+      await replyPermission(chat.activeSessionId, permissionId, approved ? 'once' : 'reject')
+    },
+    [chat.activeSessionId],
+  )
 
   // ---- SSE streaming ----
   const { handleSend } = useDashboardSSE({
@@ -185,6 +208,36 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
       }
     },
     [createSession, userId, selectedModel, prompt, mode, chat, handleSend],
+  )
+
+  const handleDeleteSession = useCallback(
+    async (session: ChatSession, confirmed = false) => {
+      if (!confirmed) {
+        setConfirmDeleteId(session.id)
+        return
+      }
+
+      try {
+        setDeletingSessionId(session.id)
+        await deleteSession({ sessionId: session.id })
+        chat.setLocalSessions((prev) => prev.filter((s) => s.id !== session.id))
+        if (chat.activeSessionId === session.id) {
+          chat.setActiveSessionId(null)
+          chat.setMessages([])
+          router.push('/')
+          window.location.href = '/'
+        } else {
+          router.refresh()
+        }
+      } catch (error) {
+        console.error('Failed to delete session:', error)
+        router.refresh()
+      } finally {
+        setDeletingSessionId(null)
+        setConfirmDeleteId(null)
+      }
+    },
+    [chat, deleteSession, router],
   )
 
   // ---- Submit / keyboard ----
@@ -342,25 +395,87 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                                 const sessionName = session.title || session.repoName
                                 const repoPath = `${session.repoOwner}/${session.repoName}`
                                 return (
-                                  <button
+                                  <div
                                     key={session.id}
-                                    onClick={() => {
-                                      chat.setActiveSessionId(session.id)
-                                      chat.connectWebSocket(session.id)
-                                      window.history.replaceState({}, '', `/session/${session.id}`)
-                                    }}
-                                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border/50"
+                                    className="relative flex items-center gap-2 group/item rounded-lg px-3 py-2.5 transition-colors border border-transparent hover:bg-muted/50 hover:border-border/50"
                                   >
-                                    <div className="text-sm font-medium truncate">{sessionName}</div>
-                                    <div className="flex items-center justify-between gap-2 mt-0.5">
-                                      <span className="text-xs text-muted-foreground truncate">
-                                        {repoPath}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground shrink-0">
-                                        {formatRelativeTime(session.lastActivity)}
-                                      </span>
-                                    </div>
-                                  </button>
+                                    <button
+                                      onClick={() => {
+                                        chat.setActiveSessionId(session.id)
+                                        chat.connectWebSocket(session.id)
+                                        window.history.replaceState({}, '', `/session/${session.id}`)
+                                      }}
+                                      className="flex-1 min-w-0 text-left"
+                                    >
+                                      <div className="text-sm font-medium truncate">{sessionName}</div>
+                                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                                        <span className="text-xs text-muted-foreground truncate">
+                                          {repoPath}
+                                        </span>
+                                        <div className="flex flex-col items-end shrink-0">
+                                          {isMobile && (
+                                            <button
+                                              type="button"
+                                              title="Delete chat"
+                                              disabled={deletingSessionId === session.id}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleDeleteSession(session, true)
+                                              }}
+                                              className="p-1 -m-1 rounded hover:bg-muted/80 transition-colors disabled:opacity-30 text-muted-foreground/60 hover:text-foreground"
+                                            >
+                                              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-4" />
+                                            </button>
+                                          )}
+                                          <span className="text-xs text-muted-foreground">
+                                            {formatRelativeTime(session.lastActivity)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                    {!isMobile && (
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger
+                                          render={
+                                            <button
+                                              type="button"
+                                              title="Delete chat"
+                                              disabled={deletingSessionId === session.id}
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="shrink-0 p-2 rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-30 text-muted-foreground/60 hover:text-foreground opacity-0 group-hover/item:opacity-100"
+                                            >
+                                              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-4" />
+                                            </button>
+                                          }
+                                        />
+                                        <DropdownMenuContent align="end" className="w-48">
+                                          {confirmDeleteId === session.id ? (
+                                            <>
+                                              <DropdownMenuItem
+                                                onClick={() => handleDeleteSession(session, true)}
+                                                className="cursor-pointer text-red-600 dark:text-red-400"
+                                              >
+                                                Yes, delete
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                onClick={() => setConfirmDeleteId(null)}
+                                                className="cursor-pointer"
+                                              >
+                                                Cancel
+                                              </DropdownMenuItem>
+                                            </>
+                                          ) : (
+                                            <DropdownMenuItem
+                                              onClick={() => handleDeleteSession(session)}
+                                              className="cursor-pointer"
+                                            >
+                                              Delete
+                                            </DropdownMenuItem>
+                                          )}
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    )}
+                                  </div>
                                 )
                               })}
                             </div>
@@ -382,6 +497,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                         streamingMessageId={chat.streamingMessageRef.current}
                         streamStartTime={chat.streamStartTime}
                         sessionTodos={chat.sessionTodos}
+                        onPermissionReply={handlePermissionReply}
                       />
                     </div>
                     <DashboardComposer
@@ -421,6 +537,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                     streamingMessageId={chat.streamingMessageRef.current}
                     streamStartTime={chat.streamStartTime}
                     sessionTodos={chat.sessionTodos}
+                    onPermissionReply={handlePermissionReply}
                   />
                 </div>
 

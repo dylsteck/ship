@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Message, Tool, Response, Loader, Steps, Reasoning, SubagentTool, TodoProgress, Conversation, ConversationScrollButton } from '@ship/ui'
+import { Message, Tool, Response, Loader, SubagentTool, TodoProgress, Conversation, ConversationScrollButton } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
 import { PermissionPrompt } from './permission-prompt'
@@ -26,6 +26,7 @@ interface DashboardMessagesProps {
   streamingMessageId: string | null
   streamStartTime: number | null
   sessionTodos?: TodoItem[]
+  onPermissionReply?: (permissionId: string, approved: boolean) => Promise<void>
 }
 
 export function DashboardMessages({
@@ -35,6 +36,7 @@ export function DashboardMessages({
   streamingMessageId,
   streamStartTime,
   sessionTodos = [],
+  onPermissionReply,
 }: DashboardMessagesProps) {
   const [subagentStack, setSubagentStack] = React.useState<SubagentViewState[]>([])
 
@@ -116,6 +118,16 @@ export function DashboardMessages({
                     description={message.promptData.description}
                     patterns={message.promptData.patterns}
                     status={message.promptData.status as 'pending' | 'granted' | 'denied'}
+                    onApprove={
+                      onPermissionReply && activeSessionId
+                        ? () => onPermissionReply(message.promptData!.id, true)
+                        : undefined
+                    }
+                    onDeny={
+                      onPermissionReply && activeSessionId
+                        ? () => onPermissionReply(message.promptData!.id, false)
+                        : undefined
+                    }
                   />
                 </div>
               )
@@ -191,11 +203,6 @@ export function DashboardMessages({
               message.role === 'assistant' &&
               (message.toolInvocations && message.toolInvocations.length > 0)
 
-            // Wall-clock elapsed
-            const stepsElapsed = isCurrentlyStreaming
-              ? (streamStartTime ? Date.now() - streamStartTime : 0)
-              : (message.elapsed || 0)
-
             return (
               <Message
                 key={message.id}
@@ -207,31 +214,15 @@ export function DashboardMessages({
                   <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
                 )}
 
-                {/* Reasoning-only: no Steps wrapper needed */}
+                {/* Reasoning-only: still "thinking", show Loader until tools/content arrive */}
                 {hasOnlyReasoning && (
-                  <Reasoning isStreaming={isCurrentlyStreaming && isStreaming}>
-                    <div className="whitespace-pre-wrap">{message.reasoning!.join('\n\n')}</div>
-                  </Reasoning>
+                  <Loader message={statusLabel || 'Thinking...'} />
                 )}
 
-                {/* Steps collapsible — groups reasoning + tools */}
-                {hasSteps && (
-                  <Steps
-                    isStreaming={isCurrentlyStreaming && isStreaming}
-                    elapsed={stepsElapsed}
-                    toolCount={message.toolInvocations?.length}
-                  >
-                    {/* Reasoning inside steps — card-based */}
-                    {message.reasoning && message.reasoning.length > 0 && (
-                      <Reasoning isStreaming={isCurrentlyStreaming && isStreaming}>
-                        <div className="whitespace-pre-wrap">{message.reasoning.join('\n\n')}</div>
-                      </Reasoning>
-                    )}
-
-                    {/* Tools inside steps */}
-                    {message.toolInvocations && message.toolInvocations.length > 0 && (
-                      <div className="space-y-2 my-1">
-                        {message.toolInvocations.map((tool) => {
+                {/* Tool calls — each Tool has its own collapsible with arrow */}
+                {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
+                  <div className="space-y-2 my-1">
+                    {message.toolInvocations.map((tool) => {
                           // Check for todo tools — render inline TodoProgress
                           const isTodoTool = tool.toolName.toLowerCase().includes('todo')
                           if (isTodoTool && sessionTodos.length > 0 && !todoRendered) {
@@ -282,12 +273,10 @@ export function DashboardMessages({
                             />
                           )
                         })}
-                      </div>
-                    )}
-                  </Steps>
+                  </div>
                 )}
 
-                {/* Assistant response content — always visible, outside steps */}
+                {/* Assistant response content */}
                 {message.role === 'assistant' && message.content && (
                   <div className={hasSteps ? 'mt-4' : undefined}>
                     <Response>

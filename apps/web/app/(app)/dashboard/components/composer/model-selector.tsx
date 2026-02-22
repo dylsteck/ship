@@ -16,15 +16,7 @@ import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
 import { useComposer } from './composer-context'
 
 export function ModelSelector() {
-  const { activeSessionId, selectedModel, onModelSelect, modelsLoading, groupedByProvider } = useComposer()
-
-  if (activeSessionId) {
-    return (
-      <span className="text-[10px] text-muted-foreground/60 font-mono">
-        {selectedModel?.name || selectedModel?.id || 'Model'}
-      </span>
-    )
-  }
+  const { selectedModel, onModelSelect, modelsLoading, groupedByProvider, isStreaming } = useComposer()
 
   return (
     <DropdownMenu>
@@ -32,7 +24,8 @@ export function ModelSelector() {
         render={
           <Button
             variant="ghost"
-            className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+            disabled={isStreaming}
+            className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:pointer-events-none"
           >
             {modelsLoading ? 'Loading...' : selectedModel?.name || 'Select model'}
             <HugeiconsIcon

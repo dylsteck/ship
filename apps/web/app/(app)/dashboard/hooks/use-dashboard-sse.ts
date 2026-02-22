@@ -67,7 +67,6 @@ export function useDashboardSSE({
   reasoningRef,
   setStreamStartTime,
 }: UseDashboardSSEParams) {
-  const flushRef = useRef<number | null>(null)
   const streamStartTimeRef = useRef<number | null>(null)
 
   // Fix stale closure: track isStreaming via ref
@@ -75,24 +74,20 @@ export function useDashboardSSE({
   isStreamingRef.current = isStreaming
 
   const scheduleFlush = useCallback(() => {
-    if (flushRef.current !== null) return
-    flushRef.current = requestAnimationFrame(() => {
-      flushRef.current = null
-      const msgId = streamingMessageRef.current
-      if (!msgId) return
-      const text = assistantTextRef.current
-      const reasoning = reasoningRef.current
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== msgId) return m
-          const updates: Partial<typeof m> = {}
-          if (m.content !== text) updates.content = text
-          if (reasoning && (m.reasoning?.[0] !== reasoning)) updates.reasoning = [reasoning]
-          if (Object.keys(updates).length === 0) return m
-          return { ...m, ...updates }
-        }),
-      )
-    })
+    const msgId = streamingMessageRef.current
+    if (!msgId) return
+    const text = assistantTextRef.current
+    const reasoning = reasoningRef.current
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m
+        const updates: Partial<typeof m> = {}
+        if (m.content !== text) updates.content = text
+        if (reasoning && (m.reasoning?.[0] !== reasoning)) updates.reasoning = [reasoning]
+        if (Object.keys(updates).length === 0) return m
+        return { ...m, ...updates }
+      }),
+    )
   }, [setMessages, streamingMessageRef, assistantTextRef, reasoningRef])
 
   const handleSend = useCallback(
@@ -250,7 +245,7 @@ export function useDashboardSSE({
 
                   case 'done':
                   case 'session.idle':
-                    handleDoneOrIdle(ctx, flushRef, streamStartTimeRef)
+                    handleDoneOrIdle(ctx, streamStartTimeRef)
                     break
 
                   case 'session.error':

@@ -9,9 +9,10 @@ interface ShimmerProps {
 }
 
 /**
- * Shimmer wrapper for streaming content.
- * Purely structural — no background effect to avoid visible artifacts.
+ * Shimmer wrapper for streaming/loading text.
+ * Applies animated gradient sweep effect (like AI SDK Elements).
+ * Uses .shimmer-text class from app globals.css for the animation.
  */
 export function Shimmer({ children, className }: ShimmerProps) {
-  return <div className={cn(className)}>{children}</div>
+  return <span className={cn('shimmer-text', className)}>{children}</span>
 }

@@ -120,7 +120,6 @@ export function AppSidebar({
   // collapsedRepos: keys of repos that are manually collapsed (default = all expanded)
   const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(new Set())
   const [archiveExpanded, setArchiveExpanded] = useState(false)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const toggleRepo = (key: string) => {
     setCollapsedRepos((prev) => {
@@ -154,13 +153,7 @@ export function AppSidebar({
     ([, a], [, b]) => Math.max(...b.map((s) => s.lastActivity)) - Math.max(...a.map((s) => s.lastActivity)),
   )
 
-  const handleDeleteSession = async (session: ChatSession, confirmed: boolean = false) => {
-    if (!confirmed) {
-      setConfirmDeleteId(session.id)
-      return
-    }
-    if (confirmDeleteId !== session.id) return
-
+  const handleDeleteSession = async (session: ChatSession) => {
     try {
       setDeletingSessionId(session.id)
       await deleteSession({ sessionId: session.id })
@@ -176,7 +169,6 @@ export function AppSidebar({
       router.refresh()
     } finally {
       setDeletingSessionId(null)
-      setConfirmDeleteId(null)
     }
   }
 
@@ -283,47 +275,21 @@ export function AppSidebar({
                                 </div>
                               </div>
                             </Link>
-                            {/* Delete action with confirmation dropdown */}
+                            {/* Delete action */}
                             <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger
-                                  render={
-                                    <button
-                                      type="button"
-                                      title="Delete session"
-                                      disabled={deletingSessionId === session.id}
-                                      className="p-0.5 rounded hover:bg-muted transition-colors disabled:opacity-30 text-muted-foreground/60 hover:text-foreground"
-                                    >
-                                      <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3" />
-                                    </button>
-                                  }
-                                />
-                                <DropdownMenuContent align="end" className="w-48">
-                                  {confirmDeleteId === session.id ? (
-                                    <>
-                                      <DropdownMenuItem
-                                        onClick={() => handleDeleteSession(session, true)}
-                                        className="cursor-pointer text-red-600 dark:text-red-400"
-                                      >
-                                        Yes, delete
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => setConfirmDeleteId(null)}
-                                        className="cursor-pointer"
-                                      >
-                                        Cancel
-                                      </DropdownMenuItem>
-                                    </>
-                                  ) : (
-                                    <DropdownMenuItem
-                                      onClick={() => handleDeleteSession(session)}
-                                      className="cursor-pointer"
-                                    >
-                                      Delete
-                                    </DropdownMenuItem>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <button
+                                type="button"
+                                title="Delete session"
+                                disabled={deletingSessionId === session.id}
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleDeleteSession(session)
+                                }}
+                                className="p-0.5 rounded hover:bg-muted transition-colors disabled:opacity-30 text-muted-foreground/60 hover:text-foreground"
+                              >
+                                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3" />
+                              </button>
                             </div>
                           </div>
                         )
@@ -333,30 +299,6 @@ export function AppSidebar({
               </div>
             )
           })}
-        </div>
-
-        {/* Collapsed icon mode: flat session list (no dot indicator) */}
-        <div className="hidden group-data-[collapsible=icon]:block px-1 py-1">
-          <SidebarMenu>
-            {nonArchived
-              .sort((a, b) => b.lastActivity - a.lastActivity)
-              .map((session) => {
-                const isCurrent = currentSessionId === session.id
-                const sessionTitle = isCurrent && currentSessionTitle ? currentSessionTitle : null
-                const tooltip = sessionTitle || `${session.repoOwner}/${session.repoName}`
-                return (
-                  <SidebarMenuItem key={session.id}>
-                    <SidebarMenuButton
-                      render={<Link href={`/session/${session.id}`} />}
-                      tooltip={tooltip}
-                      isActive={isCurrent}
-                    >
-                      <FolderIcon className="size-4 shrink-0 text-muted-foreground/60" />
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-          </SidebarMenu>
         </div>
 
         {/* Archive section */}

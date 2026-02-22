@@ -1,6 +1,6 @@
 'use client'
 
-import { Message, Reasoning, Tool, Shimmer, Response, Loader, Conversation, ConversationScrollButton } from '@ship/ui'
+import { Message, Tool, Shimmer, Response, Loader, Conversation, ConversationScrollButton } from '@ship/ui'
 import { ErrorMessage } from './error-message'
 import { Markdown } from './markdown'
 import { cn } from '@ship/ui'
@@ -80,12 +80,15 @@ function MessageListContent({
                   <div className="text-foreground whitespace-pre-wrap">{msg.content}</div>
                 )}
 
-                {/* Assistant reasoning */}
-                {msg.role === 'assistant' && msg.reasoning && msg.reasoning.length > 0 && (
-                  <Reasoning isStreaming={isCurrentlyStreaming}>{msg.reasoning.join('\n\n')}</Reasoning>
-                )}
+                {/* Assistant reasoning only = still thinking, show Loader */}
+                {msg.role === 'assistant' &&
+                  msg.reasoning &&
+                  msg.reasoning.length > 0 &&
+                  !msg.toolInvocations?.length && (
+                    <Loader message={streamingLabel || 'Thinking...'} />
+                  )}
 
-                {/* Assistant tools - inline */}
+                {/* Assistant tools - only show tool calls */}
                 {msg.role === 'assistant' && msg.toolInvocations && msg.toolInvocations.length > 0 && (
                   <div className="space-y-1">
                     {msg.toolInvocations.map((tool) => (

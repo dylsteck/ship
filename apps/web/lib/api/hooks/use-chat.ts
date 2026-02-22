@@ -179,3 +179,17 @@ export function useRetryChat(sessionId: string | undefined) {
     error,
   }
 }
+
+/**
+ * Reply to a permission request (approve or deny)
+ */
+export async function replyPermission(
+  sessionId: string,
+  permissionId: string,
+  reply: 'once' | 'always' | 'reject'
+): Promise<{ success: boolean }> {
+  return post<{ reply: 'once' | 'always' | 'reject' }, { success: boolean }>(
+    apiUrl(`/chat/${sessionId}/permission/${permissionId}`),
+    { reply }
+  )
+}

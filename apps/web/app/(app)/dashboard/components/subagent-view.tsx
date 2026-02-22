@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Message, Tool, Response, Loader, Steps, Reasoning, Conversation, ConversationScrollButton } from '@ship/ui'
+import { Message, Tool, Response, Loader, Conversation, ConversationScrollButton } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { mapToolState } from '@/lib/ai-elements-adapter'
 import { useSubagentStream } from '../hooks/use-subagent-stream'
@@ -130,33 +130,31 @@ export function SubagentView({ subagent, onBack }: SubagentViewProps) {
 
                 const hasSteps =
                   message.role === 'assistant' &&
-                  ((message.reasoning && message.reasoning.length > 0) ||
-                    (message.toolInvocations && message.toolInvocations.length > 0))
+                  message.toolInvocations &&
+                  message.toolInvocations.length > 0
+
+                const hasOnlyReasoning =
+                  message.role === 'assistant' &&
+                  message.reasoning &&
+                  message.reasoning.length > 0 &&
+                  !message.toolInvocations?.length
 
                 return (
                   <Message key={message.id} role={message.role}>
-                    {hasSteps && (
-                      <Steps isStreaming={isStreaming} toolCount={message.toolInvocations?.length}>
-                        {message.reasoning && message.reasoning.length > 0 && (
-                          <Reasoning isStreaming={isStreaming}>
-                            <div className="whitespace-pre-wrap">{message.reasoning.join('\n\n')}</div>
-                          </Reasoning>
-                        )}
-                        {message.toolInvocations && message.toolInvocations.length > 0 && (
-                          <div className="space-y-2 my-1">
-                            {message.toolInvocations.map((tool) => (
-                              <Tool
-                                key={tool.toolCallId}
-                                name={tool.toolName}
-                                status={mapToolState(tool.state)}
-                                input={tool.args}
-                                output={tool.result}
-                                duration={tool.duration}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </Steps>
+                    {hasOnlyReasoning && <Loader message={status || 'Thinking...'} />}
+                    {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
+                      <div className="space-y-2 my-1">
+                        {message.toolInvocations.map((tool) => (
+                          <Tool
+                            key={tool.toolCallId}
+                            name={tool.toolName}
+                            status={mapToolState(tool.state)}
+                            input={tool.args}
+                            output={tool.result}
+                            duration={tool.duration}
+                          />
+                        ))}
+                      </div>
                     )}
                     {message.role === 'assistant' && message.content && (
                       <div className={hasSteps ? 'mt-4' : undefined}>
@@ -176,18 +174,16 @@ export function SubagentView({ subagent, onBack }: SubagentViewProps) {
             <div className="space-y-4">
               {/* Child tools list */}
               {showChildToolsFallback && subagent.childTools && (
-                <Steps toolCount={subagent.childTools.length}>
-                  <div className="space-y-2 my-1">
-                    {subagent.childTools.map((tool, i) => (
-                      <Tool
-                        key={i}
-                        name={tool.name}
-                        status={tool.status === 'completed' ? 'completed' : tool.status === 'error' || tool.status === 'failed' ? 'failed' : 'completed'}
-                        input={tool.title ? { description: tool.title } : undefined}
-                      />
-                    ))}
-                  </div>
-                </Steps>
+                <div className="space-y-2 my-1">
+                  {subagent.childTools.map((tool, i) => (
+                    <Tool
+                      key={i}
+                      name={tool.name}
+                      status={tool.status === 'completed' ? 'completed' : tool.status === 'error' || tool.status === 'failed' ? 'failed' : 'completed'}
+                      input={tool.title ? { description: tool.title } : undefined}
+                    />
+                  ))}
+                </div>
               )}
               {/* Result text */}
               {showResultFallback && subagent.resultText && (

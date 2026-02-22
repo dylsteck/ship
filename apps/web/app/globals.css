@@ -125,6 +125,34 @@
   }
 }
 
+/* Shimmer animation for loading/thinking text */
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+.shimmer-text {
+  display: inline-block;
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 40%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 60%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
 /* Hide scrollbar for sidebar */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

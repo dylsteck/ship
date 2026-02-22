@@ -75,14 +75,8 @@ export function handleMessagePartUpdated(
 
 export function handleDoneOrIdle(
   ctx: SSEHandlerContext,
-  flushRef: React.MutableRefObject<number | null>,
   streamStartTimeRef: React.MutableRefObject<number | null>,
 ) {
-  if (flushRef.current !== null) {
-    cancelAnimationFrame(flushRef.current)
-    flushRef.current = null
-  }
-
   const finalMsgId = ctx.streamingMessageRef.current
   if (finalMsgId) {
     const finalText = ctx.assistantTextRef.current
