@@ -8,7 +8,6 @@ import sandbox from './routes/sandbox'
 import git from './routes/git'
 import models from './routes/models'
 import accounts from './routes/accounts'
-import linear from './routes/linear'
 import connectors from './routes/connectors'
 import mcp from './routes/mcp'
 import type { Env } from './env.d'
@@ -41,7 +40,6 @@ app.route('/sandbox', sandbox)
 app.route('/git', git)
 app.route('/models', models)
 app.route('/accounts', accounts)
-app.route('/linear', linear)
 app.route('/connectors', connectors)
 app.route('/mcp', mcp)
 

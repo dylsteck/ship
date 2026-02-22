@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   last_activity INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   archived_at INTEGER,
+  title TEXT,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

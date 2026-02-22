@@ -5,7 +5,7 @@ import { Button, Badge, cn } from '@ship/ui'
 import { API_URL } from '@/lib/config'
 
 interface ConnectorStatus {
-  name: 'github' | 'linear' | 'vercel'
+  name: 'github'
   connected: boolean
   enabled: boolean
 }
@@ -52,15 +52,11 @@ export function ConnectorSettings({ userId }: { userId: string }) {
 
   const handleConnect = (name: ConnectorStatus['name']) => {
     if (name === 'github') window.location.href = '/api/auth/github'
-    else if (name === 'linear') window.location.href = '/api/auth/linear'
-    else setError('Not yet implemented')
   }
 
-  const names: Record<string, string> = { github: 'GitHub', linear: 'Linear', vercel: 'Vercel' }
+  const names: Record<string, string> = { github: 'GitHub' }
   const descriptions: Record<string, string> = {
     github: 'Repository access and pull requests',
-    linear: 'Issue sync and task tracking',
-    vercel: 'Deployment tools in chat',
   }
 
   if (loading) {

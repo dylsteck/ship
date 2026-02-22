@@ -1,9 +1,6 @@
 'use client'
 
 import { cn } from '@ship/ui'
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@ship/ui'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { AttachmentIcon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import type { GitHubRepo, ModelInfo } from '@/lib/api/types'
 import { DashboardStats } from '@/components/dashboard-stats'
 import { ComposerProvider, type ComposerContextValue } from './composer-context'
@@ -41,10 +38,12 @@ interface DashboardComposerProps {
     activeReposChartData: number[]
   }
   canSubmit: boolean
+  /** When true, use normal flow instead of absolute centering (for mobile with session list below) */
+  compactLayout?: boolean
 }
 
 export function DashboardComposer(props: DashboardComposerProps) {
-  const { activeSessionId, stats } = props
+  const { activeSessionId, stats, compactLayout } = props
 
   const contextValue: ComposerContextValue = {
     activeSessionId: props.activeSessionId,
@@ -76,13 +75,15 @@ export function DashboardComposer(props: DashboardComposerProps) {
           'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
           activeSessionId
             ? 'mt-auto pb-3 px-3 sm:pb-4 sm:px-6'
-            : 'absolute inset-0 flex items-start sm:items-center justify-center px-3 sm:px-6 pt-[10vh] sm:pt-0',
+            : compactLayout
+              ? 'flex flex-col px-3 pt-4 pb-2'
+              : 'absolute inset-0 flex items-start sm:items-center justify-center px-3 sm:px-6 pt-[10vh] sm:pt-0',
         )}
       >
         <div
           className={cn(
             'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
-            activeSessionId ? 'max-w-3xl mx-auto' : 'max-w-[540px]',
+            activeSessionId ? 'max-w-3xl mx-auto' : compactLayout ? 'w-full' : 'max-w-[540px]',
           )}
         >
           <div
@@ -97,25 +98,9 @@ export function DashboardComposer(props: DashboardComposerProps) {
             <div className={cn('px-3 pt-4', activeSessionId ? 'pb-2' : 'pb-3')}>
               <ComposerTextarea />
 
-              {/* Non-active session: action buttons inline with textarea */}
               {!activeSessionId && (
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-1">
-                    {/* <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button variant="ghost" size="icon-sm" className="rounded-full">
-                            <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} />
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="start" className="w-[220px]">
-                        <DropdownMenuItem>
-                          <HugeiconsIcon icon={AttachmentIcon} strokeWidth={2} />
-                          Add files
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu> */}
                     <RepoSelector />
                   </div>
                   <SubmitButton />

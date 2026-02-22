@@ -64,7 +64,8 @@ export interface ModelInfo {
 }
 
 export interface DefaultModelResponse {
-  modelId: string | null
+  model?: string | null
+  modelId?: string | null
 }
 
 // ============ GitHub ============

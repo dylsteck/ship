@@ -332,30 +332,6 @@ git.post('/pr', async (c) => {
       body: JSON.stringify({ pr_number: pr.number.toString(), pr_url: pr.htmlUrl }),
     })
 
-    // Link PR to Linear issue if linked (conditional)
-    const linearIssueId = meta['linearIssueId']
-    const userId = meta['userId']
-    if (linearIssueId && userId) {
-      try {
-        // Get Linear access token
-        const linearAccount = await c.env.DB.prepare(
-          'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ?',
-        )
-          .bind(userId, 'linear')
-          .first<{ access_token: string }>()
-
-        if (linearAccount?.access_token) {
-          // Import linkPRToLinearIssue dynamically
-          const { linkPRToLinearIssue } = await import('../lib/github')
-          await linkPRToLinearIssue(linearAccount.access_token, linearIssueId, pr.htmlUrl)
-          console.log(`Linked PR ${pr.htmlUrl} to Linear issue ${linearIssueId}`)
-        }
-      } catch (linearError) {
-        // Log but don't fail PR creation if Linear linking fails
-        console.error('Failed to link PR to Linear issue:', linearError)
-      }
-    }
-
     return c.json({
       prNumber: pr.number,
       prUrl: pr.htmlUrl,

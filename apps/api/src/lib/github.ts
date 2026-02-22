@@ -266,36 +266,3 @@ export class GitHubClient {
 export function createGitHubClient(token: string): GitHubClient {
   return new GitHubClient(token)
 }
-
-/**
- * Link GitHub PR to Linear issue
- * Adds PR URL to Linear issue description or comments
- *
- * @param linearAccessToken - User's Linear access token
- * @param linearIssueId - Linear issue ID
- * @param prUrl - GitHub PR URL
- */
-export async function linkPRToLinearIssue(
-  linearAccessToken: string,
-  linearIssueId: string,
-  prUrl: string,
-): Promise<void> {
-  try {
-    // Import Linear client dynamically to avoid circular dependencies
-    const { createLinearClient } = await import('./linear')
-    const linearClient = createLinearClient(linearAccessToken)
-
-    // Get current issue to append PR URL
-    const issue = await linearClient.getIssue(linearIssueId)
-    if (!issue) {
-      throw new Error('Linear issue not found')
-    }
-
-    // Add PR URL as comment (preferred over modifying description)
-    const commentBody = `🔗 **Linked GitHub PR:** ${prUrl}`
-    await linearClient.addComment(linearIssueId, commentBody)
-  } catch (error) {
-    console.error('Error linking PR to Linear issue:', error)
-    // Don't throw - PR linking is optional
-  }
-}

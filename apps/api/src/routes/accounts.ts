@@ -31,111 +31,6 @@ interface GitHubRepo {
 const accounts = new Hono<{ Bindings: Env }>()
 
 /**
- * POST /accounts/linear
- * Create or update Linear account for user
- */
-accounts.post('/linear', async (c) => {
-  try {
-    const input: CreateAccountInput = await c.req.json()
-
-    // Validate required fields
-    if (!input.userId || !input.providerAccountId || !input.accessToken) {
-      return c.json({ error: 'userId, providerAccountId, and accessToken are required' }, 400)
-    }
-
-    const accountId = crypto.randomUUID()
-    const now = Math.floor(Date.now() / 1000)
-
-    // Check if Linear account already exists for this user
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM accounts WHERE user_id = ? AND provider = ?',
-    )
-      .bind(input.userId, 'linear')
-      .first<{ id: string }>()
-
-    if (existing) {
-      // Update existing account
-      await c.env.DB.prepare(
-        `UPDATE accounts
-         SET provider_account_id = ?, access_token = ?, refresh_token = ?, expires_at = ?, token_type = ?, scope = ?
-         WHERE id = ?`,
-      )
-        .bind(
-          input.providerAccountId,
-          input.accessToken, // In production, encrypt before storing
-          input.refreshToken || null,
-          input.expiresAt || null,
-          input.tokenType || 'Bearer',
-          input.scope || 'read write',
-          existing.id,
-        )
-        .run()
-
-      return c.json({ success: true, accountId: existing.id })
-    } else {
-      // Insert new account
-      await c.env.DB.prepare(
-        `INSERT INTO accounts (id, user_id, provider, provider_account_id, access_token, refresh_token, expires_at, token_type, scope, created_at)
-         VALUES (?, ?, 'linear', ?, ?, ?, ?, ?, ?, ?)`,
-      )
-        .bind(
-          accountId,
-          input.userId,
-          input.providerAccountId,
-          input.accessToken, // In production, encrypt before storing
-          input.refreshToken || null,
-          input.expiresAt || null,
-          input.tokenType || 'Bearer',
-          input.scope || 'read write',
-          now,
-        )
-        .run()
-
-      return c.json({ success: true, accountId })
-    }
-  } catch (error) {
-    console.error('Error creating Linear account:', error)
-    return c.json({ error: 'Failed to create Linear account' }, 500)
-  }
-})
-
-/**
- * GET /accounts/linear/:userId
- * Get Linear account for user
- */
-accounts.get('/linear/:userId', async (c) => {
-  try {
-    const userId = c.req.param('userId')
-
-    const account = await c.env.DB.prepare(
-      'SELECT id, provider_account_id, access_token, expires_at FROM accounts WHERE user_id = ? AND provider = ?',
-    )
-      .bind(userId, 'linear')
-      .first<{
-        id: string
-        provider_account_id: string
-        access_token: string
-        expires_at: number | null
-      }>()
-
-    if (!account) {
-      return c.json({ error: 'Linear account not found' }, 404)
-    }
-
-    // Return account info (don't expose full token in response)
-    return c.json({
-      id: account.id,
-      providerAccountId: account.provider_account_id,
-      hasToken: !!account.access_token,
-      expiresAt: account.expires_at,
-    })
-  } catch (error) {
-    console.error('Error fetching Linear account:', error)
-    return c.json({ error: 'Failed to fetch Linear account' }, 500)
-  }
-})
-
-/**
  * POST /accounts/github
  * Create or update GitHub account for user
  */
@@ -201,6 +96,59 @@ accounts.post('/github', async (c) => {
   } catch (error) {
     console.error('Error creating GitHub account:', error)
     return c.json({ error: 'Failed to create GitHub account' }, 500)
+  }
+})
+
+/**
+ * GET /accounts/github/default-repo
+ * Get user's default repository preference
+ * Query param: userId (required)
+ */
+accounts.get('/github/default-repo', async (c) => {
+  try {
+    const userId = c.req.query('userId')
+    if (!userId) {
+      return c.json({ error: 'userId query parameter is required' }, 400)
+    }
+
+    const result = await c.env.DB.prepare(
+      'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?',
+    )
+      .bind(userId, 'default_repo')
+      .first<{ value: string }>()
+
+    return c.json({ repoFullName: result?.value ?? null })
+  } catch (error) {
+    console.error('Error fetching default repo:', error)
+    return c.json({ error: 'Failed to fetch default repo' }, 500)
+  }
+})
+
+/**
+ * POST /accounts/github/default-repo
+ * Set user's default repository preference
+ * Body: { userId: string, repoFullName: string }
+ */
+accounts.post('/github/default-repo', async (c) => {
+  try {
+    const { userId, repoFullName } = await c.req.json<{ userId: string; repoFullName: string }>()
+
+    if (!userId || !repoFullName) {
+      return c.json({ error: 'userId and repoFullName are required' }, 400)
+    }
+
+    await c.env.DB.prepare(
+      `INSERT INTO user_preferences (user_id, key, value)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+    )
+      .bind(userId, 'default_repo', repoFullName)
+      .run()
+
+    return c.json({ success: true, repoFullName })
+  } catch (error) {
+    console.error('Error setting default repo:', error)
+    return c.json({ error: 'Failed to set default repo' }, 500)
   }
 })
 

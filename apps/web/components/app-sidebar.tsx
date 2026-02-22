@@ -335,7 +335,7 @@ export function AppSidebar({
           })}
         </div>
 
-        {/* Collapsed icon mode: flat session list */}
+        {/* Collapsed icon mode: flat session list (no dot indicator) */}
         <div className="hidden group-data-[collapsible=icon]:block px-1 py-1">
           <SidebarMenu>
             {nonArchived
@@ -351,12 +351,7 @@ export function AppSidebar({
                       tooltip={tooltip}
                       isActive={isCurrent}
                     >
-                      <span
-                        className={cn(
-                          'size-1.5 rounded-full shrink-0',
-                          isCurrent ? 'bg-foreground' : 'bg-foreground/30',
-                        )}
-                      />
+                      <FolderIcon className="size-4 shrink-0 text-muted-foreground/60" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )

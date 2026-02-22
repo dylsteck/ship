@@ -1,398 +1,243 @@
 # Ship
 
-A background agent platform for building software. Sign in with GitHub, chat with an AI agent (powered by OpenCode SDK) that works on code in sandboxed environments. Tasks come from Linear issues or chat conversations. Sessions contain conversations with one or many tasks — the agent writes code, runs tests, and deploys while you focus on other things.Heavily inspired by Ramp's internal [Inspect background coding agent](https://builders.ramp.com/post/why-we-built-our-background-agent). Built by [@dylsteck](https://github.com/dylsteck).
+A background agent platform for building software. Sign in with GitHub, chat with an AI agent (powered by OpenCode SDK) that works on code in sandboxed environments. The agent writes code, runs tests, and deploys while you focus on other things.
 
-**Core Value**: The agent works autonomously in the background on real coding tasks while you do other things — you come back to working code, not just suggestions.
+**Core value**: The agent works autonomously in the background on real coding tasks — you come back to working code, not just suggestions.
+
+Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/post/why-we-built-our-background-agent). Built by [@dylsteck](https://github.com/dylsteck).
+
+---
 
 ## Demo
 
 <video src="https://github.com/user-attachments/assets/8ca7aa09-9004-4d4d-8d83-d086403afa63" controls></video>
 
-## Architecture
-
-```mermaid
-graph TD
-    A[Next.js Web App] -->|SSE Streaming| B[Cloudflare Worker API]
-    B -->|Durable Objects| C[Session State]
-    B -->|OpenCode SDK| D[AI Agent]
-    D -->|E2B Sandbox| E[Code Execution]
-    D -->|GitHub API| F[PR Creation]
-    
-    subgraph Frontend
-        A --> G[Dashboard]
-        G --> H[Chat + Streaming]
-        G --> I[Session Panel]
-        G --> J[Composer]
-    end
-    
-    subgraph Chat UI
-        H --> K[UIMessage Adapter]
-        K --> L[SSE Parser]
-        K --> M[Tool Blocks]
-        K --> N[Reasoning]
-        K --> O[Permissions / Questions]
-    end
-```
-
-## Tech Stack
-
-- **Monorepo**: Turborepo 2.x with pnpm workspaces
-- **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, Base UI, AI Elements components
-- **Backend**: Cloudflare Workers (Hono framework), Durable Objects for session state
-- **Database**: Cloudflare D1 (SQLite) for user/auth data
-- **Auth**: GitHub OAuth (Arctic) + JWT sessions (jose)
-- **Sandboxes**: Vercel Sandbox (OpenCode SDK) for isolated code execution
-- **Agents**: OpenCode SDK with support for Claude, GPT-4, and other LLMs
-- **MCP Servers**: Vercel (deployment), Grep (GitHub code search), Context7 (documentation search)
-- **Real-time**: Server-Sent Events (SSE) for live agent updates and WebSockets for chat
-
-## Project Structure
-
-```
-ship/
-├── apps/
-│   ├── web/                  # Next.js 16 App Router
-│   │   ├── app/              # Routes and layouts
-│   │   │   ├── (app)/        # Authenticated app routes
-│   │   │   │   └── dashboard/# Dashboard with chat UI
-│   │   │   │       ├── hooks/     # useDashboardChat, useDashboardSSE
-│   │   │   │       └── components/# DashboardHeader, Messages, Composer
-│   │   │   ├── api/          # API routes (auth, proxy)
-│   │   │   └── page.tsx      # Home → redirects to dashboard
-│   │   ├── components/       # React components
-│   │   │   ├── chat/         # session-panel.tsx (Context sidebar)
-│   │   │   ├── session/      # Session management UI
-│   │   │   └── app-sidebar.tsx
-│   │   └── lib/              # Utilities and business logic
-│   │       ├── ai-elements-adapter.ts  # SSE → UIMessage transforms
-│   │       ├── sse-types.ts            # SSE event type definitions
-│   │       ├── sse-parser.ts           # SSE stream parser
-│   │       ├── api/                    # API client + SWR hooks
-│   │       └── dal/                    # Data Access Layer
-│   └── api/                  # Cloudflare Worker
-│       ├── src/
-│       │   ├── index.ts      # Hono app entry point
-│       │   └── env.d.ts      # Environment types
-│       ├── wrangler.toml     # Worker configuration
-│       └── .dev.vars.example # Local secrets template
-├── packages/
-│   └── ui/                   # Shared UI components (@ship/ui)
-│       └── src/
-│           ├── ai-elements/  # Chat UI primitives
-│           │   ├── code-block.tsx  # Shiki syntax highlighting
-│           │   ├── steps.tsx       # Collapsible steps (OpenCode-style)
-│           │   ├── tool.tsx        # Tool invocation cards with icons
-│           │   ├── reasoning.tsx   # Reasoning display
-│           │   └── markdown.tsx    # Markdown renderer
-│           └── index.ts
-└── .planning/                # GSD planning artifacts
-```
-
-## Key Architecture Patterns
-
-### Message Flow
-
-1. **SSE Streaming**: Agent events stream via SSE from the OpenCode API
-2. **Adapter Layer** (`ai-elements-adapter.ts`): Transforms SSE events into `UIMessage` objects — the single source of truth for all message state
-3. **UIMessage**: Contains text content, tool invocations, reasoning blocks, elapsed time, and prompt data all on one object
-4. **Reload Persistence**: The `parts` JSON string from the API is parsed on reload to restore reasoning, tools, and timing data
-
-### Chat Hooks
-
-- `use-dashboard-chat.ts` — State management, WebSocket connection, history loading
-- `use-dashboard-sse.ts` — SSE streaming handler, transforms events via adapter
-
-### UI Components (`@ship/ui`)
-
-- **Steps**: Collapsible "Show steps / Hide steps" with step count and elapsed time
-- **Tool**: Tool invocation cards with per-tool icons (Read → glasses, Bash → terminal, etc.)
-- **CodeBlock**: Syntax-highlighted code blocks using Shiki with `github-dark` theme
-- **Session Panel**: OpenCode-style Context sidebar with stats grid, token breakdown bar, and raw messages viewer
+---
 
 ## Quick Start
 
 ### Prerequisites
 
 - **Node.js** 20+ and **pnpm** 9+
-- **Cloudflare Account** (free tier is fine)
-- **GitHub Account** (for OAuth)
+- **Cloudflare account** (free tier)
+- **GitHub account** (for OAuth)
+- **E2B account** (for sandboxes) — [e2b.dev](https://e2b.dev)
+- **Anthropic API key** (for the agent)
 
-### 1. Install Dependencies
-
-From the root directory:
+### 1. Clone and install
 
 ```bash
+git clone <your-repo-url>
+cd ship
 pnpm install
 ```
 
-This installs dependencies for both the web app (`apps/web`) and API worker (`apps/api`).
+### 2. Environment setup
 
-### 2. Configure Web App Environment
-
-Copy the environment template and fill in your values:
+**Web app** (`apps/web`):
 
 ```bash
 cd apps/web
 cp .env.example .env.local
 ```
 
-Edit `apps/web/.env.local`:
+Edit `.env.local`:
 
-```env
-# GitHub OAuth - see setup instructions below
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
+| Variable | Description |
+|---------|-------------|
+| `GITHUB_CLIENT_ID` | From [GitHub OAuth App](https://github.com/settings/developers) |
+| `GITHUB_CLIENT_SECRET` | From same OAuth App |
+| `SESSION_SECRET` | `openssl rand -hex 32` |
+| `API_BASE_URL` | `http://localhost:8787` (local) |
+| `NEXT_PUBLIC_API_URL` | Same as `API_BASE_URL` |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` |
 
-# Session Secret - generate with: openssl rand -hex 32
-SESSION_SECRET=your-32-char-secret-key-here-min
-
-# API Configuration (defaults work for local development)
-API_BASE_URL=http://localhost:8787
-NEXT_PUBLIC_API_URL=http://localhost:8787
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Optional: Context7 API key for documentation search MCP
-CONTEXT7_API_KEY=your-context7-api-key
-```
-
-### 3. Configure API Secrets (Cloudflare Worker)
-
-For local development:
+**API** (`apps/api`):
 
 ```bash
 cd apps/api
 cp .dev.vars.example .dev.vars
 ```
 
-Edit `apps/api/.dev.vars`:
+Edit `.dev.vars`:
 
-```env
-# Anthropic API Key (for OpenCode agent operations)
-# Get from: https://console.anthropic.com/settings/keys
-ANTHROPIC_API_KEY=sk-ant-...
+| Variable | Description |
+|---------|-------------|
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| `E2B_API_KEY` | [e2b.dev/dashboard](https://e2b.dev/dashboard) → Settings → API Keys |
+| `API_SECRET` | `openssl rand -hex 32` (must match web app expectations) |
+| `ALLOWED_ORIGINS` | `http://localhost:3000` |
 
-# OpenAI API Key (optional, for GPT-4 models)
-# Get from: https://platform.openai.com/api-keys
-OPENAI_API_KEY=sk-...
-
-# Internal API Secret - generate with: openssl rand -hex 32
-API_SECRET=your-api-secret-here
-
-# Vercel Sandbox credentials (for sandbox provisioning)
-SANDBOX_VERCEL_TOKEN=your-vercel-token
-SANDBOX_VERCEL_TEAM_ID=your-team-id
-SANDBOX_VERCEL_PROJECT_ID=your-project-id
-```
-
-### 4. Create D1 Database
-
-Create a D1 database for local development:
+### 3. Database (D1)
 
 ```bash
 cd apps/api
 npx wrangler d1 create ship-db
 ```
 
-Copy the `database_id` from the output and update `apps/api/wrangler.toml`:
+Copy the `database_id` from the output into `wrangler.toml`:
 
 ```toml
 [[d1_databases]]
 binding = "DB"
 database_name = "ship-db"
-database_id = "your-database-id-here"  # Replace "local" with actual ID
+database_id = "your-database-id-here"
 ```
 
-### 5. Run Database Migrations
-
-Apply the schema to your D1 database:
+Apply schema:
 
 ```bash
-cd apps/api
-npx wrangler d1 execute ship-db --local --file=migrations/0001_create_auth_tables.sql
+npx wrangler d1 execute ship-db --local --file=src/db/schema.sql
 ```
 
-### 6. Start Development Servers
+### 4. GitHub OAuth App
 
-From the root directory:
+1. [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
+2. **Homepage URL**: `http://localhost:3000`
+3. **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
+4. Copy Client ID and Client Secret into `apps/web/.env.local`
+
+### 5. Run
 
 ```bash
 pnpm dev
 ```
 
-This starts:
-- **Web app**: http://localhost:3000
-- **API Worker**: http://localhost:8787
+- **Web**: http://localhost:3000
+- **API**: http://localhost:8787
 
-### GitHub OAuth Setup
+---
 
-1. Go to [github.com/settings/developers](https://github.com/settings/developers)
-2. Click **New OAuth App**
-3. Fill in:
-   - **Application name**: `Ship` (or your preferred name)
-   - **Homepage URL**: `http://localhost:3000`
-   - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
-4. Click **Register application**
-5. Copy the **Client ID** to `GITHUB_CLIENT_ID` in `.env.local`
-6. Click **Generate a new client secret**
-7. Copy the **Client Secret** to `GITHUB_CLIENT_SECRET` in `.env.local`
+## Contributing
 
-## Development Commands
+### Commands
 
-From the root directory:
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Start web + API |
+| `pnpm build` | Build all apps |
+| `pnpm lint` | Lint |
+| `pnpm type-check` | TypeScript check |
 
-```bash
-pnpm dev         # Start all development servers
-pnpm build       # Build all apps (uses turbo)
-pnpm lint        # Lint all packages
-pnpm type-check  # TypeScript checks
-```
+### API commands (from `apps/api`)
 
-### API-specific commands (from apps/api):
+| Command | Description |
+|---------|-------------|
+| `npx wrangler dev` | Run Worker locally |
+| `npx wrangler d1 execute ship-db --local --file=<sql>` | Run migration |
+| `npx wrangler d1 execute ship-db --local --command="SELECT * FROM users"` | Query DB |
+| `npx wrangler tail ship-api-production` | Stream prod logs |
 
-```bash
-npx wrangler dev                    # Start Worker dev server
-npx wrangler tail ship-api-production  # View production logs (for debugging)
-npx wrangler d1 create <db-name>    # Create D1 database
-npx wrangler d1 execute <db-name> --local --file=<sql-file>  # Run migrations
-npx wrangler d1 execute <db-name> --local --command="SELECT * FROM users"  # Query database
-npx wrangler secret put <secret-name>  # Set production secret
-```
+### Code style
 
-### Web-specific commands (from apps/web):
+- **TypeScript** strict mode
+- **pnpm** (not npm/yarn)
+- **Named exports** preferred
+- Keep components &lt; ~300 lines, functions &lt; ~100 lines
 
-```bash
-pnpm dev         # Start Next.js dev server
-pnpm build       # Build for production
-pnpm start       # Start production server
-```
+### PRs
 
-## Deployment
+- Use conventional commits: `feat:`, `fix:`, `chore:`, etc.
+- One concern per PR
+- Describe changes and what you tested
 
-Ship runs two services in production: a **Cloudflare Worker** (API + Durable Objects) and a **Next.js web app** (Vercel).
-
-### 1. Cloudflare Worker (API)
-
-The API uses the `production` environment defined in `apps/api/wrangler.toml`, which deploys as `ship-api-production` with its own D1 database.
-
-#### First-time setup
-
-```bash
-cd apps/api
-
-# Create the production D1 database (if not already created)
-npx wrangler d1 create ship-db-production
-
-# Copy the database_id from the output into wrangler.toml under [env.production.d1_databases]
-# The current production database_id is already configured in wrangler.toml
-
-# Run schema migrations against the production database
-npx wrangler d1 execute ship-db-production --file=src/db/schema.sql --env production
-
-# Set required secrets for the production environment
-npx wrangler secret put ANTHROPIC_API_KEY --env production
-npx wrangler secret put API_SECRET --env production
-npx wrangler secret put OPENAI_API_KEY --env production        # optional, for GPT models
-npx wrangler secret put SANDBOX_VERCEL_TOKEN --env production   # for Vercel Sandbox
-npx wrangler secret put SANDBOX_VERCEL_TEAM_ID --env production
-npx wrangler secret put SANDBOX_VERCEL_PROJECT_ID --env production
-```
-
-#### Deploy
-
-```bash
-cd apps/api
-npx wrangler deploy --env production
-```
-
-This deploys the Worker as `ship-api-production` with Durable Objects (`SessionDO`) and the production D1 database. The deployed URL will be something like `https://ship-api-production.<your-subdomain>.workers.dev`.
-
-#### Monitoring
-
-```bash
-# Stream production logs in real-time
-npx wrangler tail ship-api-production
-
-# Query the production database
-npx wrangler d1 execute ship-db-production --env production --command="SELECT COUNT(*) FROM users"
-```
-
-### 2. Next.js Web App (Vercel)
-
-#### Vercel project setup
-
-1. Go to [vercel.com/new](https://vercel.com/new) and import the Ship repository
-2. Configure the project:
-   - **Framework Preset**: Next.js
-   - **Root Directory**: `apps/web`
-   - **Build Command**: `pnpm build` (auto-detected from turbo)
-   - **Install Command**: `pnpm install`
-3. Add environment variables in Vercel project settings → Environment Variables:
-
-| Variable | Value | Notes |
-|----------|-------|-------|
-| `GITHUB_CLIENT_ID` | Your production OAuth app client ID | Create a **separate** GitHub OAuth App for production with your prod URL as homepage and callback |
-| `GITHUB_CLIENT_SECRET` | Your production OAuth app client secret | |
-| `SESSION_SECRET` | `openssl rand -hex 32` | Generate a unique secret for production |
-| `API_BASE_URL` | `https://ship-api-production.<subdomain>.workers.dev` | Your deployed Cloudflare Worker URL |
-| `NEXT_PUBLIC_API_URL` | Same as `API_BASE_URL` | Needed for client-side API calls |
-| `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` | Your Vercel deployment URL or custom domain |
-
-4. Click **Deploy**
-
-#### GitHub OAuth for production
-
-Create a **separate** GitHub OAuth App for production (don't reuse the dev one):
-
-1. Go to [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
-2. **Homepage URL**: `https://your-app.vercel.app` (or custom domain)
-3. **Authorization callback URL**: `https://your-app.vercel.app/api/auth/github/callback`
-4. Use the production Client ID and Client Secret in Vercel env vars
-
-#### Subsequent deploys
-
-Vercel auto-deploys on push to `main`. For manual deploys:
-
-```bash
-# From repo root — Vercel CLI
-npx vercel --prod
-```
-
-#### Custom domain
-
-1. In Vercel project settings → **Domains**, add your domain
-2. Update DNS records as instructed by Vercel
-3. Update `NEXT_PUBLIC_APP_URL` env var to match
-4. Update your production GitHub OAuth App callback URL to use the custom domain
-
-### Production checklist
-
-- [ ] Cloudflare Worker deployed with `--env production`
-- [ ] All Cloudflare secrets set (`ANTHROPIC_API_KEY`, `API_SECRET`, sandbox creds)
-- [ ] Production D1 database created and schema applied
-- [ ] Vercel project created with `apps/web` root directory
-- [ ] All Vercel env vars set (GitHub OAuth, session secret, API URLs)
-- [ ] Separate GitHub OAuth App created for production URLs
-- [ ] GitHub OAuth callback URL matches production domain
-- [ ] Tested: can sign in, create session, chat with agent
+---
 
 ## How It Works
 
-1. **Authentication**: Sign in with GitHub OAuth to create a persistent session
-2. **Session Creation**: Create a new session linked to a GitHub repository
-3. **Agent Interaction**: Chat with the AI agent or connect a Linear issue
-4. **Autonomous Execution**: The agent works in a sandboxed environment, writing code, running tests, and making commits
-5. **Real-time Updates**: Watch progress via SSE events showing tool calls, reasoning, file changes, and more
-6. **Review & Deploy**: Review changes, approve permissions, and deploy via integrated MCP servers
+1. **Sign in** with GitHub OAuth
+2. **Create a session** linked to a GitHub repo
+3. **Chat** with the AI agent
+4. **Agent runs** in an E2B sandbox — writes code, runs tests, creates PRs
+5. **Watch progress** via SSE (tool calls, reasoning, file changes)
+6. **Review & deploy** via MCP (Vercel, GitHub, docs)
 
-## Architecture Notes
+---
 
-- **Authentication Flow**: GitHub OAuth → API creates session → API returns JWT → Web stores in httpOnly cookie
-- **Session State**: Durable Objects manage session state and real-time communication
-- **Agent Execution**: OpenCode SDK orchestrates agents in Vercel Sandbox environments
-- **Real-time Updates**: Server-Sent Events (SSE) stream agent activity (tool calls, reasoning, file changes)
-- **MCP Integration**: Model Context Protocol servers provide external tools (Vercel deployment, GitHub search, documentation)
-- **Data Access Layer**: Server Components verify sessions via DAL before accessing data
-- **Middleware**: `proxy.ts` optimistically redirects unauthenticated users (not a security boundary)
-- **API Communication**: Web app proxies requests to Cloudflare Worker API
-- **Database**: D1 (SQLite) with Auth.js-compatible schema (users, accounts, sessions)
-- **Timestamps**: All dates stored as Unix timestamps (seconds) for D1 compatibility
+## Architecture
+
+```mermaid
+graph TD
+    A[Next.js Web] -->|SSE| B[Cloudflare Worker]
+    B -->|Durable Objects| C[Session State]
+    B -->|OpenCode SDK| D[AI Agent]
+    D -->|E2B Sandbox| E[Code Execution]
+    D -->|GitHub API| F[PRs]
+```
+
+### Tech stack
+
+| Layer | Tech |
+|-------|------|
+| Monorepo | Turborepo, pnpm workspaces |
+| Frontend | Next.js 16, React 19, Tailwind v4, Base UI |
+| Backend | Cloudflare Workers (Hono), Durable Objects |
+| Database | Cloudflare D1 (SQLite) |
+| Auth | GitHub OAuth (Arctic), JWT (jose) |
+| Sandboxes | E2B (OpenCode SDK) |
+| Agents | OpenCode SDK (Claude, GPT-4, etc.) |
+| MCP | Vercel, Grep, Context7 |
+| Real-time | SSE, WebSockets |
+
+### Project structure
+
+```
+ship/
+├── apps/
+│   ├── web/           # Next.js app
+│   │   ├── app/       # Routes, dashboard, auth
+│   │   ├── components/
+│   │   └── lib/       # API client, SSE, DAL
+│   └── api/           # Cloudflare Worker
+│       ├── src/
+│       │   ├── index.ts
+│       │   ├── routes/       # Hono routes
+│       │   ├── durable-objects/
+│       │   └── lib/          # E2B, OpenCode, GitHub
+│       ├── migrations/
+│       └── wrangler.toml
+└── packages/
+    └── ui/            # Shared UI (@ship/ui)
+```
+
+---
+
+## Deployment
+
+### Cloudflare Worker (API)
+
+```bash
+cd apps/api
+
+# First time: create prod DB, run schema, set secrets
+npx wrangler d1 create ship-db-production
+# Add database_id to wrangler.toml [env.production.d1_databases]
+
+npx wrangler d1 execute ship-db-production --file=src/db/schema.sql --env production
+npx wrangler secret put ANTHROPIC_API_KEY --env production
+npx wrangler secret put API_SECRET --env production
+npx wrangler secret put E2B_API_KEY --env production
+
+# Deploy
+npx wrangler deploy --env production
+```
+
+### Vercel (Web)
+
+1. Import repo at [vercel.com/new](https://vercel.com/new)
+2. **Root Directory**: `apps/web`
+3. Add env vars: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `API_BASE_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`
+4. Create a **separate** GitHub OAuth App for production URLs
+
+### Checklist
+
+- [ ] Worker deployed with prod D1 + secrets
+- [ ] Vercel project with `apps/web` root
+- [ ] Production GitHub OAuth App (callback = prod URL)
+- [ ] Test: sign in, create session, chat with agent
+
+---
+
+## License
+
+MIT

@@ -6,7 +6,7 @@ const connectors = new Hono<{ Bindings: Env }>()
 /**
  * Connector types
  */
-type ConnectorName = 'github' | 'linear' | 'vercel'
+type ConnectorName = 'github'
 
 /**
  * Connector status
@@ -30,7 +30,7 @@ connectors.get('/', async (c) => {
       return c.json({ error: 'userId query parameter is required' }, 400)
     }
 
-    const connectors: ConnectorName[] = ['github', 'linear', 'vercel']
+    const connectors: ConnectorName[] = ['github']
     const statuses: ConnectorStatus[] = []
 
     for (const name of connectors) {
@@ -77,7 +77,7 @@ connectors.get('/:name/status', async (c) => {
       return c.json({ error: 'userId query parameter is required' }, 400)
     }
 
-    if (!['github', 'linear', 'vercel'].includes(name)) {
+    if (name !== 'github') {
       return c.json({ error: 'Invalid connector name' }, 400)
     }
 
@@ -122,7 +122,7 @@ connectors.post('/:name/enable', async (c) => {
       return c.json({ error: 'userId is required' }, 400)
     }
 
-    if (!['github', 'linear', 'vercel'].includes(name)) {
+    if (name !== 'github') {
       return c.json({ error: 'Invalid connector name' }, 400)
     }
 
@@ -157,7 +157,7 @@ connectors.post('/:name/disable', async (c) => {
       return c.json({ error: 'userId is required' }, 400)
     }
 
-    if (!['github', 'linear', 'vercel'].includes(name)) {
+    if (name !== 'github') {
       return c.json({ error: 'Invalid connector name' }, 400)
     }
 

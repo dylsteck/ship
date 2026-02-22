@@ -17,10 +17,17 @@ interface UseSessionSyncParams {
   setSelectedModel: (model: ModelInfo) => void
   /** User's saved default model ID from settings */
   defaultModelId: string | null
+  /** Whether default model is still loading (wait before initial selection) */
+  defaultModelLoading: boolean
   /** Repo data */
   repos: GitHubRepo[]
-  localSessions: ChatSession[]
+  selectedRepo: GitHubRepo | null
   setSelectedRepo: (repo: GitHubRepo) => void
+  localSessions: ChatSession[]
+  /** Whether default repo is still loading (wait before initial selection) */
+  defaultRepoLoading: boolean
+  /** User's saved default repo full name from settings */
+  defaultRepoFullName: string | null
   /** Message queue */
   isStreaming: boolean
   messageQueue: string[]
@@ -44,9 +51,13 @@ export function useSessionSync({
   selectedModel,
   setSelectedModel,
   defaultModelId,
+  defaultModelLoading,
   repos,
-  localSessions,
+  selectedRepo,
   setSelectedRepo,
+  localSessions,
+  defaultRepoLoading,
+  defaultRepoFullName,
   isStreaming,
   messageQueue,
   setMessageQueue,
@@ -61,15 +72,18 @@ export function useSessionSync({
     }
   }, [sessionParam, activeSessionId, setActiveSessionId, connectWebSocket])
 
-  // Set default model once loaded — prefer user's saved default from settings
+  // Set default model once defaults have loaded — prefer user's saved default from settings
+  // Wait for defaultModelLoading to finish so we don't pick Kimi before "big pickle" loads
   useEffect(() => {
-    if (!selectedModel && models.length > 0) {
-      // Priority: 1) user's saved default from settings, 2) API-marked default, 3) first model
-      const savedDefault = defaultModelId ? models.find((m) => m.id === defaultModelId) : null
-      const markedDefault = models.find((m) => m.isDefault)
-      setSelectedModel(savedDefault || markedDefault || models[0])
-    }
-  }, [models, selectedModel, setSelectedModel, defaultModelId])
+    if (defaultModelLoading || models.length === 0 || selectedModel) return
+
+    // Match by id, or legacy format (e.g. "big-pickle" -> "opencode/big-pickle")
+    const findModel = (id: string) =>
+      models.find((m) => m.id === id || m.id === `opencode/${id}`)
+    const savedDefault = defaultModelId ? findModel(defaultModelId) : null
+    const markedDefault = models.find((m) => m.isDefault)
+    setSelectedModel(savedDefault || markedDefault || models[0])
+  }, [models, selectedModel, setSelectedModel, defaultModelId, defaultModelLoading])
 
   // Update selectedRepo when activeSessionId changes
   useEffect(() => {
@@ -83,6 +97,20 @@ export function useSessionSync({
       }
     }
   }, [activeSessionId, localSessions, repos, setSelectedRepo])
+
+  // Set default repo when no active session — wait for defaultRepoFullName to load first
+  useEffect(() => {
+    if (activeSessionId || defaultRepoLoading || selectedRepo) return
+    if (repos.length === 0) return
+
+    if (defaultRepoFullName) {
+      const match = repos.find((r) => r.fullName === defaultRepoFullName)
+      if (match) {
+        setSelectedRepo(match)
+        return
+      }
+    }
+  }, [activeSessionId, defaultRepoLoading, defaultRepoFullName, repos, selectedRepo, setSelectedRepo])
 
   // Process queued messages when streaming completes
   useEffect(() => {

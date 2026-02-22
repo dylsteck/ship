@@ -71,7 +71,7 @@ export function useDefaultModel(userId: string | undefined) {
   )
 
   return {
-    defaultModelId: data?.modelId ?? null,
+    defaultModelId: data?.model ?? data?.modelId ?? null,
     isLoading,
     isError: !!error,
     error,
@@ -86,7 +86,10 @@ export function useSetDefaultModel() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-default-model',
     async (_key: string, { arg }: { arg: { userId: string; modelId: string } }) => {
-      return post<{ userId: string; modelId: string }, DefaultModelResponse>(apiUrl('/models/default'), arg)
+      return post<{ userId: string; model: string }, DefaultModelResponse>(apiUrl('/models/default'), {
+        userId: arg.userId,
+        model: arg.modelId,
+      })
     },
   )
 

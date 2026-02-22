@@ -588,6 +588,23 @@ app.post('/:sessionId', async (c) => {
                   break
                 }
 
+                case 'session.updated': {
+                  const info = event.properties?.info
+                  const title = info?.title
+                  if (title && !title.startsWith('New session')) {
+                    try {
+                      await c.env.DB.prepare(
+                        `UPDATE chat_sessions SET title = ? WHERE id = ?`,
+                      )
+                        .bind(title, sessionId)
+                        .run()
+                    } catch (dbError) {
+                      console.warn(`[chat:${sessionId}] Failed to persist session title:`, dbError)
+                    }
+                  }
+                  break
+                }
+
                 case 'todo.updated': {
                   const todos = event.properties.todos || []
                   for (const todo of todos) {

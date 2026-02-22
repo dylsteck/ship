@@ -11,6 +11,7 @@ interface SessionDTO {
   lastActivity: number
   createdAt: number
   archivedAt: number | null
+  title?: string
 }
 
 // Database row type
@@ -23,6 +24,7 @@ interface SessionRow {
   last_activity: number
   created_at: number
   archived_at: number | null
+  title?: string
 }
 
 // Create session input
@@ -49,7 +51,7 @@ sessions.get('/', async (c) => {
     }
 
     const cursor = await c.env.DB.prepare(
-      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at
+      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at, title
        FROM chat_sessions
        WHERE user_id = ? AND status != 'deleted'
        ORDER BY last_activity DESC`,
@@ -67,6 +69,7 @@ sessions.get('/', async (c) => {
       lastActivity: row.last_activity,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
+      title: row.title ?? undefined,
     }))
 
     return c.json(sessionDTOs)
@@ -189,7 +192,7 @@ sessions.get('/:id', async (c) => {
     const id = c.req.param('id')
 
     const row = await c.env.DB.prepare(
-      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at
+      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at, title
        FROM chat_sessions
        WHERE id = ?`,
     )
@@ -216,6 +219,7 @@ sessions.get('/:id', async (c) => {
       lastActivity: row.last_activity,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
+      title: row.title ?? undefined,
       messageCount,
     }
 

@@ -133,16 +133,6 @@ export function SettingsClient({ userId }: { userId: string }) {
       </header>
 
       <div className="mx-auto max-w-xl px-4 py-6">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-4"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Dashboard
-        </Link>
-
         <h1 className="text-lg font-semibold text-foreground mb-1">Settings</h1>
         <p className="text-[12px] text-muted-foreground mb-5">Manage your preferences</p>
 

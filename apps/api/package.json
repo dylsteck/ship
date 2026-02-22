@@ -10,13 +10,11 @@
   },
   "dependencies": {
     "@e2b/code-interpreter": "^2.3.3",
-    "@linear/sdk": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@octokit/rest": "^22.0.1",
     "@opencode-ai/sdk": "^1.1.48",
     "@ship/types": "workspace:*",
     "@vercel/sdk": "^1.0.0",
-    "graphql-request": "^7.1.1",
     "hono": "^4.6.18",
     "octokit-plugin-create-pull-request": "^6.0.1"
   },
