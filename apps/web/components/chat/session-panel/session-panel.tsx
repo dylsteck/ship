@@ -14,6 +14,7 @@ import { VCSSection } from './vcs-section'
 export function SessionPanel({
   sessionId,
   repo,
+  agent,
   model,
   tokens,
   cost,
@@ -57,6 +58,7 @@ export function SessionPanel({
       {/* Primary info group */}
       <StatsSection
         sessionId={sessionId}
+        agent={agent}
         model={model}
         repo={repo}
         tokens={tokens}

@@ -7,11 +7,16 @@ export interface RepoInfo {
   branch?: string
 }
 
+export interface AgentInfo {
+  id: string
+  name: string
+}
+
 export interface ModelInfo {
   id: string
   name?: string
   provider?: string
-  mode?: 'build' | 'plan'
+  mode?: string
 }
 
 export interface TokenInfo {
@@ -38,6 +43,7 @@ export interface Todo {
 export interface SessionPanelProps {
   sessionId: string
   repo?: RepoInfo
+  agent?: AgentInfo
   model?: ModelInfo
   tokens?: TokenInfo
   cost?: number

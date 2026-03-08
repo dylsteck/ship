@@ -24,6 +24,9 @@ function useSessionPanelProps(data: SessionPanelData) {
     repo: data.selectedRepo
       ? { owner: data.selectedRepo.owner, name: data.selectedRepo.name }
       : undefined,
+    agent: data.selectedAgent
+      ? { id: data.selectedAgent.id, name: data.selectedAgent.name }
+      : undefined,
     model: data.selectedModel
       ? {
           id: data.selectedModel.id,
