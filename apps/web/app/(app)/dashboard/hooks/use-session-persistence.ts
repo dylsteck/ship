@@ -5,7 +5,7 @@ import type { SessionInfo } from '@/lib/sse-types'
 import type { TodoItem, FileDiff, StepCostInfo } from '../types'
 
 export function useSessionPersistence(activeSessionId: string | null) {
-  const [openCodeUrl, setOpenCodeUrl] = useState<string>('')
+  const [agentUrl, setAgentUrl] = useState<string>('')
   const [sessionTodos, setSessionTodos] = useState<TodoItem[]>([])
   const [fileDiffs, setFileDiffs] = useState<FileDiff[]>([])
   const [totalCost, setTotalCost] = useState<number>(0)
@@ -19,8 +19,8 @@ export function useSessionPersistence(activeSessionId: string | null) {
   useEffect(() => {
     if (!activeSessionId) return
     try {
-      const savedUrl = localStorage.getItem(`opencode-url-${activeSessionId}`)
-      if (savedUrl) setOpenCodeUrl(savedUrl)
+      const savedUrl = localStorage.getItem(`agent-url-${activeSessionId}`)
+      if (savedUrl) setAgentUrl(savedUrl)
 
       const savedCost = localStorage.getItem(`total-cost-${activeSessionId}`)
       if (savedCost) setTotalCost(Number(savedCost))
@@ -52,8 +52,8 @@ export function useSessionPersistence(activeSessionId: string | null) {
   }, [activeSessionId, totalCost, lastStepCost, sessionInfo, sessionTitle, sandboxStatus])
 
   return {
-    openCodeUrl,
-    setOpenCodeUrl,
+    agentUrl,
+    setAgentUrl,
     sessionTodos,
     setSessionTodos,
     fileDiffs,

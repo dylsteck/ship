@@ -12,7 +12,7 @@
     "@e2b/code-interpreter": "^2.3.3",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@octokit/rest": "^22.0.1",
-    "@opencode-ai/sdk": "^1.1.48",
+    "sandbox-agent": "^0.3.0",
     "@ship/types": "workspace:*",
     "@vercel/sdk": "^1.0.0",
     "hono": "^4.6.18",

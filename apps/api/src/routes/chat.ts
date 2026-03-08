@@ -1,17 +1,16 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import {
-  createOpenCodeSession,
-  promptOpenCode,
-  stopOpenCode,
-  subscribeToEvents,
-  filterSessionEvents,
-  getOpenCodeClient,
-  getSessionInfo,
-  type Event,
-  type Part,
-} from '../lib/opencode'
-import { startOpenCodeServer } from '../lib/e2b'
+  startSandboxAgentServer,
+  connectToSandboxAgent,
+  createAgentSession,
+  promptAgent,
+  cancelAgent,
+  resumeAgentSession,
+  subscribeToSessionEvents,
+} from '../lib/sandbox-agent'
+import { EventTranslatorState } from '../lib/event-translator'
+import { getAgent, getDefaultAgentId } from '../lib/agent-registry'
 import { executeWithRetry, classifyError, sanitizeError } from '../lib/error-handler'
 import type { Env } from '../env.d'
 
@@ -61,16 +60,15 @@ app.post('/:sessionId', async (c) => {
   const metaRes = await stub.fetch(new Request(`${doUrl}/meta`))
   const meta = (await metaRes.json()) as Record<string, string>
 
-  let opencodeSessionId = meta.opencodeSessionId
-  const selectedModel = meta.model || meta.selected_model
+  let agentSessionId = meta.agent_session_id
   let sandboxId = meta.sandbox_id
-  let sandboxStatus = meta.sandbox_status
-  let opencodeUrl = meta.opencode_url
+  const sandboxStatus = meta.sandbox_status
+  let sandboxAgentUrl = meta.sandbox_agent_url
+  const agentType = meta.agent_type || getDefaultAgentId()
 
   console.log(
-    `[chat:${sessionId}] Meta: sandboxId=${sandboxId}, opencodeUrl=${opencodeUrl}, opencodeSessionId=${opencodeSessionId}`,
+    `[chat:${sessionId}] Meta: sandboxId=${sandboxId}, sandboxAgentUrl=${sandboxAgentUrl}, agentSessionId=${agentSessionId}, agentType=${agentType}`,
   )
-  console.log(`[chat:${sessionId}] Model: ${selectedModel || 'default'}`)
 
   // Check if sandbox is still provisioning
   const needsSandboxWait = !sandboxId && sandboxStatus === 'provisioning'
@@ -90,10 +88,10 @@ app.post('/:sessionId', async (c) => {
           }),
         })
 
-        // Track current state - explicitly type to allow undefined
+        // Track current state
         let currentSandboxId: string | undefined = sandboxId
-        let currentOpencodeUrl: string | undefined = opencodeUrl
-        let currentOpencodeSessionId: string | undefined = opencodeSessionId
+        let currentSandboxAgentUrl: string | undefined = sandboxAgentUrl
+        let currentAgentSessionId: string | undefined = agentSessionId
 
         // Wait for sandbox if needed
         if (needsSandboxWait) {
@@ -171,42 +169,50 @@ app.post('/:sessionId', async (c) => {
           return
         }
 
-        // Start OpenCode server if not running
-        if (!currentOpencodeUrl) {
-          console.log(`[chat:${sessionId}] Starting OpenCode server...`)
+        // Start sandbox-agent server if not running
+        if (!currentSandboxAgentUrl) {
+          console.log(`[chat:${sessionId}] Starting sandbox-agent server...`)
           await stream.writeSSE({
             event: 'status',
             data: JSON.stringify({
               type: 'status',
-              status: 'starting-opencode',
+              status: 'starting-agent-server',
               message: 'Starting agent server...',
             }),
           })
 
           try {
-            const { url } = await startOpenCodeServer(c.env.E2B_API_KEY, currentSandboxId, c.env.ANTHROPIC_API_KEY)
-            currentOpencodeUrl = url
-            console.log(`[chat:${sessionId}] OpenCode server started at ${url}`)
+            // Build env vars for the agent
+            const envVars: Record<string, string> = {}
+            if (c.env.ANTHROPIC_API_KEY) envVars.ANTHROPIC_API_KEY = c.env.ANTHROPIC_API_KEY
+            if (c.env.OPENAI_API_KEY) envVars.OPENAI_API_KEY = c.env.OPENAI_API_KEY
+
+            const { Sandbox } = await import('../lib/e2b')
+            const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+
+            const { url } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, envVars)
+            currentSandboxAgentUrl = url
+            console.log(`[chat:${sessionId}] sandbox-agent server started at ${url}`)
 
             // Save URL
             await stub.fetch(
               new Request(`${doUrl}/meta`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ opencode_url: url }),
+                body: JSON.stringify({ sandbox_agent_url: url }),
               }),
             )
 
             // Send URL to frontend
             await stream.writeSSE({
-              event: 'opencode-url',
+              event: 'agent-url',
               data: JSON.stringify({
-                type: 'opencode-url',
-                url: url,
+                type: 'agent-url',
+                url,
               }),
             })
           } catch (error) {
-            console.error(`[chat:${sessionId}] Failed to start OpenCode server:`, error)
+            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server:`, error)
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify({
@@ -242,7 +248,6 @@ app.post('/:sessionId', async (c) => {
           })
 
           try {
-            // Get GitHub token
             if (!userId) throw new Error('User ID not found')
 
             const accountRes = await c.env.DB.prepare(
@@ -256,7 +261,6 @@ app.post('/:sessionId', async (c) => {
             const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`
             const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
 
-            // Clone in sandbox
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
             const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
@@ -264,12 +268,10 @@ app.post('/:sessionId', async (c) => {
             const cloneResult = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
             if (cloneResult.exitCode !== 0) throw new Error(`Git clone failed: ${cloneResult.stderr}`)
 
-            // Configure git
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
             await sandbox.commands.run(`cd ${repoPath} && git config user.email "agent@ship.dev"`)
             await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
 
-            // Save repo info
             await stub.fetch(
               new Request(`${doUrl}/meta`, {
                 method: 'POST',
@@ -306,13 +308,13 @@ app.post('/:sessionId', async (c) => {
           }
         }
 
-        // Ensure we have OpenCode URL before proceeding
-        if (!currentOpencodeUrl) {
-          console.error(`[chat:${sessionId}] No OpenCode URL available`)
+        // Ensure we have sandbox-agent URL
+        if (!currentSandboxAgentUrl) {
+          console.error(`[chat:${sessionId}] No sandbox-agent URL available`)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
-              error: 'OpenCode server not started',
+              error: 'Agent server not started',
               category: 'persistent',
               retryable: true,
             }),
@@ -320,23 +322,26 @@ app.post('/:sessionId', async (c) => {
           return
         }
 
-        // Verify/create OpenCode session
-        if (currentOpencodeSessionId) {
-          // Verify existing session is still valid
+        // Connect to sandbox-agent
+        const client = await connectToSandboxAgent(currentSandboxAgentUrl)
+
+        // Verify/create agent session
+        if (currentAgentSessionId) {
           try {
-            const sessionInfo = await getSessionInfo(currentOpencodeSessionId, currentOpencodeUrl, repoPath)
-            if (!sessionInfo) {
-              console.log(`[chat:${sessionId}] Stored OpenCode session is invalid, recreating...`)
-              currentOpencodeSessionId = undefined
+            const existingSession = await resumeAgentSession(client, currentAgentSessionId)
+            if (!existingSession) {
+              console.log(`[chat:${sessionId}] Stored agent session is invalid, recreating...`)
+              currentAgentSessionId = undefined
             }
           } catch {
-            console.log(`[chat:${sessionId}] Failed to verify OpenCode session, recreating...`)
-            currentOpencodeSessionId = undefined
+            console.log(`[chat:${sessionId}] Failed to verify agent session, recreating...`)
+            currentAgentSessionId = undefined
           }
         }
 
-        if (!currentOpencodeSessionId) {
-          console.log(`[chat:${sessionId}] Creating OpenCode session for ${repoPath}...`)
+        let session
+        if (!currentAgentSessionId) {
+          console.log(`[chat:${sessionId}] Creating agent session for ${repoPath}...`)
           await stream.writeSSE({
             event: 'status',
             data: JSON.stringify({
@@ -347,23 +352,24 @@ app.post('/:sessionId', async (c) => {
           })
 
           try {
-            const ocSession = await createOpenCodeSession(repoPath, currentOpencodeUrl)
-            currentOpencodeSessionId = ocSession.id
-            console.log(`[chat:${sessionId}] OpenCode session created: ${currentOpencodeSessionId}`)
+            const result = await createAgentSession(client, agentType, repoPath)
+            currentAgentSessionId = result.sessionId
+            session = result.session
+            console.log(`[chat:${sessionId}] Agent session created: ${currentAgentSessionId}`)
 
-            // Save session ID
+            // Save session ID and agent type
             await stub.fetch(
               new Request(`${doUrl}/meta`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ opencodeSessionId: currentOpencodeSessionId }),
+                body: JSON.stringify({
+                  agent_session_id: currentAgentSessionId,
+                  agent_type: agentType,
+                }),
               }),
             )
-
-            // Give OpenCode a moment to initialize
-            await new Promise((resolve) => setTimeout(resolve, 500))
           } catch (sessionError) {
-            console.error(`[chat:${sessionId}] Failed to create OpenCode session:`, sessionError)
+            console.error(`[chat:${sessionId}] Failed to create agent session:`, sessionError)
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify({
@@ -375,21 +381,30 @@ app.post('/:sessionId', async (c) => {
             })
             return
           }
+        } else {
+          // Resume existing session
+          session = await resumeAgentSession(client, currentAgentSessionId)
+          if (!session) {
+            // Recreate if resume fails
+            const result = await createAgentSession(client, agentType, repoPath)
+            currentAgentSessionId = result.sessionId
+            session = result.session
+
+            await stub.fetch(
+              new Request(`${doUrl}/meta`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agent_session_id: currentAgentSessionId }),
+              }),
+            )
+          }
         }
 
-        // Subscribe to events BEFORE sending prompt
-        console.log(`[chat:${sessionId}] Subscribing to events...`)
-        let eventStream: AsyncIterable<Event>
-        try {
-          eventStream = await subscribeToEvents(currentOpencodeUrl, repoPath)
-          console.log(`[chat:${sessionId}] Event subscription successful`)
-        } catch (streamError) {
-          console.error(`[chat:${sessionId}] Failed to subscribe to events:`, streamError)
+        if (!session) {
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
-              error: 'Failed to subscribe to agent events',
-              details: streamError instanceof Error ? streamError.message : 'Unknown error',
+              error: 'Failed to establish agent session',
               category: 'persistent',
               retryable: true,
             }),
@@ -397,85 +412,50 @@ app.post('/:sessionId', async (c) => {
           return
         }
 
-        // Filter events for this session
-        const sessionEvents = filterSessionEvents(eventStream, currentOpencodeSessionId)
+        // Set up event translator
+        const translator = new EventTranslatorState(sessionId)
 
-        // Wait a moment to ensure subscription is ready
-        await new Promise((resolve) => setTimeout(resolve, 300))
-
-        // Send prompt
-        console.log(`[chat:${sessionId}] Sending prompt (${content.length} chars)...`)
-        await stream.writeSSE({
-          event: 'status',
-          data: JSON.stringify({
-            type: 'status',
-            status: 'sending-prompt',
-            message: 'Sending request to agent...',
-          }),
-        })
-
-        try {
-          await executeWithRetry(
-            async () => {
-              await promptOpenCode(
-                currentOpencodeSessionId!,
-                content,
-                { mode, model: selectedModel },
-                currentOpencodeUrl,
-                repoPath,
-              )
-            },
-            {
-              operationName: 'Send prompt to OpenCode',
-              onError: async (error, attempt) => {
-                console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, error)
-                const details = classifyError(error)
-                await stream.writeSSE({
-                  event: 'error',
-                  data: JSON.stringify({
-                    error: sanitizeError(error),
-                    category: details.category,
-                    retryable: details.retryable,
-                    attempt,
-                  }),
-                })
-              },
-            },
-          )
-          console.log(`[chat:${sessionId}] Prompt sent successfully`)
-        } catch (promptError) {
-          console.error(`[chat:${sessionId}] Failed to send prompt:`, promptError)
-          await stream.writeSSE({
-            event: 'error',
-            data: JSON.stringify({
-              error: 'Failed to send prompt to agent',
-              details: promptError instanceof Error ? promptError.message : 'Unknown error',
-              category: 'persistent',
-              retryable: true,
-            }),
-          })
-          return
-        }
-
-        // Notify that we're waiting for events
-        await stream.writeSSE({
-          event: 'status',
-          data: JSON.stringify({
-            type: 'status',
-            status: 'agent-active',
-            message: 'Agent is processing your request...',
-          }),
-        })
-
-        // Process events
-        console.log(`[chat:${sessionId}] Starting event processing loop...`)
-        let assistantContent = ''
-        const parts: Part[] = []
+        // Register event handler BEFORE prompting
         let eventCount = 0
         let lastEventTime = Date.now()
-        let hasChanges = false
         const EVENT_TIMEOUT_MS = 120000
         const HEARTBEAT_INTERVAL_MS = 10000
+
+        const unsubscribe = subscribeToSessionEvents(session, async (event) => {
+          lastEventTime = Date.now()
+          eventCount++
+
+          if (eventCount <= 20 || eventCount % 10 === 0) {
+            console.log(`[chat:${sessionId}] Event #${eventCount}`)
+          }
+
+          // Translate universal event to Ship SSE events
+          const sseEvents = translator.translateEvent(event)
+
+          for (const sseEvent of sseEvents) {
+            try {
+              await stream.writeSSE({
+                event: sseEvent.type,
+                data: JSON.stringify(sseEvent),
+              })
+            } catch (sseError) {
+              console.error(`[chat:${sessionId}] Failed to send SSE event:`, sseError)
+            }
+
+            // Broadcast to WebSocket clients
+            try {
+              await stub.fetch(
+                new Request(`${doUrl}/broadcast`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ type: 'agent-event', event: sseEvent }),
+                }),
+              )
+            } catch {
+              // Ignore broadcast errors
+            }
+          }
+        })
 
         // Heartbeat timer
         const heartbeatInterval = setInterval(async () => {
@@ -497,8 +477,9 @@ app.post('/:sessionId', async (c) => {
           }
         }, HEARTBEAT_INTERVAL_MS)
 
-        try {
-          const eventTimeout = setTimeout(async () => {
+        // Event timeout
+        const eventTimeout = setTimeout(async () => {
+          if (eventCount === 0) {
             console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s`)
             try {
               await stream.writeSSE({
@@ -513,203 +494,102 @@ app.post('/:sessionId', async (c) => {
             } catch {
               // Stream might be closed
             }
-          }, EVENT_TIMEOUT_MS)
-
-          try {
-            for await (const event of sessionEvents) {
-              clearTimeout(eventTimeout)
-              lastEventTime = Date.now()
-              eventCount++
-
-              // Log events for debugging
-              if (eventCount <= 20 || eventCount % 10 === 0) {
-                console.log(`[chat:${sessionId}] Event #${eventCount}: ${event.type}`)
-              }
-
-              // Send event to client
-              try {
-                await stream.writeSSE({
-                  event: 'event',
-                  data: JSON.stringify(event),
-                })
-              } catch (sseError) {
-                console.error(`[chat:${sessionId}] Failed to send event via SSE:`, sseError)
-                break
-              }
-
-              // Broadcast to WebSocket clients
-              await stub.fetch(
-                new Request(`${doUrl}/broadcast`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ type: 'opencode-event', event }),
-                }),
-              )
-
-              // Process event based on type
-              switch (event.type) {
-                case 'message.part.updated': {
-                  const part = event.properties.part
-                  parts.push(part)
-
-                  // Accumulate text content
-                  if (part.type === 'text') {
-                    // Use delta for incremental text, or full text if no delta
-                    const delta = event.properties.delta
-                    if (delta) {
-                      assistantContent += delta
-                    } else if (part.text) {
-                      assistantContent = part.text
-                    }
-                  }
-
-                  // Track file changes for git
-                  if (part.type === 'tool') {
-                    const toolName = part.tool
-                    if (toolName?.includes('write') || toolName?.includes('edit') || toolName?.includes('create')) {
-                      hasChanges = true
-                    }
-
-                    // Send tool status
-                    const state = part.state
-                    if (state) {
-                      await stream.writeSSE({
-                        event: 'status',
-                        data: JSON.stringify({
-                          type: 'status',
-                          status: 'tool-call',
-                          message: `Using tool: ${toolName}`,
-                          toolName,
-                          toolStatus: state.status,
-                        }),
-                      })
-                    }
-                  }
-                  break
-                }
-
-                case 'session.updated': {
-                  const info = event.properties?.info
-                  const title = info?.title
-                  if (title && !title.startsWith('New session')) {
-                    try {
-                      await c.env.DB.prepare(
-                        `UPDATE chat_sessions SET title = ? WHERE id = ?`,
-                      )
-                        .bind(title, sessionId)
-                        .run()
-                    } catch (dbError) {
-                      console.warn(`[chat:${sessionId}] Failed to persist session title:`, dbError)
-                    }
-                  }
-                  break
-                }
-
-                case 'todo.updated': {
-                  const todos = event.properties.todos || []
-                  for (const todo of todos) {
-                    await stub.fetch(
-                      new Request(`${doUrl}/tasks`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          title: todo.content,
-                          description: `Priority: ${todo.priority}`,
-                          mode,
-                        }),
-                      }),
-                    )
-                  }
-                  break
-                }
-
-                case 'permission.asked': {
-                  await stream.writeSSE({
-                    event: 'permission',
-                    data: JSON.stringify({
-                      id: event.properties.id,
-                      permission: event.properties.permission,
-                      patterns: event.properties.patterns,
-                      metadata: event.properties.metadata,
-                    }),
-                  })
-                  break
-                }
-
-                case 'session.idle': {
-                  console.log(`[chat:${sessionId}] Session idle - agent finished`)
-
-                  // Trigger git commit if there are changes
-                  if (hasChanges) {
-                    try {
-                      await stub.fetch(
-                        new Request(`${doUrl}/agent/response`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            summary: assistantContent.slice(0, 100) || content.slice(0, 100),
-                            hasChanges: true,
-                          }),
-                        }),
-                      )
-
-                      // Get PR info
-                      const gitStateRes = await stub.fetch(new Request(`${doUrl}/git/state`))
-                      const gitState = (await gitStateRes.json()) as {
-                        branchName: string | null
-                        pr: { number: number; url: string; draft: boolean } | null
-                      }
-
-                      if (gitState.pr) {
-                        await stream.writeSSE({
-                          event: 'pr-created',
-                          data: JSON.stringify({
-                            prNumber: gitState.pr.number,
-                            prUrl: gitState.pr.url,
-                            draft: gitState.pr.draft,
-                          }),
-                        })
-                      }
-                    } catch (gitError) {
-                      console.error(`[chat:${sessionId}] Git workflow error:`, gitError)
-                    }
-                  }
-                  break
-                }
-
-                case 'session.error': {
-                  const errorMsg = event.properties.error ? JSON.stringify(event.properties.error) : 'Unknown error'
-                  const details = classifyError(new Error(errorMsg))
-                  await stream.writeSSE({
-                    event: 'error',
-                    data: JSON.stringify({
-                      error: sanitizeError(new Error(errorMsg)),
-                      category: details.category,
-                      retryable: details.retryable,
-                    }),
-                  })
-                  break
-                }
-              }
-
-              // Stop on terminal events
-              if (event.type === 'session.idle' || event.type === 'session.error') {
-                break
-              }
-            }
-          } finally {
-            clearTimeout(eventTimeout)
           }
+        }, EVENT_TIMEOUT_MS)
+
+        // Send prompt status
+        await stream.writeSSE({
+          event: 'status',
+          data: JSON.stringify({
+            type: 'status',
+            status: 'sending-prompt',
+            message: 'Sending request to agent...',
+          }),
+        })
+
+        // Send prompt — blocks until turn completes
+        try {
+          await executeWithRetry(
+            async () => {
+              await promptAgent(session!, content)
+            },
+            {
+              operationName: 'Send prompt to agent',
+              onError: async (error, attempt) => {
+                console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, error)
+                const details = classifyError(error)
+                await stream.writeSSE({
+                  event: 'error',
+                  data: JSON.stringify({
+                    error: sanitizeError(error),
+                    category: details.category,
+                    retryable: details.retryable,
+                    attempt,
+                  }),
+                })
+              },
+            },
+          )
+          console.log(`[chat:${sessionId}] Prompt completed`)
+        } catch (promptError) {
+          console.error(`[chat:${sessionId}] Failed to send prompt:`, promptError)
+          await stream.writeSSE({
+            event: 'error',
+            data: JSON.stringify({
+              error: 'Failed to send prompt to agent',
+              details: promptError instanceof Error ? promptError.message : 'Unknown error',
+              category: 'persistent',
+              retryable: true,
+            }),
+          })
         } finally {
+          clearTimeout(eventTimeout)
           clearInterval(heartbeatInterval)
+          unsubscribe()
         }
 
         console.log(
-          `[chat:${sessionId}] Event loop ended. Events: ${eventCount}, Content: ${assistantContent.length} chars`,
+          `[chat:${sessionId}] Event loop ended. Events: ${eventCount}, Content: ${translator.accumulatedText.length} chars`,
         )
 
+        // Trigger git commit if there are changes
+        if (translator.hasFileChanges) {
+          try {
+            await stub.fetch(
+              new Request(`${doUrl}/agent/response`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  summary: translator.accumulatedText.slice(0, 100) || content.slice(0, 100),
+                  hasChanges: true,
+                }),
+              }),
+            )
+
+            const gitStateRes = await stub.fetch(new Request(`${doUrl}/git/state`))
+            const gitState = (await gitStateRes.json()) as {
+              branchName: string | null
+              pr: { number: number; url: string; draft: boolean } | null
+            }
+
+            if (gitState.pr) {
+              await stream.writeSSE({
+                event: 'pr-created',
+                data: JSON.stringify({
+                  prNumber: gitState.pr.number,
+                  prUrl: gitState.pr.url,
+                  draft: gitState.pr.draft,
+                }),
+              })
+            }
+          } catch (gitError) {
+            console.error(`[chat:${sessionId}] Git workflow error:`, gitError)
+          }
+        }
+
         // Persist assistant message
-        if (assistantContent || parts.length > 0) {
+        const assistantContent = translator.accumulatedText
+        if (assistantContent) {
           await stub.fetch(
             new Request(`${doUrl}/messages`, {
               method: 'POST',
@@ -717,7 +597,6 @@ app.post('/:sessionId', async (c) => {
               body: JSON.stringify({
                 role: 'assistant',
                 content: assistantContent,
-                parts: JSON.stringify(parts),
               }),
             }),
           )
@@ -734,7 +613,6 @@ app.post('/:sessionId', async (c) => {
         const details = classifyError(error)
         const sanitized = sanitizeError(error)
 
-        // Broadcast to WebSocket
         try {
           await stub.fetch(
             new Request(`${doUrl}/broadcast`, {
@@ -753,7 +631,6 @@ app.post('/:sessionId', async (c) => {
           // Ignore broadcast errors
         }
 
-        // Send via SSE
         try {
           await stream.writeSSE({
             event: 'error',
@@ -791,9 +668,13 @@ app.post('/:sessionId/stop', async (c) => {
   const metaRes = await stub.fetch(new Request('https://do/meta'))
   const meta = (await metaRes.json()) as Record<string, string>
 
-  if (meta.opencodeSessionId && meta.opencode_url) {
-    const repoPath = meta.repo_path || '/home/user/repo'
-    await stopOpenCode(meta.opencodeSessionId, meta.opencode_url, repoPath)
+  if (meta.agent_session_id && meta.sandbox_agent_url) {
+    try {
+      const client = await connectToSandboxAgent(meta.sandbox_agent_url)
+      await cancelAgent(client, meta.agent_session_id)
+    } catch (error) {
+      console.warn(`[chat:${sessionId}] Cancel error:`, error)
+    }
   }
 
   return c.json({ success: true })
@@ -809,27 +690,44 @@ app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
 
   const metaRes = await stub.fetch(new Request('https://do/meta'))
   const meta = (await metaRes.json()) as Record<string, string>
-  const opencodeUrl = meta.opencode_url
-  const repoPath = meta.repo_path || '/home/user/repo'
+  const sandboxAgentUrl = meta.sandbox_agent_url
 
-  if (!opencodeUrl) {
-    return c.json({ error: 'OpenCode server not available' }, 400)
+  if (!sandboxAgentUrl) {
+    return c.json({ error: 'Agent server not available' }, 400)
   }
 
   return streamSSE(c, async (stream) => {
     try {
-      const eventStream = await subscribeToEvents(opencodeUrl, repoPath)
-      const filteredStream = filterSessionEvents(eventStream, subagentSessionId, 300000)
+      const client = await connectToSandboxAgent(sandboxAgentUrl)
+      const session = await resumeAgentSession(client, subagentSessionId)
 
-      for await (const event of filteredStream) {
+      if (!session) {
         await stream.writeSSE({
-          event: event.type,
-          data: JSON.stringify({ type: event.type, properties: event.properties }),
+          event: 'error',
+          data: JSON.stringify({ error: 'Sub-agent session not found' }),
         })
-        if (event.type === 'session.idle' || event.type === 'session.error') {
-          break
-        }
+        return
       }
+
+      const translator = new EventTranslatorState(subagentSessionId)
+
+      const unsubscribe = subscribeToSessionEvents(session, async (event) => {
+        const sseEvents = translator.translateEvent(event)
+        for (const sseEvent of sseEvents) {
+          await stream.writeSSE({
+            event: sseEvent.type,
+            data: JSON.stringify(sseEvent),
+          })
+
+          if (sseEvent.type === 'session.idle' || sseEvent.type === 'session.error') {
+            unsubscribe()
+          }
+        }
+      })
+
+      // Keep stream open until session ends (timeout after 5 min)
+      await new Promise((resolve) => setTimeout(resolve, 300000))
+      unsubscribe()
     } catch (error) {
       console.error(`[chat:${sessionId}] Subagent stream error:`, error)
       await stream.writeSSE({
@@ -980,18 +878,41 @@ app.post('/:sessionId/permission/:permissionId', async (c) => {
   const metaRes = await stub.fetch(new Request('https://do/meta'))
   const meta = (await metaRes.json()) as Record<string, string>
 
-  if (!meta.opencode_url) {
-    return c.json({ error: 'OpenCode server not available' }, 400)
+  if (!meta.sandbox_agent_url) {
+    return c.json({ error: 'Agent server not available' }, 400)
   }
 
   try {
-    const repoPath = meta.repo_path || '/home/user/repo'
-    const client = getOpenCodeClient(meta.opencode_url, repoPath)
+    const client = await connectToSandboxAgent(meta.sandbox_agent_url)
+    const agentSessionId = meta.agent_session_id
+    if (!agentSessionId) {
+      return c.json({ error: 'No active agent session' }, 400)
+    }
 
-    await client.permission.reply({
-      requestID: permissionId,
-      reply: body.reply,
-      message: body.message,
+    // Get the session and send permission reply via ACP
+    const session = await resumeAgentSession(client, agentSessionId)
+    if (!session) {
+      return c.json({ error: 'Agent session not found' }, 400)
+    }
+
+    // Map Ship reply format to sandbox-agent/ACP permission reply
+    // ACP uses: "accept", "accept_for_session", "reject"
+    let acpReply: string
+    switch (body.reply) {
+      case 'once':
+        acpReply = 'accept'
+        break
+      case 'always':
+        acpReply = 'accept_for_session'
+        break
+      case 'reject':
+        acpReply = 'reject'
+        break
+    }
+
+    await session.send('permission/reply', {
+      permission_id: permissionId,
+      status: acpReply,
     })
 
     return c.json({ success: true })

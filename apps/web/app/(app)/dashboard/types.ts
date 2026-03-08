@@ -28,7 +28,7 @@ export interface SessionPanelData {
   totalCost: number
   sessionTodos: TodoItem[]
   fileDiffs: FileDiff[]
-  openCodeUrl: string
+  agentUrl: string
   sessionInfo: SessionInfo | null
   messages: import('@/lib/ai-elements-adapter').UIMessage[]
 }

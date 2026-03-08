@@ -7,7 +7,7 @@ import { ActiveToolsSection } from './active-tools-section'
 import { TasksSection } from './tasks-section'
 import { StatsSection } from './stats-section'
 import { ChangesSection } from './changes-section'
-import { OpenCodeLink } from './opencode-link'
+import { AgentLink } from './agent-link'
 import { SessionActionsSection } from './session-actions-section'
 import { VCSSection } from './vcs-section'
 
@@ -20,7 +20,7 @@ export function SessionPanel({
   todos,
   diffs,
   sessionInfo,
-  openCodeUrl,
+  agentUrl,
   messages = [],
   className,
 }: SessionPanelProps) {
@@ -77,11 +77,11 @@ export function SessionPanel({
       {/* Session Health */}
       <SessionActionsSection tokens={tokens} sessionCreatedAt={sessionInfo?.time?.created} />
 
-      {/* OpenCode link */}
-      {openCodeUrl && <OpenCodeLink url={openCodeUrl} />}
+      {/* Agent link */}
+      {agentUrl && <AgentLink url={agentUrl} />}
 
       {/* Empty state */}
-      {!repo && !model && !tokens && !sessionInfo && !openCodeUrl && messages.length === 0 && (
+      {!repo && !model && !tokens && !sessionInfo && !agentUrl && messages.length === 0 && (
         <div className="px-3 py-8 text-muted-foreground/40 text-center text-[11px]">
           Waiting for session data...
         </div>

@@ -23,6 +23,10 @@ export interface Env {
   E2B_API_KEY: string;
   ALLOWED_ORIGINS?: string;
 
+  // Optional agent API keys
+  OPENAI_API_KEY?: string;
+  CURSOR_API_KEY?: string;
+
   // Login restriction (optional)
   LOGIN_RESTRICTED_TO_SINGLE_USER?: string;
   ALLOWED_USER_ID?: string;

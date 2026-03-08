@@ -292,6 +292,30 @@ export function DashboardMessages({
                   </div>
                 )}
 
+                {/* Plan items */}
+                {message.planItems && message.planItems.length > 0 && (
+                  <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">
+                    <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Plan</div>
+                    {message.planItems.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2 text-sm">
+                        <span className="shrink-0 w-4 text-center">
+                          {item.status === 'completed' ? '✓' :
+                           item.status === 'in_progress' ? '●' :
+                           item.status === 'cancelled' ? '✗' : '○'}
+                        </span>
+                        <span className={
+                          item.status === 'completed' ? 'text-muted-foreground line-through' :
+                          item.status === 'in_progress' ? 'text-foreground font-medium' :
+                          item.status === 'cancelled' ? 'text-muted-foreground/50 line-through' :
+                          'text-foreground'
+                        }>
+                          {item.title}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Assistant response content */}
                 {message.role === 'assistant' && message.content && (
                   <div className={hasSteps ? 'mt-4' : undefined}>

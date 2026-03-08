@@ -44,7 +44,7 @@ export interface SessionPanelProps {
   todos?: Todo[]
   diffs?: DiffSummary[]
   sessionInfo?: SSESessionInfo
-  openCodeUrl?: string
+  agentUrl?: string
   messages?: UIMessage[]
   className?: string
 }

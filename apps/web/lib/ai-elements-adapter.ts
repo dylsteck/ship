@@ -45,6 +45,8 @@ export interface UIMessage {
   retryable?: boolean
   // Wall-clock elapsed time in ms (set when streaming completes)
   elapsed?: number
+  // Plan items from PlanPart events
+  planItems?: Array<{ id: string; title: string; status: string }>
   // Permission/question prompt data
   promptData?: {
     id: string
@@ -197,6 +199,17 @@ export function processPartUpdated(
       }
       if (reasoningRef.current) {
         return setReasoning(reasoningRef.current, streamingMessageId, messages)
+      }
+      return messages
+    }
+
+    case 'plan': {
+      const planPart = part as import('@/lib/sse-types').PlanPart
+      if (planPart.items) {
+        return messages.map((m) => {
+          if (m.id !== streamingMessageId) return m
+          return { ...m, planItems: planPart.items }
+        })
       }
       return messages
     }
@@ -414,6 +427,7 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
         const reasoningTexts: string[] = []
         let textContent = ''
         let elapsed: number | undefined
+        let planItems: Array<{ id: string; title: string; status: string }> | undefined
 
         for (const part of parts) {
           switch (part.type) {
@@ -432,6 +446,11 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
               if (txp.text) textContent += txp.text
               break
             }
+            case 'plan': {
+              const pp = part as import('@/lib/sse-types').PlanPart
+              if (pp.items) planItems = pp.items
+              break
+            }
             case 'step-finish': {
               const sfp = part as StepFinishPart
               if (sfp.cost !== undefined) {
@@ -448,6 +467,7 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
 
         if (tools.length > 0) uiMsg.toolInvocations = tools
         if (reasoningTexts.length > 0) uiMsg.reasoning = reasoningTexts
+        if (planItems) uiMsg.planItems = planItems
         if (!uiMsg.content && textContent) uiMsg.content = textContent
         if (elapsed) uiMsg.elapsed = elapsed
 

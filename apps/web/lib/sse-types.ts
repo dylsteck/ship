@@ -69,7 +69,19 @@ export type StepFinishPart = {
   }
 }
 
-export type MessagePart = TextPart | ToolPart | ReasoningPart | StepStartPart | StepFinishPart
+export type PlanPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: 'plan'
+  items: Array<{
+    id: string
+    title: string
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  }>
+}
+
+export type MessagePart = TextPart | ToolPart | ReasoningPart | StepStartPart | StepFinishPart | PlanPart
 
 // ============ Message Types ============
 
@@ -119,6 +131,7 @@ export type SessionInfo = {
   time: { created: number; updated: number }
   summary: { additions: number; deletions: number; files: number }
   share?: { url: string }
+  agentType?: string
 }
 
 export type SessionStatus =
@@ -315,6 +328,12 @@ export type MessageRemovedEvent = {
   }
 }
 
+export type AgentUrlEvent = {
+  type: 'agent-url'
+  url: string
+}
+
+/** @deprecated Use AgentUrlEvent */
 export type OpencodeUrlEvent = {
   type: 'opencode-url'
   url: string
@@ -371,6 +390,7 @@ export type SSEEvent =
   | QuestionRepliedEvent
   | QuestionRejectedEvent
   | CommandExecutedEvent
+  | AgentUrlEvent
   | OpencodeUrlEvent
   | ServerConnectedEvent
   | ServerHeartbeatEvent

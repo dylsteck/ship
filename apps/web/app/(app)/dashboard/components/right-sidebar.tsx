@@ -38,7 +38,7 @@ function useSessionPanelProps(data: SessionPanelData) {
     cost: data.totalCost > 0 ? data.totalCost : undefined,
     todos: data.sessionTodos,
     diffs: data.fileDiffs,
-    openCodeUrl: data.openCodeUrl || undefined,
+    agentUrl: data.agentUrl || undefined,
     sessionInfo: data.sessionInfo || undefined,
     messages: data.messages,
   }

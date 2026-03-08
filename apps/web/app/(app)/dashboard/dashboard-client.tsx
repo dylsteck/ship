@@ -115,7 +115,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     setSessionTodos: chat.setSessionTodos,
     setFileDiffs: chat.setFileDiffs,
     setMessageQueue: chat.setMessageQueue,
-    setOpenCodeUrl: chat.setOpenCodeUrl,
+    setAgentUrl: chat.setAgentUrl,
     setSessionTitle: chat.setSessionTitle,
     setSessionInfo: chat.setSessionInfo,
     updateSessionTitle: chat.updateSessionTitle,
@@ -596,7 +596,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
                 totalCost: chat.totalCost,
                 sessionTodos: chat.sessionTodos,
                 fileDiffs: chat.fileDiffs,
-                openCodeUrl: chat.openCodeUrl,
+                agentUrl: chat.agentUrl,
                 sessionInfo: chat.sessionInfo,
                 messages: chat.messages,
               }}
