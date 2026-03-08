@@ -18,9 +18,9 @@ export function useSessionPersistence(activeSessionId: string | null) {
   const [streamingStatusSteps, setStreamingStatusSteps] = useState<string[]>([])
   const streamingStatusStepsRef = useRef<string[]>([])
 
-  const setStreamingStatusWithSteps = useCallback((msg: string) => {
+  const setStreamingStatusWithSteps = useCallback((msg: string, appendToSteps = true) => {
     setStreamingStatus(msg)
-    if (msg) {
+    if (msg && appendToSteps) {
       setStreamingStatusSteps((prev) => {
         if (prev.length > 0 && prev[prev.length - 1] === msg) return prev
         const next = [...prev, msg]

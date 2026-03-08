@@ -29,7 +29,8 @@ export interface SSEHandlerContext {
   setSessionTitle: React.Dispatch<React.SetStateAction<string>>
   setSessionInfo: React.Dispatch<React.SetStateAction<SessionInfo | null>>
   setStreamStartTime: (value: number | null) => void
-  setStreamingStatus: (value: string) => void
+  setStreamingStatus: (value: string, appendToSteps?: boolean) => void
+  accumulateSetupStepsRef: React.MutableRefObject<boolean>
   streamingStatusStepsRef: React.MutableRefObject<string[]>
   clearStreamingStatusSteps: () => void
   streamingMessageRef: React.MutableRefObject<string | null>

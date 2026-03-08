@@ -101,6 +101,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     setStreamStartTime: chat.setStreamStartTime,
     setStreamingStatus: chat.setStreamingStatus,
     streamingStatusStepsRef: chat.streamingStatusStepsRef,
+    messagesRef: chat.messagesRef,
     clearStreamingStatusSteps: chat.clearStreamingStatusSteps,
   })
 

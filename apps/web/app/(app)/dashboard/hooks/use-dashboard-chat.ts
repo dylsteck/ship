@@ -24,6 +24,11 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef<string>('')
   const reasoningRef = useRef<string>('')
+  const messagesRef = useRef<UIMessage[]>([])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const connectWebSocket = useCallback((sessionId: string) => {
     wsRef.current?.disconnect()
@@ -162,6 +167,7 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
     streamingMessageRef,
     assistantTextRef,
     reasoningRef,
+    messagesRef,
     // Persistence (sidebar data)
     ...persistence,
     // Actions

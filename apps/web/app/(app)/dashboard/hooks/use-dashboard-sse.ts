@@ -45,8 +45,9 @@ interface UseDashboardSSEParams {
   assistantTextRef: React.MutableRefObject<string>
   reasoningRef: React.MutableRefObject<string>
   setStreamStartTime: (value: number | null) => void
-  setStreamingStatus: (value: string) => void
+  setStreamingStatus: (value: string, appendToSteps?: boolean) => void
   streamingStatusStepsRef: React.MutableRefObject<string[]>
+  messagesRef: React.MutableRefObject<UIMessage[]>
   clearStreamingStatusSteps: () => void
 }
 
@@ -71,6 +72,7 @@ export function useDashboardSSE({
   setStreamStartTime,
   setStreamingStatus,
   streamingStatusStepsRef,
+  messagesRef,
   clearStreamingStatusSteps,
 }: UseDashboardSSEParams) {
   const streamStartTimeRef = useRef<number | null>(null)
@@ -108,13 +110,18 @@ export function useDashboardSSE({
 
       setIsStreaming(true)
       clearStreamingStatusSteps()
-      setStreamingStatus('Preparing...')
       assistantTextRef.current = ''
       reasoningRef.current = ''
       setLastStepCost(null)
       const now = Date.now()
       streamStartTimeRef.current = now
       setStreamStartTime(now)
+
+      const hasCompletedAssistant = messagesRef.current.some(
+        (m) => m.role === 'assistant' && (m.content || m.toolInvocations?.length),
+      )
+      const accumulateSetupStepsRef = { current: !hasCompletedAssistant }
+      setStreamingStatus('Preparing...', accumulateSetupStepsRef.current)
 
       const userMessage = createUserMessage(content)
       setMessages((prev) => [...prev, userMessage])
@@ -135,6 +142,7 @@ export function useDashboardSSE({
         setSessionInfo,
         setStreamStartTime,
         setStreamingStatus,
+        accumulateSetupStepsRef,
         streamingStatusStepsRef,
         clearStreamingStatusSteps,
         streamingMessageRef,
@@ -273,7 +281,9 @@ export function useDashboardSSE({
                   case 'session.status': {
                     const ev = event as { message?: string; status?: string }
                     const msg = ev.message ?? ev.status
-                    if (typeof msg === 'string') ctx.setStreamingStatus(msg)
+                    if (typeof msg === 'string') {
+                      ctx.setStreamingStatus(msg, ctx.accumulateSetupStepsRef.current)
+                    }
                     break
                   }
                   case 'heartbeat':

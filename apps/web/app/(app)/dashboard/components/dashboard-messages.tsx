@@ -194,10 +194,16 @@ export function DashboardMessages({
               !message.reasoning?.length &&
               isCurrentlyStreaming
             ) {
-              const steps = streamingStatusSteps.length > 0 ? streamingStatusSteps : ['Preparing...']
+              if (streamingStatusSteps.length > 0) {
+                return (
+                  <Message key={message.id} role="assistant">
+                    <SessionSetup steps={streamingStatusSteps} isStreaming />
+                  </Message>
+                )
+              }
               return (
                 <Message key={message.id} role="assistant">
-                  <SessionSetup steps={steps} isStreaming />
+                  <Loader message={statusLabel || 'Thinking...'} />
                 </Message>
               )
             }
