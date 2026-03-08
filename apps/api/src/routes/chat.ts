@@ -13,7 +13,7 @@ import {
 } from '../lib/sandbox-agent'
 import { EventTranslatorState } from '../lib/event-translator'
 import { getAgent, getDefaultAgentId } from '../lib/agent-registry'
-import { executeWithRetry, classifyError, sanitizeError } from '../lib/error-handler'
+import { executeWithRetry, classifyError, sanitizeError, safeErrorForLog } from '../lib/error-handler'
 import type { Env } from '../env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -217,7 +217,7 @@ app.post('/:sessionId', async (c) => {
               }),
             })
           } catch (error) {
-            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server:`, error)
+            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server:`, safeErrorForLog(error))
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify({
@@ -299,7 +299,7 @@ app.post('/:sessionId', async (c) => {
               }),
             })
           } catch (cloneError) {
-            console.error(`[chat:${sessionId}] Clone failed:`, cloneError)
+            console.error(`[chat:${sessionId}] Clone failed:`, safeErrorForLog(cloneError))
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify({
@@ -559,7 +559,7 @@ app.post('/:sessionId', async (c) => {
         // Register event handler BEFORE prompting
         let eventCount = 0
         let lastEventTime = Date.now()
-        const EVENT_TIMEOUT_MS = 120000
+        const EVENT_TIMEOUT_MS = 300000 // 5 min — allow for retries (502, port not open)
         const HEARTBEAT_INTERVAL_MS = 10000
 
         const unsubscribe = subscribeToSessionEvents(session, async (event) => {
@@ -577,6 +577,22 @@ app.post('/:sessionId', async (c) => {
               })
             } catch (sseError) {
               console.error(`[chat:${sessionId}] Failed to send SSE event:`, sseError)
+            }
+
+            // Persist session title to DB when received from agent (any harness)
+            if (sseEvent.type === 'session.updated') {
+              const info = (sseEvent as { properties?: { info?: { title?: string } } }).properties?.info
+              if (info?.title) {
+                try {
+                  await c.env.DB.prepare(
+                    'UPDATE chat_sessions SET title = ?, last_activity = ? WHERE id = ?',
+                  )
+                    .bind(info.title, Math.floor(Date.now() / 1000), sessionId)
+                    .run()
+                } catch (persistErr) {
+                  console.error(`[chat:${sessionId}] Failed to persist title:`, persistErr)
+                }
+              }
             }
 
             // Broadcast to WebSocket clients
@@ -617,7 +633,7 @@ app.post('/:sessionId', async (c) => {
         // Event timeout
         const eventTimeout = setTimeout(async () => {
           if (eventCount === 0) {
-            console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s`)
+            console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s (no events received)`)
             try {
               await stream.writeSSE({
                 event: 'error',
@@ -653,7 +669,7 @@ app.post('/:sessionId', async (c) => {
             {
               operationName: 'Send prompt to agent',
               onError: async (error, attempt) => {
-                console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, error)
+                console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, safeErrorForLog(error))
                 const details = classifyError(error)
                 await stream.writeSSE({
                   event: 'error',
@@ -669,7 +685,7 @@ app.post('/:sessionId', async (c) => {
           )
           console.log(`[chat:${sessionId}] Prompt completed`)
         } catch (promptError) {
-          console.error(`[chat:${sessionId}] Failed to send prompt:`, promptError)
+          console.error(`[chat:${sessionId}] Failed to send prompt:`, safeErrorForLog(promptError))
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
@@ -720,7 +736,7 @@ app.post('/:sessionId', async (c) => {
               })
             }
           } catch (gitError) {
-            console.error(`[chat:${sessionId}] Git workflow error:`, gitError)
+            console.error(`[chat:${sessionId}] Git workflow error:`, safeErrorForLog(gitError))
           }
         }
 
@@ -746,7 +762,7 @@ app.post('/:sessionId', async (c) => {
         })
         console.log(`[chat:${sessionId}] SSE stream completed successfully`)
       } catch (error) {
-        console.error(`[chat:${sessionId}] Error in stream handler:`, error)
+        console.error(`[chat:${sessionId}] Error in stream handler:`, safeErrorForLog(error))
         const details = classifyError(error)
         const sanitized = sanitizeError(error)
 
@@ -874,7 +890,7 @@ app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
       await new Promise((resolve) => setTimeout(resolve, 300000))
       unsubscribe()
     } catch (error) {
-      console.error(`[chat:${sessionId}] Subagent stream error:`, error)
+      console.error(`[chat:${sessionId}] Subagent stream error:`, safeErrorForLog(error))
       await stream.writeSSE({
         event: 'error',
         data: JSON.stringify({ error: error instanceof Error ? error.message : 'Stream failed' }),
@@ -1062,7 +1078,7 @@ app.post('/:sessionId/permission/:permissionId', async (c) => {
 
     return c.json({ success: true })
   } catch (error) {
-    console.error(`[chat:${sessionId}] Failed to respond to permission:`, error)
+    console.error(`[chat:${sessionId}] Failed to respond to permission:`, safeErrorForLog(error))
     return c.json({ error: error instanceof Error ? error.message : 'Failed to respond' }, 500)
   }
 })

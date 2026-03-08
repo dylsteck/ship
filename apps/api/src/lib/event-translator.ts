@@ -161,12 +161,42 @@ export class EventTranslatorState {
       case 'available_commands_update':
       case 'current_mode_update':
       case 'config_option_update':
+        return []
       case 'session_info_update':
+        return this.handleAcpSessionInfoUpdate(update)
       case 'usage_update':
-        return [] // Skip metadata updates
+        return []
       default:
         return []
     }
+  }
+
+  /**
+   * Handle ACP session_info_update — emit session.updated with title.
+   * Agents send this to update session metadata (e.g. auto-generated title).
+   */
+  private handleAcpSessionInfoUpdate(update: Record<string, unknown>): ShipSSEEvent[] {
+    const title = update.title as string | undefined
+    if (!title?.trim()) return []
+
+    const now = Math.floor(Date.now() / 1000)
+    return [
+      {
+        type: 'session.updated',
+        properties: {
+          info: {
+            id: this.shipSessionId,
+            slug: '',
+            version: '',
+            projectID: '',
+            directory: '',
+            title: title.trim(),
+            time: { created: now, updated: now },
+            summary: { additions: 0, deletions: 0, files: 0 },
+          },
+        },
+      },
+    ]
   }
 
   /**

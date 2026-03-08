@@ -271,10 +271,29 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   )
 
   // ---- Derived values ----
-  const displayTitle = useMemo(
-    () => chat.sessionInfo?.title || chat.sessionTitle || undefined,
-    [chat.sessionInfo?.title, chat.sessionTitle],
-  )
+  const displayTitle = useMemo(() => {
+    // 1. From SSE (session.updated / session_info_update)
+    if (chat.sessionInfo?.title) return chat.sessionInfo.title
+    if (chat.sessionTitle) return chat.sessionTitle
+    // 2. From API / local sessions (persisted title)
+    if (chat.activeSessionId) {
+      const session = chat.localSessions.find((s) => s.id === chat.activeSessionId)
+      if (session?.title) return session.title
+    }
+    // 3. Derive from first user message
+    const firstUser = chat.messages.find((m) => m.role === 'user')
+    if (firstUser?.content) {
+      const trimmed = firstUser.content.trim()
+      if (trimmed) return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed
+    }
+    return undefined
+  }, [
+    chat.sessionInfo?.title,
+    chat.sessionTitle,
+    chat.activeSessionId,
+    chat.localSessions,
+    chat.messages,
+  ])
 
   const stats = useMemo(() => {
     const now = Math.floor(Date.now() / 1000)

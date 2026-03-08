@@ -200,6 +200,33 @@ export async function executeWithRetry<T>(operation: () => Promise<T>, context: 
 }
 
 /**
+ * Safe string for logging errors in Cloudflare Workers.
+ * Avoids passing Response/ReadableStream to console — Workers cannot
+ * serialize I/O objects across request boundaries (causes "Formatting threw").
+ * AcpHttpError and similar may have a `response` property with streams.
+ *
+ * @param error - Error to format
+ * @returns Safe string for console.log/error
+ */
+export function safeErrorForLog(error: unknown): string {
+  if (error instanceof Error) {
+    const msg = error.message
+    const err = error as Error & { status?: number; problem?: unknown; response?: unknown }
+    const parts: string[] = [msg]
+    if (typeof err.status === 'number') parts.push(`status=${err.status}`)
+    if (err.problem != null) {
+      try {
+        parts.push(`problem=${JSON.stringify(err.problem)}`)
+      } catch {
+        parts.push('problem=[object]')
+      }
+    }
+    return parts.join(', ')
+  }
+  return String(error)
+}
+
+/**
  * Sanitize error message to remove sensitive data
  * Removes tokens, API keys, passwords from error messages
  *
