@@ -38,17 +38,27 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
         >
           <div
             className={cn(
-              'rounded-2xl border bg-card/95 backdrop-blur-sm overflow-hidden transition-all',
+              'rounded-2xl border overflow-hidden transition-all',
               activeSessionId
-                ? 'border-border/40 shadow-md focus-within:border-border/60 focus-within:shadow-lg'
-                : 'rounded-3xl border-border/60 shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-foreground/10',
+                ? 'bg-card/95 backdrop-blur-sm border-border/40 shadow-md focus-within:border-border/60 focus-within:shadow-lg'
+                : 'rounded-3xl bg-zinc-900 border-zinc-700/50 shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-white/10',
             )}
           >
+            {/* When homepage: repo + submit row above textarea (Cursor-style) */}
+            {!activeSessionId && (
+              <div className="flex items-center justify-between px-3 pt-3 pb-1">
+                <div className="flex items-center gap-1">
+                  <ClientOnly>
+                    <ComposerRepoSelector />
+                  </ClientOnly>
+                </div>
+                <SubmitButton />
+              </div>
+            )}
             {/* Textarea area */}
-            <div className={cn('px-3 pt-4', activeSessionId ? 'pb-2' : 'pb-3')}>
+            <div className={cn('px-3', activeSessionId ? 'pt-4 pb-2' : 'pt-2 pb-2')}>
               <ComposerTextarea />
-
-              {!activeSessionId && (
+              {activeSessionId && (
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-1">
                     <ClientOnly>

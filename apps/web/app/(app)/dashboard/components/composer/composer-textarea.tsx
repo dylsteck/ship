@@ -18,7 +18,7 @@ export function ComposerTextarea() {
   return (
     <textarea
       ref={textareaRef}
-      placeholder={activeSessionId ? 'Send a message...' : 'Ask or build anything'}
+      placeholder={activeSessionId ? 'Send a message...' : 'Ask Ship to build, fix bugs, explore'}
       value={prompt}
       onChange={(e) => onPromptChange(e.target.value)}
       onKeyDown={onKeyDown}
@@ -26,6 +26,7 @@ export function ComposerTextarea() {
       className={cn(
         'w-full resize-none bg-transparent text-foreground text-[15px] placeholder:text-muted-foreground/50 focus:outline-none transition-all duration-200',
         activeSessionId ? 'min-h-[32px] max-h-[200px]' : 'min-h-[88px]',
+        !activeSessionId && 'placeholder:text-zinc-500',
       )}
     />
   )

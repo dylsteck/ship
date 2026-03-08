@@ -6,6 +6,7 @@ import { RepoSelector as SharedRepoSelector } from '@/components/repo-selector'
 /** Repo selector wired to ComposerContext - used in dashboard composer */
 export function ComposerRepoSelector() {
   const {
+    activeSessionId,
     selectedRepo,
     onRepoSelect,
     repos,
@@ -25,6 +26,11 @@ export function ComposerRepoSelector() {
       hasMore={reposHasMore}
       isLoadingMore={reposLoadingMore}
       placeholder="Select repo"
+      triggerClassName={
+        !activeSessionId
+          ? 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 [&_svg]:text-zinc-400'
+          : undefined
+      }
     />
   )
 }

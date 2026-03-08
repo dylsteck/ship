@@ -26,8 +26,10 @@ export function ComposerFooter() {
   return (
     <div
       className={cn(
-        'px-3 py-1.5 flex items-center justify-between border-t border-border/30',
-        activeSessionId ? 'bg-muted/20' : 'bg-muted/30',
+        'px-3 py-1.5 flex items-center justify-between border-t transition-colors',
+        activeSessionId
+          ? 'border-border/30 bg-muted/20'
+          : 'border-zinc-700/50 bg-zinc-800/80 text-zinc-300 [&_button]:text-zinc-300 [&_button:hover]:bg-zinc-700 [&_button:hover]:text-zinc-100',
       )}
     >
       <div className="flex items-center gap-2">

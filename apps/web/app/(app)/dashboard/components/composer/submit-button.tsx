@@ -32,8 +32,11 @@ export function SubmitButton({ size = 'default' }: { size?: 'default' | 'small' 
         'rounded-full transition-all',
         size === 'small' ? 'h-6 w-6' : '',
         canSubmit
-          ? 'bg-foreground text-background hover:bg-foreground/90'
+          ? activeSessionId
+            ? 'bg-foreground text-background hover:bg-foreground/90'
+            : 'bg-white text-zinc-900 hover:bg-zinc-100'
           : 'bg-muted text-muted-foreground',
+        !activeSessionId && !canSubmit && 'bg-zinc-700 text-zinc-500',
       )}
     >
       {isCreating ? (
