@@ -577,6 +577,29 @@ app.post('/:sessionId', async (c) => {
           return
         }
 
+        // Send agent-session so frontend can build Logs link (sandbox-agent session id)
+        if (currentAgentSessionId) {
+          const agentSessionEvent = {
+            type: 'agent-session' as const,
+            agentSessionId: currentAgentSessionId,
+          }
+          await stream.writeSSE({
+            event: 'agent-session',
+            data: JSON.stringify(agentSessionEvent),
+          })
+          try {
+            await stub.fetch(
+              new Request(`${doUrl}/broadcast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'agent-event', event: agentSessionEvent }),
+              }),
+            )
+          } catch {
+            // Ignore broadcast errors
+          }
+        }
+
         // Set up event translator
         const translator = new EventTranslatorState(sessionId)
 
