@@ -29,9 +29,6 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
-      '@opencode-ai/sdk':
-        specifier: ^1.1.48
-        version: 1.1.48
       '@ship/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -44,6 +41,9 @@ importers:
       octokit-plugin-create-pull-request:
         specifier: ^6.0.1
         version: 6.0.1
+      sandbox-agent:
+        specifier: ^0.3.0
+        version: 0.3.0(zod@4.3.6)
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250127.0
@@ -210,6 +210,11 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@agentclientprotocol/sdk@0.14.1':
+    resolution: {integrity: sha512-b6r3PS3Nly+Wyw9U+0nOr47bV8tfS476EgyEMhoKvJCZLbgqoDFN7DJwkxL88RR0aiOqOYV1ZnESHqb+RmdH8w==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -827,9 +832,6 @@ packages:
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
 
-  '@opencode-ai/sdk@1.1.48':
-    resolution: {integrity: sha512-j5/79X45fUPWVD2Ffm/qvwLclDCdPeV+TYMDrm9to0p4pmzhmeKevCsyiRdLg0o0HE3AFRUnOo2rdO9NetN79A==}
-
   '@oslojs/asn1@1.0.0':
     resolution: {integrity: sha512-zw/wn0sj0j0QKbIXfIlnEcTviaCzYOY3V5rAyjR6YtOByFtJiT574+8p9Wlach0lZH9fddD4yb9laEAIl4vXQA==}
 
@@ -1142,6 +1144,38 @@ packages:
       '@types/react':
         optional: true
 
+  '@sandbox-agent/cli-darwin-arm64@0.3.0':
+    resolution: {integrity: sha512-Tp4IQLY8JLR1R+GoN1UfWTUbclIhISUggRJ4PhWKIiwq1IhN1ohHjWoluz7etDlMmK8tVLbvJGvziru/3FpoTA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@sandbox-agent/cli-darwin-x64@0.3.0':
+    resolution: {integrity: sha512-Soe0gO20I14nhotBIVK3SOoGJpBAL/qvh6FstsgW7tyj6azlqYPwJEnapx8DNeFOZosuZlGpAOJEm64YqhxYeA==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@sandbox-agent/cli-linux-arm64@0.3.0':
+    resolution: {integrity: sha512-YqbQ2AY0cux72+XL25GAqHVWL4iM4yUlFsYfUDfb0lHJFRueFmhIVLfgbkuDKqwRUeTNbzHN8EiZihEfDqe7ZA==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@sandbox-agent/cli-linux-x64@0.3.0':
+    resolution: {integrity: sha512-r7UCwERhzc41RIN5lzwCEuiptBTT2LHHV0Byse2SUDWG70gt6dupFfvquR7NRglT8IKua4ybDyE0tW5W+LTDGA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@sandbox-agent/cli-shared@0.3.0':
+    resolution: {integrity: sha512-RAdLm/nNLM5Pu/X/yxKWmM/If4EpTWd6X06+r58HsTOBgbjN8TC7chaPpv5GBIG9ghoHcHkaAc1BTSptB21AGA==}
+
+  '@sandbox-agent/cli-win32-x64@0.3.0':
+    resolution: {integrity: sha512-7z7SfLfFBpBfQEBhwprS8XZmYZnqVntMF+C3eHWNCulYp6v/EfU6Siu7hoPOSCXzKzjtDZZIfLw+d4Iv5yYxNw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@sandbox-agent/cli@0.3.0':
+    resolution: {integrity: sha512-YQL2BTt1g5ZqyKY1tV1SZBLePTR6S5AZD56ehaI/TDvrAwwJM01xKuWrLnLbPP6aIXwS2VkJT1l1ouPh2k+S2g==}
+    hasBin: true
+
   '@shikijs/core@3.22.0':
     resolution: {integrity: sha512-iAlTtSDDbJiRpvgL5ugKEATDtHdUVkqgHDm/gbD2ZS9c88mx7G1zSYjjOxp5Qa0eaW0MAQosFRmJSk354PRoQA==}
 
@@ -1432,6 +1466,9 @@ packages:
     resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
     engines: {node: '>=0.4.0'}
     hasBin: true
+
+  acp-http-client@0.3.0:
+    resolution: {integrity: sha512-Gy+HCU5Y8TLLnNZwjNMaEhdsSc62vdfHb1lAsGeNJ+XEonfCPLuYuGp8bzWDOvvxwQQU/SFsaYdvWYGzHieGvw==}
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
@@ -2636,6 +2673,9 @@ packages:
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
 
+  sandbox-agent@0.3.0:
+    resolution: {integrity: sha512-PO+olDQX+elgWnFw7xyQDTliKB+vvnHpJdd7JqiPR717GoS9mCO87Xz7HbPRgJmXLtvhr32AvHzsi4mL+9MwLA==}
+
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
@@ -3017,6 +3057,10 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@agentclientprotocol/sdk@0.14.1(zod@4.3.6)':
+    dependencies:
+      zod: 4.3.6
 
   '@alloc/quick-lru@5.2.0': {}
 
@@ -3503,8 +3547,6 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 27.0.0
 
-  '@opencode-ai/sdk@1.1.48': {}
-
   '@oslojs/asn1@1.0.0':
     dependencies:
       '@oslojs/binary': 1.0.0
@@ -3792,6 +3834,34 @@ snapshots:
       react: 19.2.4
     optionalDependencies:
       '@types/react': 19.2.10
+
+  '@sandbox-agent/cli-darwin-arm64@0.3.0':
+    optional: true
+
+  '@sandbox-agent/cli-darwin-x64@0.3.0':
+    optional: true
+
+  '@sandbox-agent/cli-linux-arm64@0.3.0':
+    optional: true
+
+  '@sandbox-agent/cli-linux-x64@0.3.0':
+    optional: true
+
+  '@sandbox-agent/cli-shared@0.3.0': {}
+
+  '@sandbox-agent/cli-win32-x64@0.3.0':
+    optional: true
+
+  '@sandbox-agent/cli@0.3.0':
+    dependencies:
+      '@sandbox-agent/cli-shared': 0.3.0
+    optionalDependencies:
+      '@sandbox-agent/cli-darwin-arm64': 0.3.0
+      '@sandbox-agent/cli-darwin-x64': 0.3.0
+      '@sandbox-agent/cli-linux-arm64': 0.3.0
+      '@sandbox-agent/cli-linux-x64': 0.3.0
+      '@sandbox-agent/cli-win32-x64': 0.3.0
+    optional: true
 
   '@shikijs/core@3.22.0':
     dependencies:
@@ -4099,6 +4169,12 @@ snapshots:
       negotiator: 1.0.0
 
   acorn@8.16.0: {}
+
+  acp-http-client@0.3.0(zod@4.3.6):
+    dependencies:
+      '@agentclientprotocol/sdk': 0.14.1(zod@4.3.6)
+    transitivePeerDependencies:
+      - zod
 
   ajv-formats@3.0.1(ajv@8.17.1):
     optionalDependencies:
@@ -5635,6 +5711,15 @@ snapshots:
   rw@1.3.3: {}
 
   safer-buffer@2.1.2: {}
+
+  sandbox-agent@0.3.0(zod@4.3.6):
+    dependencies:
+      '@sandbox-agent/cli-shared': 0.3.0
+      acp-http-client: 0.3.0(zod@4.3.6)
+    optionalDependencies:
+      '@sandbox-agent/cli': 0.3.0
+    transitivePeerDependencies:
+      - zod
 
   scheduler@0.27.0: {}
 
