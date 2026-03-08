@@ -2,6 +2,17 @@
 
 This document provides context for AI agents working on this codebase.
 
+## Agent Skills
+
+Project-specific skills live in `.agents/skills/`. **Reference and use these skills when they apply** — read the skill's `SKILL.md` file when a task matches its triggers.
+
+| Skill | Purpose |
+|-------|---------|
+| **agent-browser** | Browser automation — navigate, fill forms, click, screenshot, scrape, test web apps |
+| **ai-elements** | Create AI chat components in `packages/ui` following ai-elements patterns and shadcn/ui |
+| **dogfood** | Systematic QA — explore apps, find bugs/UX issues, produce reports with repro evidence |
+| **shadcn** | shadcn/ui components — add, search, fix, style, compose; use with `components.json` projects |
+
 ## Quick Start
 
 ```bash
