@@ -74,11 +74,13 @@ export function SettingsClient({ userId }: { userId: string }) {
           onAgentChange={setSelectedAgentId}
         />
 
-        <DefaultModelCard
-          userId={userId}
-          models={agentModels}
-          defaultModelId={defaultModelId}
-        />
+        {agentModels.length > 1 && (
+          <DefaultModelCard
+            userId={userId}
+            models={agentModels}
+            defaultModelId={defaultModelId}
+          />
+        )}
 
         <DefaultRepoCard
           userId={userId}

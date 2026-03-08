@@ -125,11 +125,11 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
       setSelectedAgent(agent)
       setAvailableModes(agent.modes)
       setMode(agent.modes[0]?.id || 'agent')
-      if (agent.models.length > 0 && !selectedModel) {
+      if (agent.models.length > 0) {
         setSelectedModel(agent.models[0])
       }
     }
-  }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent, selectedModel])
+  }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent])
 
   const handleAgentSelect = useCallback((agent: AgentInfo) => {
     setSelectedAgent(agent)
