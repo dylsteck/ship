@@ -94,8 +94,39 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 function getInputSummary(name: string, input: Record<string, unknown>): string | null {
-  if (input.file_path || input.path || input.filePath) {
-    const path = String(input.file_path || input.path || input.filePath || '')
+  const lower = name.toLowerCase()
+  const path = String(input.file_path ?? input.path ?? input.filePath ?? input.directory ?? input.cwd ?? '')
+  const pattern = String(input.pattern ?? input.query ?? '')
+  const start = input.start_line ?? input.startLine ?? input.start
+  const end = input.end_line ?? input.endLine ?? input.end
+
+  // grep: "Grepped {pattern} in {path}"
+  if (lower.includes('grep') && (pattern || path)) {
+    const scope = path || 'codebase'
+    return pattern ? `Grepped ${pattern} in ${scope}` : `Grepped in ${scope}`
+  }
+
+  // read: "Read {path} L{start}-{end}" or "Read {path}"
+  if (lower.includes('read') && path) {
+    if (start != null && end != null) return `Read ${path} L${start}-${end}`
+    if (start != null) return `Read ${path} L${start}`
+    return `Read ${path}`
+  }
+
+  // glob/search: "Searched {query} in {path}"
+  if ((lower.includes('glob') || lower.includes('search')) && (pattern || input.glob || path)) {
+    const q = String(input.glob ?? pattern)
+    return q ? `Searched ${q} in ${path || 'codebase'}` : `Searched in ${path || 'codebase'}`
+  }
+
+  // web/fetch: "Searched web {query}"
+  if ((lower.includes('web') || lower.includes('fetch')) && (pattern || input.url)) {
+    const q = String(input.url ?? pattern)
+    return q ? `Searched web ${q}` : 'Searched web'
+  }
+
+  // Fallback: generic summaries with truncation
+  if (path) {
     const segments = path.split('/')
     return segments.length > 3 ? '.../' + segments.slice(-3).join('/') : path
   }
@@ -103,10 +134,7 @@ function getInputSummary(name: string, input: Record<string, unknown>): string |
     const cmd = String(input.command)
     return cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd
   }
-  if (input.pattern || input.query) {
-    const q = String(input.pattern || input.query)
-    return q.length > 60 ? q.slice(0, 57) + '...' : q
-  }
+  if (pattern) return pattern.length > 60 ? pattern.slice(0, 57) + '...' : pattern
   if (input.glob) return String(input.glob)
   if (input.content) {
     const c = String(input.content)
