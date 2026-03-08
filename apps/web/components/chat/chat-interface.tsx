@@ -27,7 +27,7 @@ interface ChatInterfaceProps {
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void
   onOpenCodeUrl?: (url: string) => void
   initialPrompt?: string | null
-  initialMode?: 'build' | 'plan'
+  initialMode?: string
   agentStatus?: AgentStatus
   currentTool?: string
   sessionInfo?: {
@@ -153,7 +153,7 @@ export function ChatInterface({
   }, [isStreaming, messageQueue])
 
   const handleSend = useCallback(
-    async (content: string, modeOverride?: 'build' | 'plan') => {
+    async (content: string, modeOverride?: string) => {
       if (isStreaming) {
         setMessageQueue((q) => [...q, content])
         return

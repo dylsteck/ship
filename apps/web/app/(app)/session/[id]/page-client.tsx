@@ -40,7 +40,7 @@ function useLocalSessions(initialSessions: ChatSession[], currentSessionId: stri
 export function SessionPageClient({ sessionId, userId, user, sessions: initialSessions }: SessionPageClientProps) {
   const searchParams = useSearchParams()
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null)
-  const [initialMode, setInitialMode] = useState<'build' | 'plan'>('build')
+  const [initialMode, setInitialMode] = useState<string>('build')
   const [searchQuery, setSearchQuery] = useState('')
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
   const [currentTool, setCurrentTool] = useState<string>()

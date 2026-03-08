@@ -147,7 +147,7 @@ export async function getChatMessages(
  * Send a chat message and get streaming response
  * Uses fetch with explicit streaming configuration
  */
-export async function sendChatMessage(sessionId: string, content: string, mode?: 'build' | 'plan'): Promise<Response> {
+export async function sendChatMessage(sessionId: string, content: string, mode?: string): Promise<Response> {
   const url = `${API_URL}/chat/${encodeURIComponent(sessionId)}`
 
   const response = await fetch(url, {

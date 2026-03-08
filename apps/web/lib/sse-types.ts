@@ -103,7 +103,7 @@ export type AssistantMessage = {
   parentID: string
   modelID: string
   providerID: string
-  mode: 'build' | 'plan'
+  mode: string
   agent: string
   path: { cwd: string; root: string }
   cost: number
