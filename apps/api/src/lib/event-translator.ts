@@ -69,70 +69,309 @@ export class EventTranslatorState {
   /**
    * Main translation function.
    * Takes a sandbox-agent SessionEvent and returns zero or more Ship SSE events.
+   * Handles ACP protocol (session/update, session/prompt, JSON-RPC responses)
+   * and falls back to UniversalEvent format for future compatibility.
    */
   translateEvent(event: SessionEvent): ShipSSEEvent[] {
-    // The event.payload contains the ACP message with the UniversalEvent data
-    // SessionEvent structure: { id, eventIndex, sessionId, createdAt, connectionId, sender, payload }
     const payload = event.payload as Record<string, unknown>
-
-    // ACP notifications come as JSON-RPC with method + params
     const method = payload.method as string | undefined
     const params = payload.params as Record<string, unknown> | undefined
 
-    if (!method || !params) {
-      // Could be a response or other non-notification message
+    // Skip client-sent events (e.g. session/prompt request echo)
+    if ((event as { sender?: string }).sender === 'client') {
       return []
     }
 
-    // The params contain the UniversalEvent envelope
-    // For session events via ACP, the method maps to the event type
-    // sandbox-agent sends notifications like:
-    //   method: "notifications/event", params: { event: UniversalEvent }
-    //   or directly as the event payload
+    // Handle JSON-RPC response (prompt completion) — no method, has result
+    if (!method && payload.result !== undefined) {
+      return [
+        {
+          type: 'session.idle',
+          properties: { sessionID: this.shipSessionId },
+        },
+        { type: 'done' },
+      ]
+    }
 
-    const universalEvent = (params.event as Record<string, unknown>) || params
-    const eventType = (universalEvent.type as string) || method
+    // Route by ACP method
+    if (method === 'session/update' && params?.update) {
+      return this.handleAcpSessionUpdate(params.update as Record<string, unknown>)
+    }
 
-    switch (eventType) {
-      case 'session.started':
-        return this.handleSessionStarted()
+    if (method === 'session/prompt') {
+      // Request echo from client — skip
+      return []
+    }
 
-      case 'session.ended':
-        return this.handleSessionEnded(universalEvent)
+    // Fall back to UniversalEvent handling for future compatibility
+    if (method && params) {
+      const universalEvent = (params.event as Record<string, unknown>) || params
+      const eventType = (universalEvent.type as string) || method
 
-      case 'turn.started':
-        return this.handleTurnStarted()
+      switch (eventType) {
+        case 'session.started':
+          return this.handleSessionStarted()
+        case 'session.ended':
+          return this.handleSessionEnded(universalEvent)
+        case 'turn.started':
+          return this.handleTurnStarted()
+        case 'turn.ended':
+          return this.handleTurnEnded()
+        case 'item.started':
+          return this.handleItemStarted(universalEvent)
+        case 'item.delta':
+          return this.handleItemDelta(universalEvent)
+        case 'item.completed':
+          return this.handleItemCompleted(universalEvent)
+        case 'permission.requested':
+          return this.handlePermissionRequested(universalEvent)
+        case 'permission.resolved':
+          return this.handlePermissionResolved(universalEvent)
+        case 'question.requested':
+          return this.handleQuestionRequested(universalEvent)
+        case 'question.resolved':
+          return this.handleQuestionResolved(universalEvent)
+        case 'error':
+          return this.handleError(universalEvent)
+      }
+    }
 
-      case 'turn.ended':
-        return this.handleTurnEnded()
+    return []
+  }
 
-      case 'item.started':
-        return this.handleItemStarted(universalEvent)
+  /**
+   * Handle ACP session/update — params.update is SessionUpdate (discriminated union).
+   */
+  private handleAcpSessionUpdate(update: Record<string, unknown>): ShipSSEEvent[] {
+    const sessionUpdate = update.sessionUpdate as string | undefined
 
-      case 'item.delta':
-        return this.handleItemDelta(universalEvent)
-
-      case 'item.completed':
-        return this.handleItemCompleted(universalEvent)
-
-      case 'permission.requested':
-        return this.handlePermissionRequested(universalEvent)
-
-      case 'permission.resolved':
-        return this.handlePermissionResolved(universalEvent)
-
-      case 'question.requested':
-        return this.handleQuestionRequested(universalEvent)
-
-      case 'question.resolved':
-        return this.handleQuestionResolved(universalEvent)
-
-      case 'error':
-        return this.handleError(universalEvent)
-
+    switch (sessionUpdate) {
+      case 'agent_message_chunk':
+        return this.handleAcpContentChunk(update, 'text')
+      case 'agent_thought_chunk':
+        return this.handleAcpContentChunk(update, 'reasoning')
+      case 'user_message_chunk':
+        return [] // Skip user input echo
+      case 'tool_call':
+        return this.handleAcpToolCall(update)
+      case 'tool_call_update':
+        return this.handleAcpToolCallUpdate(update)
+      case 'plan':
+        return this.handleAcpPlan(update)
+      case 'available_commands_update':
+      case 'current_mode_update':
+      case 'config_option_update':
+      case 'session_info_update':
+      case 'usage_update':
+        return [] // Skip metadata updates
       default:
         return []
     }
+  }
+
+  /**
+   * Extract text from ACP ContentChunk and emit message.part.updated.
+   * Content can be single object or array: { type: "text", text: string, annotations?: {...} }
+   */
+  private handleAcpContentChunk(
+    chunk: Record<string, unknown>,
+    partType: 'text' | 'reasoning',
+  ): ShipSSEEvent[] {
+    const content = chunk.content
+    if (!content) return []
+
+    const blocks = Array.isArray(content) ? content : [content]
+    const events: ShipSSEEvent[] = []
+
+    for (const block of blocks) {
+      const b = block as Record<string, unknown>
+      if (b.type !== 'text') continue
+
+      const text = b.text as string | undefined
+      if (!text) continue
+
+      // Check for error annotation
+      const annotations = b.annotations as Record<string, unknown> | undefined
+      const meta = annotations?._meta as Record<string, unknown> | undefined
+      if (meta?.isError === true) {
+        events.push({
+          type: 'session.error',
+          properties: {
+            sessionID: this.shipSessionId,
+            error: {
+              name: 'AgentError',
+              data: { message: text },
+            },
+          },
+        })
+        return events
+      }
+
+      if (partType === 'text') {
+        this.textAccumulator += text
+        events.push(this.makeTextPart(this.textAccumulator, text))
+      } else {
+        this.reasoningAccumulator += text
+        events.push(this.makeReasoningPart(this.reasoningAccumulator))
+      }
+    }
+
+    return events
+  }
+
+  private makeTextPart(fullText: string, delta?: string): ShipSSEEvent {
+    const messageId = this.ensureMessageId()
+    const part: Record<string, unknown> = {
+      id: this.nextPartId(),
+      sessionID: this.shipSessionId,
+      messageID: messageId,
+      type: 'text',
+      text: fullText,
+    }
+    const result: ShipSSEEvent = {
+      type: 'message.part.updated',
+      properties: { part },
+    }
+    if (delta !== undefined) {
+      ;(result as Record<string, unknown>).delta = delta
+    }
+    return result
+  }
+
+  private makeReasoningPart(fullText: string): ShipSSEEvent {
+    const messageId = this.ensureMessageId()
+    return {
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: this.nextPartId(),
+          sessionID: this.shipSessionId,
+          messageID: messageId,
+          type: 'reasoning',
+          text: fullText,
+        },
+      },
+    }
+  }
+
+  /**
+   * Handle ACP tool_call — ToolCall with sessionUpdate: "tool_call"
+   * ACP may use toolCallId or id for the call identifier
+   */
+  private handleAcpToolCall(update: Record<string, unknown>): ShipSSEEvent[] {
+    const toolName = (update.toolName ?? update.title) as string | undefined
+    const id = ((update.toolCallId ?? update.id) as string) || this.nextPartId()
+    const status = (update.status as string) || 'pending'
+    const rawIn = update.input ?? update.rawInput
+    const input: Record<string, unknown> =
+      typeof rawIn === 'object' && rawIn !== null
+        ? (rawIn as Record<string, unknown>)
+        : typeof rawIn === 'string'
+          ? this.safeParseJson(rawIn)
+          : {}
+
+    if (!toolName) return []
+
+    this.toolCallMap.set(id, {
+      tool: toolName,
+      state: status,
+      input: JSON.stringify(input),
+      output: '',
+    })
+
+    const messageId = this.ensureMessageId()
+    return [{
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: this.nextPartId(),
+          sessionID: this.shipSessionId,
+          messageID: messageId,
+          type: 'tool',
+          callID: id,
+          tool: toolName,
+          state: {
+            status: status === 'failed' ? 'error' : (status as 'pending' | 'running' | 'completed'),
+            input,
+            title: toolName,
+            time: { start: Date.now() },
+          },
+        },
+      },
+    }]
+  }
+
+  /**
+   * Handle ACP tool_call_update — ToolCallUpdate with status/input/output changes
+   * ACP uses toolCallId; accept callId as fallback for compatibility
+   */
+  private handleAcpToolCallUpdate(update: Record<string, unknown>): ShipSSEEvent[] {
+    const callId = (update.toolCallId ?? update.callId) as string | undefined
+    if (!callId) return []
+
+    const toolState = this.toolCallMap.get(callId)
+    const toolName = (update.toolName ?? update.title) as string || toolState?.tool || 'unknown'
+    const status = (update.status as string) || toolState?.state || 'running'
+    const input = (update.input ?? update.rawInput) as Record<string, unknown> | undefined
+    const rawOut = update.output ?? update.rawOutput
+    const output = typeof rawOut === 'string' ? rawOut : (rawOut != null ? JSON.stringify(rawOut) : undefined)
+
+    if (input) {
+      const existing = this.toolCallMap.get(callId)
+      if (existing) {
+        existing.input = JSON.stringify(input)
+      } else {
+        this.toolCallMap.set(callId, {
+          tool: toolName,
+          state: status,
+          input: JSON.stringify(input || {}),
+          output: output || '',
+        })
+      }
+    }
+    if (output !== undefined) {
+      const existing = this.toolCallMap.get(callId)
+      if (existing) existing.output = output
+    }
+    const existing = this.toolCallMap.get(callId)
+    const finalState = existing || {
+      tool: toolName,
+      state: status,
+      input: JSON.stringify(input || {}),
+      output: output || '',
+    }
+    this.toolCallMap.set(callId, { ...finalState, state: status })
+
+    const messageId = this.ensureMessageId()
+    const sseStatus = status === 'failed' ? 'error' : (status as 'pending' | 'running' | 'completed')
+    return [{
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: this.nextPartId(),
+          sessionID: this.shipSessionId,
+          messageID: messageId,
+          type: 'tool',
+          callID: callId,
+          tool: toolName,
+          state: {
+            status: sseStatus,
+            input: input ?? this.safeParseJson(finalState.input),
+            output: output ?? finalState.output,
+            title: toolName,
+            time: { start: Date.now(), ...(sseStatus === 'completed' || sseStatus === 'error' ? { end: Date.now() } : {}) },
+          },
+        },
+      },
+    }]
+  }
+
+  /**
+   * Handle ACP plan update — map to status or text event
+   */
+  private handleAcpPlan(_update: Record<string, unknown>): ShipSSEEvent[] {
+    // Plan updates are metadata; could emit status if needed
+    return []
   }
 
   // ============ Session Lifecycle ============
