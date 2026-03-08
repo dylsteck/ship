@@ -6,7 +6,13 @@ import { ComposerProvider, type ComposerContextValue } from './composer-context'
 import { ComposerTextarea } from './composer-textarea'
 import { ComposerFooter } from './composer-footer'
 import { ComposerRepoSelector } from './repo-selector'
+import { ModelSelector } from './model-selector'
+import { BranchSelector } from './branch-selector'
 import { SubmitButton } from './submit-button'
+
+/** Same minimal trigger style as Cursor: text + chevron above input */
+const aboveInputTriggerClass =
+  'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 [&_svg]:text-zinc-400'
 
 interface DashboardComposerProps {
   /** All shared state consumed by composer sub-components via context */
@@ -44,21 +50,31 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
                 : 'rounded-3xl bg-zinc-900 border-zinc-700/50 shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-white/10',
             )}
           >
-            {/* When homepage: repo + submit row above textarea (Cursor-style) */}
+            {/* When homepage: repo + model + branch row above textarea (Cursor-style) */}
             {!activeSessionId && (
-              <div className="flex items-center justify-between px-3 pt-3 pb-1">
-                <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 px-3 pt-3 pb-1 flex-wrap">
+                <div className="flex items-center gap-2">
                   <ClientOnly>
                     <ComposerRepoSelector />
                   </ClientOnly>
+                  <ClientOnly>
+                    <ModelSelector triggerClassName={aboveInputTriggerClass} />
+                  </ClientOnly>
+                  <span className="text-zinc-500 text-sm">/</span>
+                  <ClientOnly>
+                    <BranchSelector triggerClassName={aboveInputTriggerClass} />
+                  </ClientOnly>
                 </div>
-                <SubmitButton />
               </div>
             )}
             {/* Textarea area */}
             <div className={cn('px-3', activeSessionId ? 'pt-4 pb-2' : 'pt-2 pb-2')}>
               <ComposerTextarea />
-              {activeSessionId && (
+              {!activeSessionId ? (
+                <div className="flex justify-end pt-2">
+                  <SubmitButton />
+                </div>
+              ) : (
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-1">
                     <ClientOnly>

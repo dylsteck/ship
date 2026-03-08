@@ -14,6 +14,8 @@ export interface CreateSessionParams {
   model: string
   agentType?: string
   initialPrompt?: string
+  /** Base branch to clone and create ship branch from (e.g. main). Defaults to main. */
+  baseBranch?: string
 }
 
 export interface SandboxStatus {

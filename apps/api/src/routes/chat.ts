@@ -14,6 +14,7 @@ import {
 import { EventTranslatorState } from '../lib/event-translator'
 import { getAgent, getDefaultAgentId } from '../lib/agent-registry'
 import { executeWithRetry, classifyError, sanitizeError, safeErrorForLog } from '../lib/error-handler'
+import { generateBranchName } from '../lib/git-workflow'
 import type { Env } from '../env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -276,7 +277,9 @@ app.post('/:sessionId', async (c) => {
             if (!accountRes?.access_token) throw new Error('No GitHub token found')
 
             const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`
-            const branchName = `ship-${Date.now()}-${sessionId.slice(0, 8)}`
+            const baseBranch = latestMeta.base_branch || 'main'
+            const taskSlug = content?.trim().slice(0, 80) || 'agent-task'
+            const branchName = generateBranchName(taskSlug, sessionId)
 
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
@@ -287,6 +290,7 @@ app.post('/:sessionId', async (c) => {
 
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
             await sandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
+            await sandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
             await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
 
             await stub.fetch(
@@ -296,6 +300,7 @@ app.post('/:sessionId', async (c) => {
                 body: JSON.stringify({
                   repo_url: repoUrl,
                   current_branch: branchName,
+                  base_branch: baseBranch,
                   repo_path: repoPath,
                 }),
               }),
@@ -432,20 +437,22 @@ app.post('/:sessionId', async (c) => {
 
                   if (accountRes?.access_token) {
                     const repoUrl = `https://github.com/${owner}/${name}.git`
-                    const branchName = repoMetaJson.current_branch || `ship-${Date.now()}-${sessionId.slice(0, 8)}`
+                    const baseBranch = repoMetaJson.base_branch || 'main'
+                    const branchName = repoMetaJson.current_branch || generateBranchName('agent-task', sessionId)
                     const authUrl = repoUrl.replace('https://', `https://${accountRes.access_token}@`)
 
                     const cloneResult = await newSandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
                     if (cloneResult.exitCode === 0) {
                       await newSandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
                       await newSandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
+                      await newSandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
                       await newSandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
 
                       await stub.fetch(
                         new Request(`${doUrl}/meta`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ repo_url: repoUrl, current_branch: branchName, repo_path: repoPath }),
+                          body: JSON.stringify({ repo_url: repoUrl, current_branch: branchName, base_branch: baseBranch, repo_path: repoPath }),
                         }),
                       )
                     }

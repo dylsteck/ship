@@ -34,6 +34,8 @@ interface CreateSessionInput {
   repoName: string
   model?: string
   agentType?: string
+  /** Base branch to create ship branch from (e.g. main). Defaults to main. */
+  baseBranch?: string
 }
 
 const sessions = new Hono<{ Bindings: Env }>()
@@ -117,6 +119,9 @@ sessions.post('/', async (c) => {
     if (input.agentType) {
       await doStub.setSessionMeta('agent_type', input.agentType)
     }
+
+    // Store base branch for clone (default main)
+    await doStub.setSessionMeta('base_branch', input.baseBranch || 'main')
 
     // Set initial sandbox status to provisioning
     await doStub.setSessionMeta('sandbox_status', 'provisioning')
