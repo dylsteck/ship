@@ -8,6 +8,18 @@ import { ModelSelector } from './model-selector'
 import { ModeToggle } from './mode-toggle'
 import { SubmitButton } from './submit-button'
 
+function ModelSelectorWithSeparator() {
+  const { groupedByProvider } = useComposer()
+  const totalModels = Object.values(groupedByProvider).reduce((sum, models) => sum + models.length, 0)
+  if (totalModels <= 1) return null
+  return (
+    <>
+      <span className="text-[10px] text-muted-foreground/30">/</span>
+      <ModelSelector />
+    </>
+  )
+}
+
 export function ComposerFooter() {
   const { activeSessionId, messageQueueLength } = useComposer()
 
@@ -21,8 +33,7 @@ export function ComposerFooter() {
       <div className="flex items-center gap-2">
         <ClientOnly>
           <AgentSelector />
-          <span className="text-[10px] text-muted-foreground/30">/</span>
-          <ModelSelector />
+          <ModelSelectorWithSeparator />
         </ClientOnly>
         {activeSessionId && messageQueueLength > 0 && (
           <span className="text-[10px] text-muted-foreground/40">{messageQueueLength} queued</span>

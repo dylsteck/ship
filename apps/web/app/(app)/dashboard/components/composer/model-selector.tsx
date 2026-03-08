@@ -21,13 +21,9 @@ export function ModelSelector() {
   // Count total models across all providers
   const totalModels = Object.values(groupedByProvider).reduce((sum, models) => sum + models.length, 0)
 
-  // Single-model agent: show as static badge
+  // Single-model agent: hide entirely (agent name is sufficient)
   if (totalModels <= 1) {
-    return (
-      <span className="h-5 px-1.5 text-[10px] text-muted-foreground/60 flex items-center">
-        {modelsLoading ? 'Loading...' : selectedModel?.name || 'Default'}
-      </span>
-    )
+    return null
   }
 
   return (
