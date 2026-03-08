@@ -18,8 +18,8 @@ export function ComposerRepoSelector() {
 
   // Cursor-style: text-base, no bg on hover, just color shift, rounded-full
   const triggerClass = activeSessionId
-    ? 'h-auto gap-1 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent [&_span]:text-base [&_span]:max-w-[240px] [&_svg]:size-3 [&_svg]:opacity-40 [&_svg]:transition-opacity hover:[&_svg]:opacity-100'
-    : 'h-auto gap-1 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent [&_span]:text-base [&_span]:max-w-[240px] [&_svg]:size-3 [&_svg]:opacity-40 [&_svg]:transition-opacity hover:[&_svg]:opacity-100'
+    ? 'h-auto gap-1 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent [&_span]:text-sm [&_span]:max-w-[240px] [&_svg]:size-3 [&_svg]:opacity-40 [&_svg]:transition-opacity hover:[&_svg]:opacity-100'
+    : 'h-auto gap-1 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent [&_span]:text-sm [&_span]:max-w-[240px] [&_svg]:size-3 [&_svg]:opacity-40 [&_svg]:transition-opacity hover:[&_svg]:opacity-100'
 
   return (
     <SharedRepoSelector

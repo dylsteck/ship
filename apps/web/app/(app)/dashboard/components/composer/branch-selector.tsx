@@ -33,7 +33,7 @@ export function BranchSelector() {
             variant="ghost"
             className="group h-auto gap-1 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent max-w-[140px]"
           >
-            <span className="truncate text-base">{selectedBranch}</span>
+            <span className="truncate text-sm">{selectedBranch}</span>
             <svg
               className="h-3 w-3 shrink-0 opacity-40 transition-opacity duration-150 group-hover:opacity-100"
               fill="none"

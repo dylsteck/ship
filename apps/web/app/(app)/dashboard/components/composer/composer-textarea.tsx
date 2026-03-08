@@ -18,7 +18,7 @@ export function ComposerTextarea() {
   return (
     <textarea
       ref={textareaRef}
-      placeholder={activeSessionId ? 'Send a message...' : 'Ask Ship to build, fix bugs, explore'}
+      placeholder={activeSessionId ? 'Send a message...' : 'Ask Ship to build, review, fix bugs'}
       value={prompt}
       onChange={(e) => onPromptChange(e.target.value)}
       onKeyDown={onKeyDown}
