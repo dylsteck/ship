@@ -224,7 +224,7 @@ export function DashboardMessages({
               <Message
                 key={message.id}
                 role={message.role}
-                className={isCurrentlyStreaming ? 'will-change-[contents]' : undefined}
+                className={isCurrentlyStreaming ? 'will-change-contents' : undefined}
               >
                 {/* User messages */}
                 {message.role === 'user' && message.content && (

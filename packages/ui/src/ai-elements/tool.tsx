@@ -235,7 +235,7 @@ export function Tool({
                     Input
                   </p>
                   <ScrollArea className="rounded-lg border border-border/40 bg-muted/20">
-                    <pre className="p-3.5 text-foreground/80 leading-relaxed font-mono text-[11px] whitespace-pre-wrap break-words">
+                    <pre className="p-3.5 text-foreground/80 leading-relaxed font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
                       {JSON.stringify(input, null, 2)}
                     </pre>
                   </ScrollArea>
@@ -247,7 +247,7 @@ export function Tool({
                     Output
                   </p>
                   <ScrollArea className="rounded-lg border border-border/40 bg-muted/20 max-h-[400px]">
-                    <pre className="p-3.5 text-foreground/80 leading-relaxed font-mono text-[11px] whitespace-pre-wrap break-words">
+                    <pre className="p-3.5 text-foreground/80 leading-relaxed font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
                       {showFullOutput ? fullOutputText : truncatedOutput}
                     </pre>
                   </ScrollArea>
