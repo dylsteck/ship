@@ -3,8 +3,6 @@
 import { useCallback, useRef } from 'react'
 import { sendChatMessage } from '@/lib/api/server'
 import { parseSSEEvent } from '@/lib/sse-parser'
-import type { SessionInfo } from '@/lib/sse-types'
-import type { TodoItem, FileDiff, StepCostInfo } from '../types'
 import {
   type UIMessage,
   createUserMessage,
@@ -25,57 +23,38 @@ import {
   handleAgentUrl,
   handleRawDataFallbacks,
 } from './sse-event-handlers'
+import type { useDashboardChat } from './use-dashboard-chat'
 
-interface UseDashboardSSEParams {
-  activeSessionId: string | null
-  isStreaming: boolean
-  /** Ref to current mode; used when modeOverride not passed (e.g. queue processing) */
+/** Compact params: chat context + mode ref. Avoids 20+ individual props. */
+export interface UseDashboardSSEParams {
+  chat: ReturnType<typeof useDashboardChat>
   modeRef: React.MutableRefObject<string>
-  setIsStreaming: (value: boolean) => void
-  setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
-  setTotalCost: React.Dispatch<React.SetStateAction<number>>
-  setLastStepCost: React.Dispatch<React.SetStateAction<StepCostInfo | null>>
-  setSessionTodos: React.Dispatch<React.SetStateAction<TodoItem[]>>
-  setFileDiffs: React.Dispatch<React.SetStateAction<FileDiff[]>>
-  setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
-  setAgentUrl: React.Dispatch<React.SetStateAction<string>>
-  setSessionTitle: React.Dispatch<React.SetStateAction<string>>
-  setSessionInfo: React.Dispatch<React.SetStateAction<SessionInfo | null>>
-  updateSessionTitle: (sessionId: string, title: string) => void
-  streamingMessageRef: React.MutableRefObject<string | null>
-  assistantTextRef: React.MutableRefObject<string>
-  reasoningRef: React.MutableRefObject<string>
-  setStreamStartTime: (value: number | null) => void
-  setStreamingStatus: (value: string, appendToSteps?: boolean) => void
-  streamingStatusStepsRef: React.MutableRefObject<string[]>
-  messagesRef: React.MutableRefObject<UIMessage[]>
-  clearStreamingStatusSteps: () => void
 }
 
-export function useDashboardSSE({
-  activeSessionId,
-  isStreaming,
-  modeRef,
-  setIsStreaming,
-  setMessages,
-  setTotalCost,
-  setLastStepCost,
-  setSessionTodos,
-  setFileDiffs,
-  setMessageQueue,
-  setAgentUrl,
-  setSessionTitle,
-  setSessionInfo,
-  updateSessionTitle,
-  streamingMessageRef,
-  assistantTextRef,
-  reasoningRef,
-  setStreamStartTime,
-  setStreamingStatus,
-  streamingStatusStepsRef,
-  messagesRef,
-  clearStreamingStatusSteps,
-}: UseDashboardSSEParams) {
+export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
+  const {
+    activeSessionId,
+    isStreaming,
+    setIsStreaming,
+    setMessages,
+    setTotalCost,
+    setLastStepCost,
+    setSessionTodos,
+    setFileDiffs,
+    setMessageQueue,
+    setAgentUrl,
+    setSessionTitle,
+    setSessionInfo,
+    updateSessionTitle,
+    streamingMessageRef,
+    assistantTextRef,
+    reasoningRef,
+    setStreamStartTime,
+    setStreamingStatus,
+    streamingStatusStepsRef,
+    messagesRef,
+    clearStreamingStatusSteps,
+  } = chat
   const streamStartTimeRef = useRef<number | null>(null)
 
   // Fix stale closure: track isStreaming via ref

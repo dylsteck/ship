@@ -42,30 +42,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     [chat.activeSessionId],
   )
 
-  const { handleSend } = useDashboardSSE({
-    activeSessionId: chat.activeSessionId,
-    isStreaming: chat.isStreaming,
-    modeRef,
-    setIsStreaming: chat.setIsStreaming,
-    setMessages: chat.setMessages,
-    setTotalCost: chat.setTotalCost,
-    setLastStepCost: chat.setLastStepCost,
-    setSessionTodos: chat.setSessionTodos,
-    setFileDiffs: chat.setFileDiffs,
-    setMessageQueue: chat.setMessageQueue,
-    setAgentUrl: chat.setAgentUrl,
-    setSessionTitle: chat.setSessionTitle,
-    setSessionInfo: chat.setSessionInfo,
-    updateSessionTitle: chat.updateSessionTitle,
-    streamingMessageRef: chat.streamingMessageRef,
-    assistantTextRef: chat.assistantTextRef,
-    reasoningRef: chat.reasoningRef,
-    setStreamStartTime: chat.setStreamStartTime,
-    setStreamingStatus: chat.setStreamingStatus,
-    streamingStatusStepsRef: chat.streamingStatusStepsRef,
-    messagesRef: chat.messagesRef,
-    clearStreamingStatusSteps: chat.clearStreamingStatusSteps,
-  })
+  const { handleSend } = useDashboardSSE({ chat, modeRef })
 
   const {
     repos,
@@ -85,19 +62,18 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const state = useDashboardState({
     chat,
     handleSend,
-    createSession,
-    deleteSession,
-    userId,
-    user,
-    repos,
-    isCreating,
-    agents,
-    agentsLoading,
-    defaultAgentId,
-    defaultAgentLoading,
-    defaultRepoFullName,
-    defaultRepoLoading,
-    models,
+    session: { createSession, deleteSession, userId, user },
+    data: {
+      repos,
+      isCreating,
+      agents,
+      agentsLoading,
+      defaultAgentId,
+      defaultAgentLoading,
+      defaultRepoFullName,
+      defaultRepoLoading,
+      models,
+    },
   })
 
   const derived = useDashboardDerived({
@@ -118,24 +94,30 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
 
   useSessionSync({
     sessionParam: searchParams.get('session'),
-    activeSessionId: chat.activeSessionId,
-    setActiveSessionId: chat.setActiveSessionId,
-    connectWebSocket: chat.connectWebSocket,
-    models,
-    selectedModel: state.selectedModel,
-    setSelectedModel: state.setSelectedModel,
-    defaultModelId,
-    defaultModelLoading,
-    repos,
-    selectedRepo: state.selectedRepo,
-    setSelectedRepo: state.setSelectedRepo,
-    localSessions: chat.localSessions,
-    defaultRepoLoading,
-    defaultRepoFullName,
-    isStreaming: chat.isStreaming,
-    messageQueue: chat.messageQueue,
-    setMessageQueue: chat.setMessageQueue,
     handleSend,
+    chat: {
+      activeSessionId: chat.activeSessionId,
+      setActiveSessionId: chat.setActiveSessionId,
+      connectWebSocket: chat.connectWebSocket,
+      localSessions: chat.localSessions,
+      isStreaming: chat.isStreaming,
+      messageQueue: chat.messageQueue,
+      setMessageQueue: chat.setMessageQueue,
+    },
+    model: {
+      models,
+      selectedModel: state.selectedModel,
+      setSelectedModel: state.setSelectedModel,
+      defaultModelId,
+      defaultModelLoading,
+    },
+    repo: {
+      repos,
+      selectedRepo: state.selectedRepo,
+      setSelectedRepo: state.setSelectedRepo,
+      defaultRepoLoading,
+      defaultRepoFullName,
+    },
   })
 
   const rightSidebar = useRightSidebar()
@@ -179,26 +161,31 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     >
       <DashboardMainColumn
         isMobile={isMobile ?? false}
-        activeSessionId={chat.activeSessionId}
-        displayTitle={derived.displayTitle}
-        wsStatus={chat.wsStatus}
-        sandboxStatus={chat.sandboxStatus}
-        messages={chat.messages}
-        isStreaming={chat.isStreaming}
-        streamingMessageId={chat.streamingMessageRef.current}
-        streamStartTime={chat.streamStartTime}
-        streamingStatus={chat.streamingStatus}
-        streamingStatusSteps={chat.streamingStatusSteps}
-        sessionTodos={chat.sessionTodos}
-        localSessions={chat.localSessions}
-        composerContext={derived.composerContext}
-        stats={derived.stats}
+        user={user}
+        header={{
+          activeSessionId: chat.activeSessionId,
+          displayTitle: derived.displayTitle,
+          wsStatus: chat.wsStatus,
+          sandboxStatus: chat.sandboxStatus,
+        }}
+        messages={{
+          messages: chat.messages,
+          isStreaming: chat.isStreaming,
+          streamingMessageId: chat.streamingMessageRef.current,
+          streamStartTime: chat.streamStartTime,
+          streamingStatus: chat.streamingStatus,
+          streamingStatusSteps: chat.streamingStatusSteps,
+          sessionTodos: chat.sessionTodos,
+          onPermissionReply: handlePermissionReply,
+        }}
+        sessions={{
+          localSessions: chat.localSessions,
+          onSessionClick: state.handleSessionClick,
+          onDeleteSession: state.handleDeleteSession,
+        }}
+        composer={{ context: derived.composerContext, stats: derived.stats }}
         rightSidebar={rightSidebar}
         rightSidebarData={rightSidebarData}
-        onPermissionReply={handlePermissionReply}
-        onSessionClick={state.handleSessionClick}
-        onDeleteSession={state.handleDeleteSession}
-        user={user}
       />
     </DashboardLayout>
   )

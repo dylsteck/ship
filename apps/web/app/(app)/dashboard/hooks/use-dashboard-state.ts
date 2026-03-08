@@ -16,38 +16,48 @@ const DEFAULT_MODES: AgentMode[] = [
 export interface UseDashboardStateParams {
   chat: ReturnType<typeof useDashboardChat>
   handleSend: (content: string, modeOverride?: string, sessionIdOverride?: string) => void
-  createSession: (arg: CreateSessionParams) => Promise<ChatSession | undefined>
-  deleteSession: (arg: { sessionId: string }) => Promise<unknown>
-  userId: string
-  user: User
-  repos: GitHubRepo[]
-  isCreating: boolean
-  agents: AgentInfo[]
-  agentsLoading: boolean
-  defaultAgentId: string | null
-  defaultAgentLoading: boolean
-  defaultRepoFullName: string | null
-  defaultRepoLoading: boolean
-  models: ModelInfo[]
+  session: {
+    createSession: (arg: CreateSessionParams) => Promise<ChatSession | undefined>
+    deleteSession: (arg: { sessionId: string }) => Promise<unknown>
+    userId: string
+    user: User
+  }
+  data: {
+    repos: GitHubRepo[]
+    isCreating: boolean
+    agents: AgentInfo[]
+    agentsLoading: boolean
+    defaultAgentId: string | null
+    defaultAgentLoading: boolean
+    defaultRepoFullName: string | null
+    defaultRepoLoading: boolean
+    models: ModelInfo[]
+  }
 }
 
 export function useDashboardState({
   chat,
   handleSend,
-  createSession,
-  deleteSession,
-  userId,
-  user,
-  repos,
-  isCreating,
-  agents,
-  agentsLoading,
-  defaultAgentId,
-  defaultAgentLoading,
-  defaultRepoFullName,
-  defaultRepoLoading,
-  models,
+  session,
+  data,
 }: UseDashboardStateParams) {
+  const {
+    createSession,
+    deleteSession,
+    userId,
+    user,
+  } = session
+  const {
+    repos,
+    isCreating,
+    agents,
+    agentsLoading,
+    defaultAgentId,
+    defaultAgentLoading,
+    defaultRepoFullName,
+    defaultRepoLoading,
+    models,
+  } = data
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)

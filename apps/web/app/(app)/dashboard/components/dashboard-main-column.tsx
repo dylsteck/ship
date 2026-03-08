@@ -23,20 +23,32 @@ export interface DashboardMainColumnStats {
 
 export interface DashboardMainColumnProps {
   isMobile: boolean
-  activeSessionId: string | null
-  displayTitle?: string
-  wsStatus: WebSocketStatus
-  sandboxStatus: string | null
-  messages: UIMessage[]
-  isStreaming: boolean
-  streamingMessageId: string | null
-  streamStartTime: number | null
-  streamingStatus: string | null
-  streamingStatusSteps: string[]
-  sessionTodos: TodoItem[]
-  localSessions: ChatSession[]
-  composerContext: ComposerContextValue
-  stats: DashboardMainColumnStats
+  user: import('@/lib/api/types').User
+  header: {
+    activeSessionId: string | null
+    displayTitle?: string
+    wsStatus: WebSocketStatus
+    sandboxStatus: string | null
+  }
+  messages: {
+    messages: UIMessage[]
+    isStreaming: boolean
+    streamingMessageId: string | null
+    streamStartTime: number | null
+    streamingStatus: string | null
+    streamingStatusSteps: string[]
+    sessionTodos: TodoItem[]
+    onPermissionReply: (permissionId: string, approved: boolean) => Promise<void>
+  }
+  sessions: {
+    localSessions: ChatSession[]
+    onSessionClick: (session: ChatSession) => void
+    onDeleteSession: (sessionId: string) => Promise<void>
+  }
+  composer: {
+    context: ComposerContextValue
+    stats: DashboardMainColumnStats
+  }
   rightSidebar: {
     desktopOpen: boolean
     mobileOpen: boolean
@@ -45,10 +57,6 @@ export interface DashboardMainColumnProps {
     setMobileOpen: (open: boolean) => void
   }
   rightSidebarData: SessionPanelData | null
-  onPermissionReply: (permissionId: string, approved: boolean) => Promise<void>
-  onSessionClick: (session: ChatSession) => void
-  onDeleteSession: (sessionId: string) => Promise<void>
-  user: import('@/lib/api/types').User
 }
 
 /**
@@ -57,41 +65,29 @@ export interface DashboardMainColumnProps {
  */
 export function DashboardMainColumn({
   isMobile,
-  activeSessionId,
-  displayTitle,
-  wsStatus,
-  sandboxStatus,
-  messages,
-  isStreaming,
-  streamingMessageId,
-  streamStartTime,
-  streamingStatus,
-  streamingStatusSteps,
-  sessionTodos,
-  localSessions,
-  composerContext,
-  stats,
+  user,
+  header,
+  messages: messagesCtx,
+  sessions,
+  composer,
   rightSidebar,
   rightSidebarData,
-  onPermissionReply,
-  onSessionClick,
-  onDeleteSession,
-  user,
 }: DashboardMainColumnProps) {
+  const { activeSessionId, displayTitle, wsStatus, sandboxStatus } = header
   const messagesProps = {
     activeSessionId,
-    messages,
-    isStreaming,
-    streamingMessageId,
-    streamStartTime,
-    streamingStatus: streamingStatus ?? undefined,
-    streamingStatusSteps,
-    sessionTodos,
-    onPermissionReply,
+    messages: messagesCtx.messages,
+    isStreaming: messagesCtx.isStreaming,
+    streamingMessageId: messagesCtx.streamingMessageId,
+    streamStartTime: messagesCtx.streamStartTime,
+    streamingStatus: messagesCtx.streamingStatus ?? undefined,
+    streamingStatusSteps: messagesCtx.streamingStatusSteps,
+    sessionTodos: messagesCtx.sessionTodos,
+    onPermissionReply: messagesCtx.onPermissionReply,
   }
 
   return (
-    <div className="flex h-screen h-[100dvh] relative overflow-hidden">
+    <div className="flex h-dvh relative overflow-hidden">
       <div className="flex-1 flex flex-col min-w-0">
         <DashboardHeader
           activeSessionId={activeSessionId}
@@ -111,16 +107,16 @@ export function DashboardMainColumn({
               <>
                 <div className="shrink-0">
                   <DashboardComposer
-                    context={composerContext}
-                    stats={stats}
+                    context={composer.context}
+                    stats={composer.stats}
                     compactLayout={true}
                   />
                 </div>
                 <MobileSessionList
-                  sessions={localSessions}
+                  sessions={sessions.localSessions}
                   isMobile={isMobile ?? false}
-                  onSessionClick={onSessionClick}
-                  onDeleteSession={onDeleteSession}
+                  onSessionClick={sessions.onSessionClick}
+                  onDeleteSession={sessions.onDeleteSession}
                 />
               </>
             )}
@@ -130,8 +126,8 @@ export function DashboardMainColumn({
                   <DashboardMessages {...messagesProps} />
                 </div>
                 <DashboardComposer
-                  context={composerContext}
-                  stats={stats}
+                  context={composer.context}
+                  stats={composer.stats}
                   compactLayout={false}
                 />
               </div>
@@ -148,7 +144,7 @@ export function DashboardMainColumn({
             >
               <DashboardMessages {...messagesProps} />
             </div>
-            <DashboardComposer context={composerContext} stats={stats} />
+            <DashboardComposer context={composer.context} stats={composer.stats} />
           </div>
         </div>
       </div>

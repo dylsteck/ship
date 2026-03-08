@@ -4,35 +4,32 @@ import { useEffect } from 'react'
 import type { ChatSession } from '@/lib/api/server'
 import type { GitHubRepo, ModelInfo } from '@/lib/api/types'
 
-interface UseSessionSyncParams {
-  /** URL search params (from useSearchParams) */
+export interface UseSessionSyncParams {
   sessionParam: string | null
-  /** Current active session ID */
-  activeSessionId: string | null
-  setActiveSessionId: (id: string) => void
-  connectWebSocket: (id: string) => void
-  /** Model data */
-  models: ModelInfo[]
-  selectedModel: ModelInfo | null
-  setSelectedModel: (model: ModelInfo) => void
-  /** User's saved default model ID from settings */
-  defaultModelId: string | null
-  /** Whether default model is still loading (wait before initial selection) */
-  defaultModelLoading: boolean
-  /** Repo data */
-  repos: GitHubRepo[]
-  selectedRepo: GitHubRepo | null
-  setSelectedRepo: (repo: GitHubRepo) => void
-  localSessions: ChatSession[]
-  /** Whether default repo is still loading (wait before initial selection) */
-  defaultRepoLoading: boolean
-  /** User's saved default repo full name from settings */
-  defaultRepoFullName: string | null
-  /** Message queue */
-  isStreaming: boolean
-  messageQueue: string[]
-  setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
   handleSend: (content: string) => void
+  chat: {
+    activeSessionId: string | null
+    setActiveSessionId: (id: string) => void
+    connectWebSocket: (id: string) => void
+    localSessions: ChatSession[]
+    isStreaming: boolean
+    messageQueue: string[]
+    setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
+  }
+  model: {
+    models: ModelInfo[]
+    selectedModel: ModelInfo | null
+    setSelectedModel: (model: ModelInfo) => void
+    defaultModelId: string | null
+    defaultModelLoading: boolean
+  }
+  repo: {
+    repos: GitHubRepo[]
+    selectedRepo: GitHubRepo | null
+    setSelectedRepo: (repo: GitHubRepo) => void
+    defaultRepoLoading: boolean
+    defaultRepoFullName: string | null
+  }
 }
 
 /**
@@ -44,25 +41,34 @@ interface UseSessionSyncParams {
  */
 export function useSessionSync({
   sessionParam,
-  activeSessionId,
-  setActiveSessionId,
-  connectWebSocket,
-  models,
-  selectedModel,
-  setSelectedModel,
-  defaultModelId,
-  defaultModelLoading,
-  repos,
-  selectedRepo,
-  setSelectedRepo,
-  localSessions,
-  defaultRepoLoading,
-  defaultRepoFullName,
-  isStreaming,
-  messageQueue,
-  setMessageQueue,
   handleSend,
+  chat,
+  model,
+  repo,
 }: UseSessionSyncParams) {
+  const {
+    activeSessionId,
+    setActiveSessionId,
+    connectWebSocket,
+    localSessions,
+    isStreaming,
+    messageQueue,
+    setMessageQueue,
+  } = chat
+  const {
+    models,
+    selectedModel,
+    setSelectedModel,
+    defaultModelId,
+    defaultModelLoading,
+  } = model
+  const {
+    repos,
+    selectedRepo,
+    setSelectedRepo,
+    defaultRepoLoading,
+    defaultRepoFullName,
+  } = repo
   // Activate session from URL param (e.g., /?session=abc123 from /session/[id] redirect)
   useEffect(() => {
     if (sessionParam && !activeSessionId) {
