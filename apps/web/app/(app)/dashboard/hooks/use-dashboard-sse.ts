@@ -29,7 +29,8 @@ import {
 interface UseDashboardSSEParams {
   activeSessionId: string | null
   isStreaming: boolean
-  mode: string
+  /** Ref to current mode; used when modeOverride not passed (e.g. queue processing) */
+  modeRef: React.MutableRefObject<string>
   setIsStreaming: (value: boolean) => void
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
   setTotalCost: React.Dispatch<React.SetStateAction<number>>
@@ -54,7 +55,7 @@ interface UseDashboardSSEParams {
 export function useDashboardSSE({
   activeSessionId,
   isStreaming,
-  mode,
+  modeRef,
   setIsStreaming,
   setMessages,
   setTotalCost,
@@ -152,7 +153,7 @@ export function useDashboardSSE({
       }
 
       try {
-        const response = await sendChatMessage(targetSessionId, content, modeOverride ?? mode)
+        const response = await sendChatMessage(targetSessionId, content, modeOverride ?? modeRef.current)
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -331,7 +332,7 @@ export function useDashboardSSE({
         streamingMessageRef.current = null
       }
     },
-    [activeSessionId, mode],
+    [activeSessionId],
   )
 
   return { handleSend }
