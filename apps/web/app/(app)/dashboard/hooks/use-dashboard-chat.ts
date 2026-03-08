@@ -81,11 +81,11 @@ export function useDashboardChat(initialSessions: ChatSession[]) {
           setMessages((prev) => [...prev, prMsg])
         }
 
-        if (event.type === 'opencode-url') {
+        if (event.type === 'agent-url' || event.type === 'opencode-url') {
           const url = (event as { url?: string }).url
           if (url) {
             persistence.setOpenCodeUrl(url)
-            try { localStorage.setItem(`opencode-url-${sessionId}`, url) } catch {}
+            try { localStorage.setItem(`agent-url-${sessionId}`, url) } catch {}
           }
         }
 

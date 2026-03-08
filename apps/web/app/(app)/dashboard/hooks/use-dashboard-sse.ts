@@ -22,7 +22,7 @@ import {
   handlePermissionResolved,
   handleQuestionAsked,
   handleQuestionResolved,
-  handleOpenCodeUrl,
+  handleAgentUrl,
   handleRawDataFallbacks,
 } from './sse-event-handlers'
 
@@ -213,9 +213,10 @@ export function useDashboardSSE({
                     break
                   }
 
+                  case 'agent-url':
                   case 'opencode-url': {
                     const url = (event as { url?: string }).url
-                    if (url) handleOpenCodeUrl(url, ctx)
+                    if (url) handleAgentUrl(url, ctx)
                     break
                   }
 

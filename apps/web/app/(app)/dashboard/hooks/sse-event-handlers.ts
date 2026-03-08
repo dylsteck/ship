@@ -159,10 +159,13 @@ export function handleQuestionResolved(
   ctx.setMessages((prev) => updatePromptStatus(id, status, prev))
 }
 
-export function handleOpenCodeUrl(url: string, ctx: SSEHandlerContext) {
+export function handleAgentUrl(url: string, ctx: SSEHandlerContext) {
   ctx.setOpenCodeUrl(url)
-  try { localStorage.setItem(`opencode-url-${ctx.targetSessionId}`, url) } catch {}
+  try { localStorage.setItem(`agent-url-${ctx.targetSessionId}`, url) } catch {}
 }
+
+/** @deprecated Use handleAgentUrl */
+export const handleOpenCodeUrl = handleAgentUrl
 
 export function handleRawDataFallbacks(
   rawData: Record<string, unknown>,
