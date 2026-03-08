@@ -10,6 +10,7 @@ import { DashboardHeader } from './dashboard-header'
 import { DashboardMessages } from './dashboard-messages'
 import { DashboardComposer } from './composer'
 import { MobileSessionList } from './mobile-session-list'
+import { HomepageSessionList } from './homepage-session-list'
 import { RightSidebar } from './right-sidebar'
 
 export interface DashboardMainColumnProps {
@@ -47,6 +48,8 @@ export interface DashboardMainColumnProps {
     setMobileOpen: (open: boolean) => void
   }
   rightSidebarData: SessionPanelData | null
+  /** When on homepage, optional agent label for session cards (e.g. "OpenCode") */
+  agentLabel?: string
 }
 
 /**
@@ -62,6 +65,7 @@ export function DashboardMainColumn({
   composer,
   rightSidebar,
   rightSidebarData,
+  agentLabel = 'Ship',
 }: DashboardMainColumnProps) {
   const { activeSessionId, displayTitle, wsStatus, sandboxStatus } = header
   const messagesProps = {
@@ -124,15 +128,30 @@ export function DashboardMainColumn({
 
           {/* Desktop */}
           <div className="hidden md:flex flex-col h-full">
-            <div
-              className={cn(
-                'flex-1 overflow-hidden',
-                activeSessionId ? 'opacity-100' : 'opacity-0 h-0',
-              )}
-            >
-              <DashboardMessages {...messagesProps} />
-            </div>
-            <DashboardComposer context={composer.context} />
+            {activeSessionId ? (
+              <>
+                <div className="flex-1 overflow-hidden">
+                  <DashboardMessages {...messagesProps} />
+                </div>
+                <DashboardComposer context={composer.context} />
+              </>
+            ) : (
+              <>
+                <div className="shrink-0">
+                  <DashboardComposer context={composer.context} />
+                </div>
+                <HomepageSessionList
+                  sessions={sessions.localSessions}
+                  activeSessionId={activeSessionId}
+                  isStreaming={messagesCtx.isStreaming}
+                  streamingStatus={messagesCtx.streamingStatus ?? ''}
+                  streamingStatusSteps={messagesCtx.streamingStatusSteps}
+                  agentLabel={agentLabel}
+                  onSessionClick={sessions.onSessionClick}
+                  onDeleteSession={sessions.onDeleteSession}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

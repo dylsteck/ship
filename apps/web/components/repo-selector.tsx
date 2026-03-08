@@ -79,6 +79,7 @@ export function RepoSelector({
                 : 'h-8 px-2 sm:px-3 rounded-full gap-1.5',
               triggerClassName,
             )}
+          >
             <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
             <span
               className={

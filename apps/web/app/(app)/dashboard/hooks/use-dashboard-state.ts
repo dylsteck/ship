@@ -21,6 +21,7 @@ export interface UseDashboardStateParams {
     deleteSession: (arg: { sessionId: string }) => Promise<unknown>
     userId: string
     user: User
+    mutateSessions?: () => void
   }
   data: {
     repos: GitHubRepo[]
@@ -46,6 +47,7 @@ export function useDashboardState({
     deleteSession,
     userId,
     user,
+    mutateSessions,
   } = session
   const {
     repos,
@@ -115,6 +117,7 @@ export function useDashboardState({
             messageCount: 0,
           }
           chat.setLocalSessions((prev) => [newSessionData, ...prev])
+          mutateSessions?.()
           chat.setActiveSessionId(newSession.id)
           window.history.replaceState({}, '', `/session/${newSession.id}`)
           chat.connectWebSocket(newSession.id)
@@ -129,7 +132,7 @@ export function useDashboardState({
         console.error('Failed to create session:', error)
       }
     },
-    [createSession, userId, selectedModel, selectedAgent, prompt, mode, chat, handleSend],
+    [createSession, userId, selectedModel, selectedAgent, prompt, mode, chat, handleSend, mutateSessions],
   )
 
   const handleSubmit = useCallback(() => {

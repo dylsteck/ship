@@ -8,11 +8,20 @@ import type { CreateSessionParams, SandboxStatus } from '../types'
 
 /**
  * Hook to fetch all sessions for a user
+ * @param userId - User ID (undefined to disable fetch)
+ * @param options - Optional SWR config (e.g. refreshInterval when on homepage)
  */
-export function useSessions(userId: string | undefined) {
+export function useSessions(
+  userId: string | undefined,
+  options?: { refreshInterval?: number; revalidateOnFocus?: boolean },
+) {
   const { data, error, isLoading, mutate } = useSWR<ChatSession[]>(
     userId ? apiUrl('/sessions', { userId }) : null,
-    fetcher
+    fetcher,
+    {
+      refreshInterval: options?.refreshInterval,
+      revalidateOnFocus: options?.revalidateOnFocus ?? true,
+    },
   )
 
   return {

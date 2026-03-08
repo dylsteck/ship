@@ -1,13 +1,13 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
 import { useModels, useDefaultModel } from '@/lib/api/hooks/use-models'
 import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
-import { useCreateSession, useDeleteSession } from '@/lib/api/hooks/use-sessions'
+import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks/use-sessions'
 import { replyPermission } from '@/lib/api/hooks/use-chat'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -58,11 +58,27 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
+  const {
+    sessions: swrSessions,
+    mutate: mutateSessions,
+  } = useSessions(userId, {
+    refreshInterval: !chat.activeSessionId ? 8000 : 0,
+    revalidateOnFocus: true,
+  })
+
+  // Sync SWR sessions into local state when on homepage so list/sidebar stay fresh
+  const prevSwrLenRef = useRef(0)
+  useEffect(() => {
+    if (chat.activeSessionId) return
+    if (swrSessions.length === 0 && prevSwrLenRef.current === 0) return
+    prevSwrLenRef.current = swrSessions.length
+    chat.setLocalSessions(swrSessions)
+  }, [chat.activeSessionId, swrSessions, chat])
 
   const state = useDashboardState({
     chat,
     handleSend,
-    session: { createSession, deleteSession, userId, user },
+    session: { createSession, deleteSession, userId, user, mutateSessions },
     data: {
       repos,
       isCreating,
@@ -187,6 +203,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
         composer={{ context: derived.composerContext }}
         rightSidebar={rightSidebar}
         rightSidebarData={rightSidebarData}
+        agentLabel={state.selectedAgent?.name ?? 'Ship'}
       />
     </DashboardLayout>
   )
