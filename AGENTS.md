@@ -380,6 +380,29 @@ MCP (Model Context Protocol) servers are configured and loaded into agent sessio
 - **Context7**: Library documentation — `https://mcp.context7.com/mcp`
 - **Exa**: Web search — `https://mcp.exa.ai/mcp`
 
+## Browser Testing with agent-browser + Brave CDP
+
+### Setup
+
+1. Quit Brave Browser completely
+2. Relaunch with remote debugging:
+   ```bash
+   "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" --remote-debugging-port=9222 &
+   ```
+3. Verify CDP: `curl -s http://localhost:9222/json/version`
+4. Connect: `agent-browser connect 9222`
+
+### Testing a chat session
+
+1. `agent-browser open http://localhost:3000`
+2. `agent-browser snapshot -i` (get interactive elements)
+3. `agent-browser click @e6` (select repo)
+4. `agent-browser fill @e5 "repo overview"`
+5. `agent-browser click @e7` (submit)
+6. `agent-browser screenshot /tmp/test.png` (capture state)
+7. `agent-browser console` (check for errors)
+8. `agent-browser eval "performance.getEntriesByType('resource').filter(r => r.name.includes('chat'))"` (check network)
+
 ## Testing
 
 (To be added)
