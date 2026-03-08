@@ -194,7 +194,7 @@ app.post('/:sessionId', async (c) => {
                   event: 'error',
                   data: JSON.stringify({
                     error: 'Cursor agent requires CURSOR_API_KEY',
-                    details: 'Set CURSOR_API_KEY in .dev.vars (local) or Wrangler secrets (production). Get the key from Cursor Dashboard → Integrations → Cloud Agents API.',
+                    details: 'Set CURSOR_API_KEY in .dev.vars (local) or Wrangler secrets (production). Get the key from Cursor Dashboard → Integrations → Cloud Agents API, or User API Keys (headless Cursor Agent CLI).',
                     category: 'user-action',
                     retryable: false,
                   }),
@@ -385,7 +385,7 @@ app.post('/:sessionId', async (c) => {
                   event: 'error',
                   data: JSON.stringify({
                     error: 'Cursor agent requires CURSOR_API_KEY',
-                    details: 'Set CURSOR_API_KEY in .dev.vars (local) or Wrangler secrets (production). Get the key from Cursor Dashboard → Integrations → Cloud Agents API.',
+                    details: 'Set CURSOR_API_KEY in .dev.vars (local) or Wrangler secrets (production). Get the key from Cursor Dashboard → Integrations → Cloud Agents API, or User API Keys (headless Cursor Agent CLI).',
                     category: 'user-action',
                     retryable: false,
                   }),
