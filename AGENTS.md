@@ -12,43 +12,114 @@ pnpm dev
 ## Build
 
 ```bash
-pnpm build        # Build the app
+pnpm build        # Build all apps
 pnpm type-check   # Type check only
 ```
 
-## Port
+## Deployment
 
-- App: `http://localhost:3000`
+### Web App (Next.js) — Vercel
+
+Deploy from the repository root:
+
+```bash
+vercel             # Preview deploy
+vercel --prod      # Production deploy
+```
+
+The Vercel project is configured to build `apps/web`.
+
+### API (Cloudflare Worker) — Wrangler
+
+Deploy from `apps/api`:
+
+```bash
+cd apps/api
+npx wrangler deploy              # Deploy to production
+npx wrangler deploy --env staging  # Deploy to staging (if configured)
+npx wrangler dev                   # Local dev server
+```
+
+Secrets must be set via `wrangler secret put`:
+
+```bash
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put API_SECRET
+npx wrangler secret put E2B_API_KEY
+npx wrangler secret put OPENAI_API_KEY      # Optional, for Codex agent
+npx wrangler secret put CURSOR_API_KEY      # Optional, for Cursor agent
+```
+
+## Ports
+
+- Web App: `http://localhost:3000`
+- API (local): `http://localhost:8787`
 
 ## Project Structure
 
 ```
 ship/
-├── app/                  # Next.js App Router
-│   ├── api/              # API routes
-│   │   ├── auth/         # Auth endpoints
-│   │   ├── tasks/        # Task CRUD
-│   │   ├── repos/        # GitHub repos
-│   │   ├── connectors/   # MCP connectors
-│   │   └── user/         # User settings/keys
-│   ├── tasks/            # Task pages
-│   └── page.tsx          # Home page
-├── components/           # React components
-│   ├── auth/             # Auth components
-│   ├── layout/           # Layout (AppLayout, Sidebar, Header)
-│   ├── logos/            # Agent logo SVGs
-│   └── ui/               # shadcn/ui primitives
-├── lib/                  # Business logic
-│   ├── atoms/            # Jotai state atoms
-│   ├── db/               # Drizzle ORM (schema, client)
-│   ├── sandbox/          # Vercel Sandbox utilities
-│   │   ├── agents/       # Agent implementations
-│   │   ├── creation.ts   # Sandbox creation
-│   │   ├── commands.ts   # Command execution
-│   │   └── git.ts        # Git operations
-│   ├── session/          # JWE session management
-│   └── utils/            # Helpers (id, logging, rate-limit)
-└── public/               # Static assets
+├── apps/
+│   ├── web/                    # Next.js App Router (frontend)
+│   │   ├── app/                # Pages and routes
+│   │   │   └── (app)/dashboard # Dashboard with chat UI
+│   │   ├── lib/                # Frontend business logic
+│   │   │   ├── ai-elements-adapter.ts  # SSE → UIMessage adapter
+│   │   │   ├── sse-types.ts            # SSE event type definitions
+│   │   │   ├── sse-parser.ts           # SSE event parser
+│   │   │   └── api/                    # API client functions
+│   │   └── components/         # React components
+│   └── api/                    # Cloudflare Worker (backend)
+│       └── src/
+│           ├── routes/
+│           │   └── chat.ts             # SSE streaming chat endpoint
+│           ├── lib/
+│           │   ├── sandbox-agent.ts    # sandbox-agent SDK wrapper
+│           │   ├── agent-registry.ts   # Agent config registry
+│           │   ├── event-translator.ts # UniversalEvent → Ship SSE translator
+│           │   └── e2b.ts              # E2B sandbox management
+│           ├── durable-objects/
+│           │   └── session.ts          # Session Durable Object
+│           └── env.d.ts                # Environment type definitions
+└── packages/
+    └── ui/                     # Shared UI components (@ship/ui)
+```
+
+## Agent Architecture
+
+Ship uses **sandbox-agent** (by Rivet) as its agent runtime, which supports multiple coding agents through the Agent Client Protocol (ACP).
+
+### How it works
+
+1. An E2B sandbox is provisioned for each session
+2. `sandbox-agent` binary is installed inside the sandbox
+3. The requested agent (Claude Code, OpenCode, Cursor, Codex) is installed via `sandbox-agent install-agent <name>`
+4. `sandbox-agent server` exposes an HTTP/SSE API inside the sandbox
+5. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
+
+### Supported Agents
+
+| Agent | sandbox-agent name | Required Env Var | Modes |
+|-------|-------------------|------------------|-------|
+| Claude Code | `claude` | `ANTHROPIC_API_KEY` | default, plan |
+| OpenCode | `opencode` | — | build, plan |
+| Cursor | `cursor` | `CURSOR_API_KEY` | agent, plan, ask |
+| Codex | `codex` | `OPENAI_API_KEY` | read-only, auto, full-access |
+
+Agent configs are defined in `apps/api/src/lib/agent-registry.ts`.
+
+### Key API Files
+
+- **`sandbox-agent.ts`** — Wrapper around the sandbox-agent SDK. Handles server startup, client connection, session creation, prompting, and cancellation.
+- **`event-translator.ts`** — Stateful translator (`EventTranslatorState`) that maps sandbox-agent's `UniversalEvent` schema to Ship's SSE events (`message.part.updated`, `session.idle`, `session.error`, etc.).
+- **`agent-registry.ts`** — Registry of supported agents with their configs (required env vars, modes, sandbox-agent names).
+
+### Event Flow
+
+```
+User prompt → Cloudflare Worker → sandbox-agent (HTTP) → ACP agent (stdio)
+                                                              ↓
+Frontend ← SSE stream ← EventTranslatorState ← UniversalEvents
 ```
 
 ## Code Style
@@ -67,69 +138,40 @@ ship/
 
 - Use `pnpm` (not npm or yarn)
 - Import with `@/` path alias (e.g., `@/lib/db/client`)
-- API routes in `app/api/`
+- API routes in `app/api/` (web) or `src/routes/` (api worker)
 - React components use `.tsx` extension
 - Prefer named exports over default exports
 
 ## Environment Variables
 
-See `.env.example` for all variables. Key ones:
+### Web App (`apps/web/.env`)
 
 ```env
-# Database
-POSTGRES_URL=postgresql://...
-
 # Auth
 JWE_SECRET=...
 ENCRYPTION_KEY=...
 NEXT_PUBLIC_GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
-
-# Vercel Sandbox
-SANDBOX_VERCEL_TOKEN=...
-SANDBOX_VERCEL_TEAM_ID=...
-SANDBOX_VERCEL_PROJECT_ID=...
-
-# Agent API Keys (optional)
-ANTHROPIC_API_KEY=...
-OPENAI_API_KEY=...
 ```
 
-## Database
+### API Worker (`apps/api/.dev.vars`)
 
-Using Drizzle ORM with Neon Postgres.
-
-```bash
-pnpm db:push      # Push schema to database
-pnpm db:studio    # Open Drizzle Studio
-pnpm db:generate  # Generate migrations
-pnpm db:migrate   # Run migrations
+```env
+ANTHROPIC_API_KEY=...
+API_SECRET=...
+E2B_API_KEY=...
+OPENAI_API_KEY=...         # Optional, for Codex agent
+CURSOR_API_KEY=...         # Optional, for Cursor agent
 ```
 
 ## MCP Servers
 
-The following MCP (Model Context Protocol) servers are configured in `opencode.json` and loaded into the OpenCode sandbox session:
+MCP (Model Context Protocol) servers are configured and loaded into agent sessions via sandbox-agent's `sessionInit.mcpServers`:
 
-- **Grep**: GitHub code search (`grep_searchGitHub`)
-  - URL: `https://mcp.grep.app`
-  - Search across millions of public GitHub repositories for code examples
-  - Use `use grep` in prompts to leverage this tool
-
-- **DeepWiki**: Deep documentation search
-  - URL: `https://mcp.deepwiki.com/mcp`
-  - Search documentation and knowledge bases
-
-- **Context7**: Documentation search (`context7_query-docs`)
-  - URL: `https://mcp.context7.com/mcp`
-  - Requires `CONTEXT7_API_KEY` environment variable
-  - Search up-to-date documentation for libraries and frameworks
-  - Use `use context7` in prompts to leverage this tool
-
-- **Exa**: Web search (`web_search_exa`, `get_code_context_exa`)
-  - URL: `https://mcp.exa.ai/mcp`
-  - Fast web search and code context discovery
-
-All MCP servers are enabled by default. The sandbox writes `opencode.json` to the E2B environment before starting OpenCode so these tools load in each session. Configure in `opencode.json` using the `mcp` key with `type: "remote"` for remote servers.
+- **Grep**: GitHub code search — `https://mcp.grep.app`
+- **DeepWiki**: Deep documentation search — `https://mcp.deepwiki.com/mcp`
+- **Context7**: Library documentation — `https://mcp.context7.com/mcp`
+- **Exa**: Web search — `https://mcp.exa.ai/mcp`
 
 ## Testing
 
