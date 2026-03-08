@@ -47,11 +47,11 @@ export function AgentLink({ url, agentSessionId }: { url: string; agentSessionId
       </a>
       {agentSessionId && (
         <a
-          href={`${baseUrl}/v1/sessions/${agentSessionId}/events/sse?offset=0`}
+          href={`${baseUrl}/v1/acp/${encodeURIComponent(agentSessionId)}`}
           target="_blank"
           rel="noopener noreferrer"
           className={linkClass}
-          title="Session events stream"
+          title="Session events stream (SSE)"
         >
           {iconSvg}
           <span className="truncate">Logs</span>
