@@ -184,7 +184,7 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
           onSessionClick: state.handleSessionClick,
           onDeleteSession: state.handleDeleteSession,
         }}
-        composer={{ context: derived.composerContext, stats: derived.stats }}
+        composer={{ context: derived.composerContext }}
         rightSidebar={rightSidebar}
         rightSidebarData={rightSidebarData}
       />

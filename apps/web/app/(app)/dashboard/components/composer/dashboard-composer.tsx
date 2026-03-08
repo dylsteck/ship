@@ -2,7 +2,6 @@
 
 import { cn } from '@ship/ui'
 import { ClientOnly } from '@/components/client-only'
-import { DashboardStats } from '@/components/dashboard-stats'
 import { ComposerProvider, type ComposerContextValue } from './composer-context'
 import { ComposerTextarea } from './composer-textarea'
 import { ComposerFooter } from './composer-footer'
@@ -12,19 +11,11 @@ import { SubmitButton } from './submit-button'
 interface DashboardComposerProps {
   /** All shared state consumed by composer sub-components via context */
   context: ComposerContextValue
-  stats: {
-    sessionsPastWeek: number
-    messagesPastWeek: number
-    activeRepos: number
-    sessionsChartData: number[]
-    messagesChartData: number[]
-    activeReposChartData: number[]
-  }
   /** When true, use normal flow instead of absolute centering (for mobile with session list below). Default false. */
   compactLayout?: boolean
 }
 
-export function DashboardComposer({ context, stats, compactLayout = false }: DashboardComposerProps) {
+export function DashboardComposer({ context, compactLayout = false }: DashboardComposerProps) {
   const { activeSessionId } = context
 
   return (
@@ -71,12 +62,6 @@ export function DashboardComposer({ context, stats, compactLayout = false }: Das
 
             <ComposerFooter />
           </div>
-
-          {!activeSessionId && (
-            <div className="mt-6 hidden sm:block">
-              <DashboardStats stats={stats} />
-            </div>
-          )}
         </div>
       </div>
     </ComposerProvider>

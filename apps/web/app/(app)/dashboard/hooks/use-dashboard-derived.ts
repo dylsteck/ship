@@ -75,37 +75,6 @@ export function useDashboardDerived({
     chat.messages,
   ])
 
-  const stats = useMemo(() => {
-    const now = Math.floor(Date.now() / 1000)
-    const oneDay = 24 * 60 * 60
-    const oneWeekAgo = now - 7 * oneDay
-    const recent = chat.localSessions.filter((s) => s.lastActivity > oneWeekAgo)
-
-    const sessionsChartData: number[] = []
-    const messagesChartData: number[] = []
-    const activeReposChartData: number[] = []
-
-    for (let i = 6; i >= 0; i--) {
-      const bucketStart = now - (i + 1) * oneDay
-      const bucketEnd = now - i * oneDay
-      const inBucket = chat.localSessions.filter(
-        (s) => s.lastActivity >= bucketStart && s.lastActivity < bucketEnd,
-      )
-      sessionsChartData.push(inBucket.length)
-      messagesChartData.push(inBucket.reduce((acc, s) => acc + (s.messageCount || 0), 0))
-      activeReposChartData.push(new Set(inBucket.map((s) => `${s.repoOwner}/${s.repoName}`)).size)
-    }
-
-    return {
-      sessionsPastWeek: recent.length,
-      messagesPastWeek: recent.reduce((acc, s) => acc + (s.messageCount || 0), 0),
-      activeRepos: new Set(chat.localSessions.map((s) => `${s.repoOwner}/${s.repoName}`)).size,
-      sessionsChartData,
-      messagesChartData,
-      activeReposChartData,
-    }
-  }, [chat.localSessions])
-
   const canSubmit = Boolean(
     chat.activeSessionId ? prompt.trim() && !chat.isStreaming : selectedRepo && prompt.trim() && !isCreating,
   )
@@ -171,7 +140,6 @@ export function useDashboardDerived({
 
   return {
     displayTitle,
-    stats,
     canSubmit,
     composerContext,
     groupedByProvider,

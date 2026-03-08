@@ -12,15 +12,6 @@ import { DashboardComposer } from './composer'
 import { MobileSessionList } from './mobile-session-list'
 import { RightSidebar } from './right-sidebar'
 
-export interface DashboardMainColumnStats {
-  sessionsPastWeek: number
-  messagesPastWeek: number
-  activeRepos: number
-  sessionsChartData: number[]
-  messagesChartData: number[]
-  activeReposChartData: number[]
-}
-
 export interface DashboardMainColumnProps {
   isMobile: boolean
   user: import('@/lib/api/types').User
@@ -47,7 +38,6 @@ export interface DashboardMainColumnProps {
   }
   composer: {
     context: ComposerContextValue
-    stats: DashboardMainColumnStats
   }
   rightSidebar: {
     desktopOpen: boolean
@@ -108,7 +98,6 @@ export function DashboardMainColumn({
                 <div className="shrink-0">
                   <DashboardComposer
                     context={composer.context}
-                    stats={composer.stats}
                     compactLayout={true}
                   />
                 </div>
@@ -127,7 +116,6 @@ export function DashboardMainColumn({
                 </div>
                 <DashboardComposer
                   context={composer.context}
-                  stats={composer.stats}
                   compactLayout={false}
                 />
               </div>
@@ -144,7 +132,7 @@ export function DashboardMainColumn({
             >
               <DashboardMessages {...messagesProps} />
             </div>
-            <DashboardComposer context={composer.context} stats={composer.stats} />
+            <DashboardComposer context={composer.context} />
           </div>
         </div>
       </div>
