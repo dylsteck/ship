@@ -9,7 +9,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@ship/ui'
-import { SessionPanel } from '@/components/chat/session-panel'
+import { OverviewTab } from '@/components/chat/session-panel/overview-tab'
 import type { SessionPanelData, RightSidebarTab } from '../types'
 
 const TABS: { id: RightSidebarTab; label: string }[] = [
@@ -225,7 +225,7 @@ function TabContent({
         </div>
       )
     case 'overview':
-      return <SessionPanel {...panelProps} />
+      return <OverviewTab {...panelProps} />
     default: {
       const _exhaustive: never = activeTab
       return null
