@@ -51,9 +51,9 @@ function MobileNav({
         <Link
           href="/"
           className={cn(
-            'px-2.5 py-1 text-xs rounded-md transition-colors',
+            'px-1.5 py-1 text-sm transition-colors',
             isAgents
-              ? 'bg-muted text-foreground font-medium'
+              ? 'text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -62,9 +62,9 @@ function MobileNav({
         <Link
           href="/settings"
           className={cn(
-            'px-2.5 py-1 text-xs rounded-md transition-colors',
+            'px-1.5 py-1 text-sm transition-colors',
             isSettings
-              ? 'bg-muted text-foreground font-medium'
+              ? 'text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground',
           )}
         >
