@@ -77,16 +77,17 @@ export function DashboardClient({
   // Sync SWR sessions into local state when on homepage so list/sidebar stay fresh.
   // Merge to preserve optimistic session creates (in localSessions but not yet in swrSessions).
   const prevSwrLenRef = useRef(0)
+  const { activeSessionId, setLocalSessions } = chat
   useEffect(() => {
-    if (chat.activeSessionId) return
+    if (activeSessionId) return
     if (swrSessions.length === 0 && prevSwrLenRef.current === 0) return
     prevSwrLenRef.current = swrSessions.length
-    chat.setLocalSessions((prev) => {
+    setLocalSessions((prev) => {
       const swrIds = new Set(swrSessions.map((s) => s.id))
       const optimisticOnly = prev.filter((s) => !swrIds.has(s.id))
       return [...optimisticOnly, ...swrSessions]
     })
-  }, [chat.activeSessionId, swrSessions, chat])
+  }, [activeSessionId, swrSessions, setLocalSessions])
 
   const state = useDashboardState({
     chat,
