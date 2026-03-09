@@ -854,11 +854,12 @@ app.post('/:sessionId', async (c) => {
         }
 
         // Generate LLM title when agent did not send session_info_update
-        if (!receivedAiTitle && content?.trim() && c.env.ANTHROPIC_API_KEY) {
+        if (!receivedAiTitle && content?.trim() && (c.env.ANTHROPIC_API_KEY || c.env.OPENAI_API_KEY)) {
           const generatedTitle = await generateSessionTitle({
             userPrompt: content,
             assistantPreview: assistantContent?.slice(0, 300),
-            apiKey: c.env.ANTHROPIC_API_KEY,
+            anthropicApiKey: c.env.ANTHROPIC_API_KEY,
+            openaiApiKey: c.env.OPENAI_API_KEY,
           })
           if (generatedTitle) {
             try {

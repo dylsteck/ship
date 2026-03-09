@@ -8,11 +8,10 @@ const STORAGE_KEY = 'ship-right-sidebar'
 const TAB_STORAGE_KEY = 'ship-right-sidebar-tab'
 const EXPANDED_STORAGE_KEY = 'ship-right-sidebar-expanded'
 
-function readStorage<T>(key: string, fallback: T): T {
+function readStorage(key: string, fallback: string): string {
   try {
     const val = localStorage.getItem(key)
-    if (val === null) return fallback
-    return val as unknown as T
+    return val ?? fallback
   } catch {
     return fallback
   }
@@ -27,7 +26,7 @@ export function useRightSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const [activeTab, setActiveTabState] = useState<RightSidebarTab>(() => {
-    const saved = readStorage<string>(TAB_STORAGE_KEY, 'overview')
+    const saved = readStorage(TAB_STORAGE_KEY, 'overview')
     const valid: RightSidebarTab[] = ['git', 'desktop', 'terminal', 'overview']
     return valid.includes(saved as RightSidebarTab)
       ? (saved as RightSidebarTab)
