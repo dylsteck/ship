@@ -12,6 +12,7 @@ import {
 import { OverviewTab } from '@/components/chat/session-panel/overview-tab'
 import { GitTab } from '@/components/chat/session-panel/git-tab'
 import { DesktopTab } from '@/components/chat/session-panel/desktop-tab'
+import { TerminalTab } from '@/components/chat/session-panel/terminal-tab'
 import type { SessionPanelData, RightSidebarTab } from '../types'
 
 const TABS: { id: RightSidebarTab; label: string }[] = [
@@ -214,9 +215,10 @@ function TabContent({
       return <DesktopTab agentUrl={data.agentUrl || undefined} />
     case 'terminal':
       return (
-        <div className="flex-1 flex items-center justify-center">
-          <span className="font-mono text-sm text-muted-foreground">workspace $</span>
-        </div>
+        <TerminalTab
+          sessionId={data.sessionId}
+          agentUrl={data.agentUrl || undefined}
+        />
       )
     case 'overview':
       return <OverviewTab {...panelProps} />
