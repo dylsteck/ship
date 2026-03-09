@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
+import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@ship/ui'
 import {
@@ -123,7 +124,7 @@ function SettingsShell({ children, user }: { children: React.ReactNode; user?: {
             Logout
           </a>
 
-          {/* Mobile: Agents / Settings tabs + avatar */}
+          {/* Mobile: Agents / Settings tabs + avatar dropdown */}
           <div className="flex items-center gap-2 md:hidden">
             <nav className="flex items-center gap-0.5">
               <Link href="/" className="px-1.5 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -133,21 +134,7 @@ function SettingsShell({ children, user }: { children: React.ReactNode; user?: {
                 Settings
               </Link>
             </nav>
-            <Link href="/settings" className="shrink-0">
-              {user?.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.username}
-                  width={28}
-                  height={28}
-                  className="size-7 rounded-full object-cover"
-                />
-              ) : (
-                <div className="size-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium">
-                  {user?.username?.[0]?.toUpperCase() || '?'}
-                </div>
-              )}
-            </Link>
+            <UserDropdown user={user} />
           </div>
         </div>
       </header>

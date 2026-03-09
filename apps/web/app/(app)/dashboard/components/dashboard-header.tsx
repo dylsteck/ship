@@ -9,6 +9,7 @@ import {
   useIsMobile,
 } from '@ship/ui'
 import type { WebSocketStatus } from '@/lib/websocket'
+import { UserDropdown } from '@/components/user-dropdown'
 
 interface DashboardHeaderProps {
   activeSessionId: string | null
@@ -71,21 +72,7 @@ function MobileNav({
           Settings
         </Link>
       </nav>
-      <Link href="/settings" className="shrink-0">
-        {user?.avatarUrl ? (
-          <img
-            src={user.avatarUrl}
-            alt={user.username}
-            width={28}
-            height={28}
-            className="size-7 rounded-full object-cover hover:opacity-80 transition-opacity"
-          />
-        ) : (
-          <div className="size-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
-            {user?.username?.[0]?.toUpperCase() || '?'}
-          </div>
-        )}
-      </Link>
+      <UserDropdown user={user} />
     </div>
   )
 }
@@ -107,11 +94,9 @@ export function DashboardHeader({
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 relative z-10">
-      {/* Sidebar trigger when collapsed (desktop only) */}
       {showSidebarTrigger && (
         <SidebarTrigger className="size-5 cursor-pointer text-muted-foreground hover:text-foreground shrink-0" />
       )}
-      {/* Active session title */}
       {activeSessionId && (
         <div className="min-w-0 flex-1">
           <div className="font-medium truncate text-xs sm:text-sm">
@@ -126,7 +111,6 @@ export function DashboardHeader({
       )}
 
       <div className="flex items-center gap-1 ml-auto">
-        {/* Sandbox status pill */}
         {activeSessionId && sbConfig && sandboxStatus !== 'unknown' && (
           <div className={cn('text-[10px] flex items-center gap-1.5 mr-2', sbConfig.color)}>
             <span
@@ -142,7 +126,6 @@ export function DashboardHeader({
           </div>
         )}
 
-        {/* WS status indicator */}
         {activeSessionId && wsStatus !== 'connected' && (
           <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mr-2">
             <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
@@ -150,7 +133,6 @@ export function DashboardHeader({
           </div>
         )}
 
-        {/* Right sidebar toggle */}
         {activeSessionId && onToggleRightSidebar && (
           <button
             onClick={onToggleRightSidebar}
@@ -164,7 +146,6 @@ export function DashboardHeader({
           </button>
         )}
 
-        {/* Mobile nav + avatar - homepage/settings only */}
         <MobileNav activeSessionId={activeSessionId} user={user} />
       </div>
     </header>
