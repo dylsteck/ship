@@ -9,21 +9,9 @@ import {
   DropdownMenuTrigger,
 } from '@ship/ui'
 import { useComposer } from './composer-context'
-import { useMemo } from 'react'
-
-const COMMON_BRANCHES = ['main', 'master']
 
 export function BranchSelector() {
-  const { selectedRepo, selectedBranch, onBranchSelect } = useComposer()
-
-  const branches = useMemo(() => {
-    const defaultBranch = selectedRepo?.defaultBranch
-    const list = [...COMMON_BRANCHES]
-    if (defaultBranch && !list.includes(defaultBranch)) {
-      list.unshift(defaultBranch)
-    }
-    return list
-  }, [selectedRepo?.defaultBranch])
+  const { selectedBranch, onBranchSelect, branches, branchesLoading } = useComposer()
 
   return (
     <DropdownMenu>
@@ -45,14 +33,24 @@ export function BranchSelector() {
           </Button>
         }
       />
-      <DropdownMenuContent align="start" className="w-[200px]">
-        <DropdownMenuRadioGroup value={selectedBranch} onValueChange={onBranchSelect}>
-          {branches.map((branch) => (
-            <DropdownMenuRadioItem key={branch} value={branch}>
-              {branch}
+      <DropdownMenuContent align="start" className="w-[200px] max-h-[300px] overflow-y-auto">
+        {branchesLoading ? (
+          <div className="px-2 py-1.5 text-sm text-muted-foreground">Loading...</div>
+        ) : branches.length === 0 ? (
+          <DropdownMenuRadioGroup value={selectedBranch} onValueChange={onBranchSelect}>
+            <DropdownMenuRadioItem value={selectedBranch}>
+              {selectedBranch}
             </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+          </DropdownMenuRadioGroup>
+        ) : (
+          <DropdownMenuRadioGroup value={selectedBranch} onValueChange={onBranchSelect}>
+            {branches.map((branch) => (
+              <DropdownMenuRadioItem key={branch} value={branch}>
+                {branch}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

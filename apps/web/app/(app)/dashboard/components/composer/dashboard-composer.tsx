@@ -35,7 +35,7 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
         <div
           className={cn(
             'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
-            activeSessionId ? 'max-w-3xl mx-auto' : compactLayout ? 'w-full' : 'max-w-[540px]',
+            activeSessionId ? 'max-w-3xl mx-auto' : compactLayout ? 'w-full' : 'max-w-2xl',
           )}
         >
           {/* Repo + branch above the card (Cursor-style) */}
@@ -54,7 +54,7 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
               'rounded-2xl border overflow-hidden transition-all',
               activeSessionId
                 ? 'bg-card/95 backdrop-blur-sm border-border/40 shadow-md focus-within:border-border/60 focus-within:shadow-lg'
-                : 'rounded-3xl bg-zinc-900 border-zinc-700/50 shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-white/10',
+                : 'rounded-3xl bg-card border-border/50 shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-foreground/10',
             )}
           >
             {/* Textarea */}

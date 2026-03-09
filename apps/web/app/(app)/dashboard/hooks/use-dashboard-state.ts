@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatSession } from '@/lib/api/server'
+import { sendChatMessage } from '@/lib/api/server'
 import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } from '@/lib/api/types'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { CreateSessionParams } from '@/lib/api/types'
@@ -120,21 +121,24 @@ export function useDashboardState({
           }
           chat.setLocalSessions((prev) => [newSessionData, ...prev])
           mutateSessions?.()
-          chat.setActiveSessionId(newSession.id)
-          window.history.replaceState({}, '', `/session/${newSession.id}`)
-          chat.connectWebSocket(newSession.id)
 
+          // Fire-and-forget: send the prompt to the server without navigating.
+          // The agent runs server-side; the session list polls for live status.
           const trimmedPrompt = prompt.trim()
           if (trimmedPrompt) {
             setPrompt('')
-            handleSend(trimmedPrompt, mode, newSession.id)
+            // Don't use handleSend (which sets streaming state on the homepage).
+            // Just POST to the chat endpoint — the agent runs server-side.
+            sendChatMessage(newSession.id, trimmedPrompt, mode).catch((err) => {
+              console.error('Failed to send initial message:', err)
+            })
           }
         }
       } catch (error) {
         console.error('Failed to create session:', error)
       }
     },
-    [createSession, userId, selectedModel, selectedAgent, selectedBranch, prompt, mode, chat, handleSend, mutateSessions],
+    [createSession, userId, selectedModel, selectedAgent, selectedBranch, prompt, mode, chat, mutateSessions],
   )
 
   const handleSubmit = useCallback(() => {
