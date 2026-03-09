@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatSession } from '@/lib/api/server'
 import { sendChatMessage } from '@/lib/api/server'
-import { parseSSEEvent } from '@/lib/sse-parser'
+import { parseSSEEvent, getEventStatus } from '@/lib/sse-parser'
 import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } from '@/lib/api/types'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { CreateSessionParams } from '@/lib/api/types'
@@ -132,6 +132,14 @@ export function useDashboardState({
               if (!event) continue
 
               const type = (event as { type: string }).type
+
+              // Use getEventStatus to extract human-readable labels from all event types
+              const eventStatus = getEventStatus(event as any)
+              if (eventStatus) {
+                sessionStatusStore.update(sessionId, { status: eventStatus.label })
+                sessionStatusStore.addStep(sessionId, eventStatus.label)
+              }
+
               if (type === 'status' || type === 'session.status') {
                 const msg = (event as { message?: string; status?: string }).message
                   ?? (event as { message?: string; status?: string }).status
@@ -142,7 +150,6 @@ export function useDashboardState({
               } else if (type === 'session.updated') {
                 const info = (event as any).properties?.info
                 if (info?.title) {
-                  // Update session title in local sessions list
                   chat.setLocalSessions((prev) =>
                     prev.map((s) => (s.id === sessionId ? { ...s, title: info.title } : s)),
                   )

@@ -142,29 +142,29 @@ function HomepageSessionCard({
     <button
       type="button"
       onClick={handleClick}
-      className={cn(
-        'w-full flex items-stretch rounded-xl border text-left transition-colors',
-        'border-border/50 bg-card hover:bg-muted/30 hover:border-border',
-        isLive && 'border-primary/30',
-      )}
+      className="w-full flex items-stretch text-left transition-colors hover:opacity-80"
     >
-      {/* Left preview panel — tall square like Cursor */}
+      {/* Left preview panel — only this area has border/bg */}
       <div
         className={cn(
-          'shrink-0 w-[160px] min-h-[100px] rounded-l-xl flex flex-col items-center justify-end gap-1.5 p-4 border-r border-border/30',
-          isLive ? 'bg-primary/5' : 'bg-muted/20',
+          'shrink-0 w-[160px] min-h-[100px] rounded-xl border flex flex-col justify-end gap-1 p-3 overflow-hidden',
+          isLive
+            ? 'border-primary/30 bg-primary/5'
+            : liveStatus?.status === 'Done'
+              ? 'border-emerald-500/30 bg-emerald-500/5'
+              : 'border-border/50 bg-muted/20',
         )}
       >
         {isLive && steps.length > 0 ? (
-          <div className="w-full space-y-1 overflow-hidden">
-            {steps.slice(-3).map((step, i) => (
+          <div className="w-full space-y-0.5">
+            {steps.slice(-4).map((step, i) => (
               <div
                 key={i}
                 className={cn(
                   'text-[10px] leading-tight truncate',
-                  i === steps.slice(-3).length - 1
-                    ? 'text-primary font-medium'
-                    : 'text-muted-foreground/60',
+                  i === steps.slice(-4).length - 1
+                    ? 'text-foreground/80 font-medium'
+                    : 'text-muted-foreground/50',
                 )}
               >
                 {step}
@@ -172,12 +172,9 @@ function HomepageSessionCard({
             ))}
           </div>
         ) : isLive ? (
-          <div className="flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[11px] font-medium text-primary">
-              {currentStatus || 'Running...'}
-            </span>
-          </div>
+          <span className="text-[11px] font-medium text-primary truncate">
+            {currentStatus || 'Starting...'}
+          </span>
         ) : liveStatus?.status === 'Done' ? (
           <div className="flex items-center gap-1.5">
             <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,19 +199,10 @@ function HomepageSessionCard({
         )}
       </div>
 
-      {/* Right content */}
-      <div className="flex-1 min-w-0 p-4 flex flex-col justify-center">
+      {/* Right content — no border/bg */}
+      <div className="flex-1 min-w-0 px-4 flex flex-col justify-center">
         <div className="text-base font-medium text-foreground truncate leading-tight">{title}</div>
         <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-          {isLive && (
-            <span className="flex items-center gap-1 text-primary">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
-              </span>
-              Running
-            </span>
-          )}
           <span className="truncate">{agentLabel}</span>
           <span className="shrink-0 truncate">{repoPath}</span>
           <span className="shrink-0">{timeLabel}</span>
