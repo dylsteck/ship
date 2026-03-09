@@ -12,6 +12,8 @@ interface SessionDTO {
   createdAt: number
   archivedAt: number | null
   title?: string
+  model?: string
+  agentType?: string
 }
 
 // Database row type
@@ -183,6 +185,8 @@ sessions.post('/', async (c) => {
       lastActivity: now,
       createdAt: now,
       archivedAt: null,
+      model: input.model,
+      agentType: input.agentType,
       sandboxId: null,
       sandboxStatus: 'provisioning',
     }
@@ -219,6 +223,7 @@ sessions.get('/:id', async (c) => {
     const doStub = c.env.SESSION_DO.get(doId)
     const messages = await doStub.getRecentMessages(1000)
     const messageCount = messages.length
+    const meta = await doStub.getSessionMeta()
 
     // Map to DTO with message count
     const session: SessionDTO & { messageCount: number } = {
@@ -231,6 +236,8 @@ sessions.get('/:id', async (c) => {
       createdAt: row.created_at,
       archivedAt: row.archived_at,
       title: row.title ?? undefined,
+      model: meta['model'] || undefined,
+      agentType: meta['agent_type'] || undefined,
       messageCount,
     }
 

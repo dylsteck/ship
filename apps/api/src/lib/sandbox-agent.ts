@@ -15,6 +15,11 @@ import { getAgent, getDefaultAgentId, type AgentConfig } from './agent-registry'
 // Re-export types for convenience
 export type { SandboxAgent, Session, SessionEvent }
 
+export interface AgentSessionConfig {
+  mode?: string
+  model?: string
+}
+
 // Client instance cache per sandbox URL
 const clientCache: Map<string, SandboxAgent> = new Map()
 
@@ -199,10 +204,13 @@ export async function createAgentSession(
   client: SandboxAgent,
   agentType: string,
   workingDir: string,
+  config: AgentSessionConfig = {},
 ): Promise<{ sessionId: string; session: Session }> {
   const agentConfig = getAgent(agentType) || getAgent(getDefaultAgentId())!
 
-  console.log(`[sandbox-agent] Creating session for agent: ${agentConfig.sandboxAgentName}, cwd: ${workingDir}`)
+  console.log(
+    `[sandbox-agent] Creating session for agent: ${agentConfig.sandboxAgentName}, cwd: ${workingDir}, mode: ${config.mode ?? 'default'}, model: ${config.model ?? 'default'}`,
+  )
 
   const session = await client.createSession({
     agent: agentConfig.sandboxAgentName,
@@ -210,6 +218,8 @@ export async function createAgentSession(
       cwd: workingDir,
       mcpServers: [],
     },
+    mode: config.mode,
+    model: config.model,
   })
 
   console.log(`[sandbox-agent] Session created: ${session.id}`)
@@ -217,6 +227,46 @@ export async function createAgentSession(
   return {
     sessionId: session.id,
     session,
+  }
+}
+
+export async function configureAgentSession(
+  session: Session,
+  config: AgentSessionConfig,
+): Promise<void> {
+  if (config.mode) {
+    await session.setMode(config.mode)
+  }
+
+  if (config.model) {
+    await session.setModel(config.model)
+  }
+}
+
+export async function validateAgentRuntime(
+  client: SandboxAgent,
+  agentType: string,
+): Promise<void> {
+  const agentConfig = getAgent(agentType) || getAgent(getDefaultAgentId())!
+  const agentInfo = await client.getAgent(agentConfig.sandboxAgentName, {
+    config: true,
+    noCache: true,
+  })
+
+  if (!agentInfo.installed) {
+    throw new Error(`${agentConfig.name} is not installed in sandbox-agent`)
+  }
+
+  if (agentType === 'cursor') {
+    if (agentInfo.configError) {
+      throw new Error(`Cursor configuration error: ${agentInfo.configError}`)
+    }
+
+    if (!agentInfo.credentialsAvailable) {
+      throw new Error(
+        'Cursor credentials unavailable. Verify CURSOR_API_KEY is set and is a headless Cursor API key compatible with the agent CLI.',
+      )
+    }
   }
 }
 

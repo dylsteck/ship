@@ -5,11 +5,13 @@ import {
   connectToSandboxAgent,
   checkSandboxAgentHealth,
   createAgentSession,
+  configureAgentSession,
   promptAgent,
   cancelAgent,
   resumeAgentSession,
   subscribeToSessionEvents,
   disposeSandboxAgent,
+  validateAgentRuntime,
 } from '../lib/sandbox-agent'
 import { EventTranslatorState } from '../lib/event-translator'
 import { getAgent, getDefaultAgentId } from '../lib/agent-registry'
@@ -25,15 +27,15 @@ app.post('/:sessionId', async (c) => {
   console.log(`[chat:${sessionId}] ===== CHAT REQUEST STARTED =====`)
 
   let content: string
-  let mode: 'build' | 'plan' = 'build'
+  let mode = 'agent'
 
   try {
     const body = await c.req.json<{
       content: string
-      mode?: 'build' | 'plan'
+      mode?: string
     }>()
     content = body.content
-    mode = body.mode || 'build'
+    mode = body.mode || 'agent'
   } catch (parseError) {
     console.error(`[chat:${sessionId}] Failed to parse request body:`, parseError)
     return c.json({ error: 'Invalid request body' }, 400)
@@ -68,6 +70,7 @@ app.post('/:sessionId', async (c) => {
   const sandboxStatus = meta.sandbox_status
   let sandboxAgentUrl = meta.sandbox_agent_url
   const agentType = meta.agent_type || getDefaultAgentId()
+  const cursorServerConfigured = meta.sandbox_agent_cursor_auth === 'true'
 
   console.log(
     `[chat:${sessionId}] Meta: sandboxId=${sandboxId}, sandboxAgentUrl=${sandboxAgentUrl}, agentSessionId=${agentSessionId}, agentType=${agentType}`,
@@ -83,6 +86,7 @@ app.post('/:sessionId', async (c) => {
       let currentSandboxId: string | undefined = sandboxId
       let currentSandboxAgentUrl: string | undefined = sandboxAgentUrl
       let currentAgentSessionId: string | undefined = agentSessionId
+      let currentCursorServerConfigured = cursorServerConfigured
 
       try {
         // Send initial status
@@ -171,6 +175,23 @@ app.post('/:sessionId', async (c) => {
           return
         }
 
+        if (agentType === 'cursor' && currentSandboxAgentUrl && !currentCursorServerConfigured) {
+          console.warn(`[chat:${sessionId}] Cursor sandbox-agent missing auth marker, forcing restart...`)
+          await stub.fetch(
+            new Request(`${doUrl}/meta`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sandbox_agent_url: '',
+                agent_session_id: '',
+                sandbox_agent_cursor_auth: '',
+              }),
+            }),
+          )
+          currentSandboxAgentUrl = undefined
+          currentAgentSessionId = undefined
+        }
+
         // Start sandbox-agent server if not running
         if (!currentSandboxAgentUrl) {
           console.log(`[chat:${sessionId}] Starting sandbox-agent server...`)
@@ -217,9 +238,13 @@ app.post('/:sessionId', async (c) => {
               new Request(`${doUrl}/meta`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sandbox_agent_url: url }),
+                body: JSON.stringify({
+                  sandbox_agent_url: url,
+                  sandbox_agent_cursor_auth: agentType === 'cursor' ? 'true' : '',
+                }),
               }),
             )
+            currentCursorServerConfigured = agentType === 'cursor'
 
             // Send URL to frontend
             await stream.writeSSE({
@@ -354,11 +379,13 @@ app.post('/:sessionId', async (c) => {
                   agent_session_id: '',
                   sandbox_id: '',
                   sandbox_status: '',
+                  sandbox_agent_cursor_auth: '',
                 }),
               }),
             )
             currentSandboxAgentUrl = undefined
             currentAgentSessionId = undefined
+            currentCursorServerConfigured = false
 
             // Re-provision sandbox
             try {
@@ -407,9 +434,13 @@ app.post('/:sessionId', async (c) => {
                 new Request(`${doUrl}/meta`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ sandbox_agent_url: url }),
+                  body: JSON.stringify({
+                    sandbox_agent_url: url,
+                    sandbox_agent_cursor_auth: agentType === 'cursor' ? 'true' : '',
+                  }),
                 }),
               )
+              currentCursorServerConfigured = agentType === 'cursor'
 
               // Re-clone repo if needed
               const repoMeta = await stub.fetch(new Request(`${doUrl}/meta`))
@@ -496,6 +527,12 @@ app.post('/:sessionId', async (c) => {
 
         // Connect to sandbox-agent
         const client = await connectToSandboxAgent(currentSandboxAgentUrl)
+        await validateAgentRuntime(client, agentType)
+
+        const sessionConfig = {
+          mode,
+          model: latestMeta.model || undefined,
+        }
 
         // Verify/create agent session
         if (currentAgentSessionId) {
@@ -524,7 +561,7 @@ app.post('/:sessionId', async (c) => {
           })
 
           try {
-            const result = await createAgentSession(client, agentType, repoPath)
+            const result = await createAgentSession(client, agentType, repoPath, sessionConfig)
             currentAgentSessionId = result.sessionId
             session = result.session
             console.log(`[chat:${sessionId}] Agent session created: ${currentAgentSessionId}`)
@@ -558,7 +595,7 @@ app.post('/:sessionId', async (c) => {
           session = await resumeAgentSession(client, currentAgentSessionId)
           if (!session) {
             // Recreate if resume fails
-            const result = await createAgentSession(client, agentType, repoPath)
+            const result = await createAgentSession(client, agentType, repoPath, sessionConfig)
             currentAgentSessionId = result.sessionId
             session = result.session
 
@@ -583,6 +620,8 @@ app.post('/:sessionId', async (c) => {
           })
           return
         }
+
+        await configureAgentSession(session, { mode: sessionConfig.mode })
 
         // Send agent-session so frontend can build Logs link (sandbox-agent session id)
         if (currentAgentSessionId) {

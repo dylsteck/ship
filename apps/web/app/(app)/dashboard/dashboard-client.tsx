@@ -165,15 +165,37 @@ export function DashboardClient({
     chat.activeSessionId
       ? agents.find(
           (agent) =>
+            agent.id === activeSession?.agentType ||
             agent.id === chat.sessionInfo?.agentType ||
-            (!!sessionModelId && agent.models.some((model) => model.id === sessionModelId)),
+            (!!(activeSession?.model || sessionModelId) &&
+              agent.models.some((model) => model.id === (activeSession?.model || sessionModelId))),
         ) ?? null
       : state.selectedAgent
 
   const activeSessionModel =
     chat.activeSessionId
-      ? models.find((model) => model.id === sessionModelId) ?? null
+      ? models.find((model) => model.id === (activeSession?.model || sessionModelId)) ?? null
       : state.selectedModel
+
+  useEffect(() => {
+    if (!chat.activeSessionId || !activeSessionAgent) return
+    if (state.selectedAgent?.id !== activeSessionAgent.id) {
+      state.handleAgentSelect(activeSessionAgent)
+      return
+    }
+
+    if (activeSessionModel && state.selectedModel?.id !== activeSessionModel.id) {
+      state.setSelectedModel(activeSessionModel)
+    }
+  }, [
+    chat.activeSessionId,
+    activeSessionAgent,
+    activeSessionModel,
+    state.selectedAgent,
+    state.selectedModel,
+    state.handleAgentSelect,
+    state.setSelectedModel,
+  ])
 
   const rightSidebarData: SessionPanelData | null = chat.activeSessionId
     ? {

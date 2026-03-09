@@ -201,6 +201,8 @@ export function useDashboardState({ chat, handleSend, session, data }: UseDashbo
             createdAt: Math.floor(Date.now() / 1000),
             archivedAt: null,
             messageCount: 0,
+            model: newSession.model ?? data.model ?? selectedModel?.id,
+            agentType: newSession.agentType ?? selectedAgent?.id,
           }
           chat.setLocalSessions((prev) => [newSessionData, ...prev])
           mutateSessions?.()

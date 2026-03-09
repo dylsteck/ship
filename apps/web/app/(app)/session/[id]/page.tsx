@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, type ChatSession } from '@/lib/api'
+import { fetchSessions, getSession, type ChatSession } from '@/lib/api'
 import { DashboardClient } from '../../dashboard/dashboard-client'
 
 interface SessionPageProps {
@@ -19,14 +19,27 @@ export default async function SessionPage({ params }: SessionPageProps) {
     console.error('Failed to fetch sessions:', error)
   }
 
-  const matchingSession = sessions.find((existingSession) => existingSession.id === id)
-  if (!matchingSession) {
+  let sessionDetails: ChatSession | null = null
+  try {
+    sessionDetails = await getSession(id)
+  } catch (error) {
+    console.error('Failed to fetch session details:', error)
+  }
+
+  const matchingSession = sessionDetails || sessions.find((existingSession) => existingSession.id === id)
+  if (!matchingSession || matchingSession.userId !== session.userId) {
     notFound()
   }
 
+  const mergedSessions = sessions.some((existingSession) => existingSession.id === id)
+    ? sessions.map((existingSession) =>
+        existingSession.id === id ? { ...existingSession, ...matchingSession } : existingSession,
+      )
+    : [matchingSession, ...sessions]
+
   return (
     <DashboardClient
-      sessions={sessions}
+      sessions={mergedSessions}
       userId={session.userId}
       user={user}
       initialSessionId={id}
