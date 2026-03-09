@@ -186,11 +186,28 @@ function HomepageSessionCard({
         ) : isLive ? (
           <span className="text-[11px] font-medium text-primary truncate">{currentStatus || 'Starting...'}</span>
         ) : isWaitingForUser ? (
-          <div className="flex items-center gap-1.5">
-            <svg className="h-3.5 w-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span className="text-[11px] font-medium text-muted-foreground">Branch</span>
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <div className="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-sm gap-1.5 bg-muted text-muted-foreground">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3 w-3 shrink-0"
+                aria-hidden
+              >
+                <line x1="6" x2="6" y1="3" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+              <span>Branch</span>
+            </div>
           </div>
         ) : liveStatus?.status === 'Done' ? (
           contentPreview ? (
@@ -215,11 +232,28 @@ function HomepageSessionCard({
             <span className="text-[11px] font-medium text-destructive">Error</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5">
-            <svg className="h-3.5 w-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span className="text-[11px] font-medium text-muted-foreground">Branch</span>
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <div className="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-sm gap-1.5 bg-muted text-muted-foreground">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3 w-3 shrink-0"
+                aria-hidden
+              >
+                <line x1="6" x2="6" y1="3" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+              <span>Branch</span>
+            </div>
           </div>
         )}
       </div>
