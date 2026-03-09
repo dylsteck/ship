@@ -1,27 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useTheme } from 'next-themes'
+import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import {
   cn,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   SidebarTrigger,
   useSidebar,
   useIsMobile,
 } from '@ship/ui'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Settings01Icon, Logout01Icon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
-import { ClientOnly } from '@/components/client-only'
 
 interface DashboardHeaderProps {
   activeSessionId: string | null
@@ -45,6 +32,64 @@ const sandboxStatusConfig: Record<string, { label: string; color: string; pulse?
   error: { label: 'Error', color: 'text-red-600 dark:text-red-400' },
 }
 
+function MobileNav({
+  activeSessionId,
+  user,
+}: {
+  activeSessionId: string | null
+  user?: { username: string; avatarUrl: string | null }
+}) {
+  const pathname = usePathname()
+  if (activeSessionId) return null
+
+  const isSettings = pathname === '/settings'
+  const isAgents = !isSettings
+
+  return (
+    <div className="flex items-center gap-2 ml-auto md:hidden">
+      <nav className="flex items-center gap-0.5">
+        <Link
+          href="/"
+          className={cn(
+            'px-2.5 py-1 text-xs rounded-md transition-colors',
+            isAgents
+              ? 'bg-muted text-foreground font-medium'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Agents
+        </Link>
+        <Link
+          href="/settings"
+          className={cn(
+            'px-2.5 py-1 text-xs rounded-md transition-colors',
+            isSettings
+              ? 'bg-muted text-foreground font-medium'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Settings
+        </Link>
+      </nav>
+      <Link href="/settings" className="shrink-0">
+        {user?.avatarUrl ? (
+          <img
+            src={user.avatarUrl}
+            alt={user.username}
+            width={28}
+            height={28}
+            className="size-7 rounded-full object-cover hover:opacity-80 transition-opacity"
+          />
+        ) : (
+          <div className="size-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
+            {user?.username?.[0]?.toUpperCase() || '?'}
+          </div>
+        )}
+      </Link>
+    </div>
+  )
+}
+
 export function DashboardHeader({
   activeSessionId,
   sessionTitle,
@@ -55,16 +100,10 @@ export function DashboardHeader({
   onToggleRightSidebar,
   user,
 }: DashboardHeaderProps) {
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
   const sbConfig = sandboxStatus ? sandboxStatusConfig[sandboxStatus] : null
   const { state } = useSidebar()
   const isMobile = useIsMobile()
   const showSidebarTrigger = state === 'collapsed' && !isMobile
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 relative z-10">
@@ -125,90 +164,8 @@ export function DashboardHeader({
           </button>
         )}
 
-        {/* User avatar with dropdown - mobile only, homepage only */}
-        {!activeSessionId && (
-          <div className="shrink-0 ml-2 md:hidden">
-            <ClientOnly
-              fallback={
-                <a href="/settings" className="focus:outline-none rounded-full cursor-pointer block">
-                  {user?.avatarUrl ? (
-                    <img
-                      src={user.avatarUrl}
-                      alt={user.username}
-                      width={28}
-                      height={28}
-                      className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
-                    />
-                  ) : (
-                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
-                      {user?.username?.[0]?.toUpperCase() || '?'}
-                    </div>
-                  )}
-                </a>
-              }
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <button className="focus:outline-none rounded-full cursor-pointer">
-                      {user?.avatarUrl ? (
-                        <img
-                          src={user.avatarUrl}
-                          alt={user.username}
-                          width={28}
-                          height={28}
-                          className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
-                        />
-                      ) : (
-                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
-                          {user?.username?.[0]?.toUpperCase() || '?'}
-                        </div>
-                      )}
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger className="cursor-pointer">
-                      <span>Appearance</span>
-                      <span className="ml-auto text-muted-foreground capitalize">
-                        {mounted && typeof theme === 'string' ? theme : 'System'}
-                      </span>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuRadioGroup
-                        value={mounted && theme ? theme : 'system'}
-                        onValueChange={(v) => setTheme(v)}
-                      >
-                        <DropdownMenuRadioItem value="system" className="cursor-pointer">
-                          System
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="light" className="cursor-pointer">
-                          Light
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="dark" className="cursor-pointer">
-                          Dark
-                        </DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => (window.location.href = '/settings')} className="cursor-pointer">
-                    <HugeiconsIcon icon={Settings01Icon} className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => (window.location.href = '/api/auth/signout')}
-                    className="cursor-pointer text-red-600 dark:text-red-400"
-                  >
-                    <HugeiconsIcon icon={Logout01Icon} className="mr-2 h-4 w-4" />
-                    Log out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </ClientOnly>
-          </div>
-        )}
+        {/* Mobile nav + avatar - homepage/settings only */}
+        <MobileNav activeSessionId={activeSessionId} user={user} />
       </div>
     </header>
   )

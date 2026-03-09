@@ -415,19 +415,6 @@ export function AppSidebar({
               </DropdownMenuRadioGroup>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="cursor-pointer">
-                  Filter
-                  <span className="ml-auto text-muted-foreground text-[10px]">None</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuRadioGroup value="none" onValueChange={() => {}}>
-                    <DropdownMenuRadioItem value="none" className="cursor-pointer">
-                      None
-                    </DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
               <DropdownMenuCheckboxItem
                 checked={compact}
                 onCheckedChange={(v) => setCompact(v === true)}
