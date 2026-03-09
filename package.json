@@ -8,7 +8,9 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "type-check": "turbo type-check"
+    "type-check": "turbo type-check",
+    "deploy": "vercel && cd apps/api && npx wrangler deploy",
+    "deploy:prod": "vercel --prod && cd apps/api && npx wrangler deploy --env production"
   },
   "devDependencies": {
     "prettier": "^3.8.1",

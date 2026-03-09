@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "deploy": "vercel",
+    "deploy:prod": "vercel --prod"
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",

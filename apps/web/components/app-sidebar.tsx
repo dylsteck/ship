@@ -187,7 +187,7 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="offcanvas" className={className}>
-      {/* Header: logo + sidebar trigger */}
+      {/* Header: logo + search + sidebar trigger */}
       <SidebarHeader>
         <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:justify-center">
           <Link
@@ -196,11 +196,21 @@ export function AppSidebar({
           >
             Ship
           </Link>
-          <SidebarTrigger className="size-5 cursor-pointer text-muted-foreground hover:text-foreground" />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="size-5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors group-data-[collapsible=icon]:hidden"
+              title="Search (⌘K)"
+            >
+              <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" />
+            </button>
+            <SidebarTrigger className="size-5 cursor-pointer text-muted-foreground hover:text-foreground" />
+          </div>
         </div>
       </SidebarHeader>
 
-      {/* Top nav: New Chat + Search */}
+      {/* Top nav: New Chat */}
       <div className="px-2 pt-3 pb-1 space-y-0.5">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -210,15 +220,6 @@ export function AppSidebar({
               <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4 text-muted-foreground/50 shrink-0" />
               <span className="text-sm font-normal text-foreground/75 group-data-[collapsible=icon]:hidden">
                 New chat
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setSearchOpen(true)}>
-              <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4 text-muted-foreground/50" />
-              <span className="text-sm font-normal text-foreground/75 group-data-[collapsible=icon]:hidden">
-                Search
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>

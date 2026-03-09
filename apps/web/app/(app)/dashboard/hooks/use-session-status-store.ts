@@ -6,6 +6,8 @@ export interface SessionLiveStatus {
   status: string
   steps: string[]
   isRunning: boolean
+  /** First snippet of assistant text for preview */
+  contentPreview?: string
 }
 
 type Listener = () => void

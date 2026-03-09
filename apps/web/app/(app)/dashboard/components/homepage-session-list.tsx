@@ -135,6 +135,7 @@ function HomepageSessionCard({
   const currentStatus = liveStatus?.status
     || (isStreaming && isActive ? (streamingStatus || streamingStatusSteps[streamingStatusSteps.length - 1] || 'Running...') : '')
   const steps = liveStatus?.steps || (isStreaming && isActive ? streamingStatusSteps : [])
+  const contentPreview = liveStatus?.contentPreview || ''
 
   const timeLabel = isLive ? 'now' : formatRelativeTime(session.lastActivity)
 
@@ -155,7 +156,13 @@ function HomepageSessionCard({
               : 'border-border/50 bg-muted/20',
         )}
       >
-        {isLive && steps.length > 0 ? (
+        {isLive && contentPreview ? (
+          <div className="w-full">
+            <p className="text-[10px] leading-tight text-foreground/70 line-clamp-5 whitespace-pre-wrap">
+              {contentPreview.slice(0, 200)}
+            </p>
+          </div>
+        ) : isLive && steps.length > 0 ? (
           <div className="w-full space-y-0.5">
             {steps.slice(-4).map((step, i) => (
               <div
@@ -175,6 +182,12 @@ function HomepageSessionCard({
           <span className="text-[11px] font-medium text-primary truncate">
             {currentStatus || 'Starting...'}
           </span>
+        ) : contentPreview ? (
+          <div className="w-full">
+            <p className="text-[10px] leading-tight text-foreground/50 line-clamp-5 whitespace-pre-wrap">
+              {contentPreview.slice(0, 200)}
+            </p>
+          </div>
         ) : liveStatus?.status === 'Done' ? (
           <div className="flex items-center gap-1.5">
             <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

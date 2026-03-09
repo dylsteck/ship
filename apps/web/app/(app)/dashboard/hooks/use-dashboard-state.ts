@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatSession } from '@/lib/api/server'
 import { sendChatMessage } from '@/lib/api/server'
-import { parseSSEEvent, getEventStatus } from '@/lib/sse-parser'
+import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } from '@/lib/api/types'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { CreateSessionParams } from '@/lib/api/types'
@@ -100,7 +100,8 @@ export function useDashboardState({
   /** Read SSE stream in background to populate live status for a homepage session card */
   const streamSessionInBackground = useCallback(
     async (sessionId: string, content: string, sessionMode: string) => {
-      sessionStatusStore.update(sessionId, { isRunning: true, status: 'Starting...', steps: [] })
+      sessionStatusStore.update(sessionId, { isRunning: true, status: 'Starting...', steps: [], contentPreview: '' })
+      let accumulatedText = ''
       try {
         const response = await sendChatMessage(sessionId, content, sessionMode)
         if (!response.ok || !response.body) {
@@ -132,6 +133,13 @@ export function useDashboardState({
               if (!event) continue
 
               const type = (event as { type: string }).type
+
+              // Capture assistant text content for preview
+              const textDelta = extractTextDelta(event)
+              if (textDelta) {
+                accumulatedText += textDelta
+                sessionStatusStore.update(sessionId, { contentPreview: accumulatedText })
+              }
 
               // Use getEventStatus to extract human-readable labels from all event types
               const eventStatus = getEventStatus(event as any)
