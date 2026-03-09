@@ -55,7 +55,7 @@ export function SettingsClient({ userId, user }: { userId: string; user?: { user
     return (
       <SettingsShell user={user}>
         <div className="flex items-center justify-center py-24">
-          <div className="w-4 h-4 border-2 border-muted border-t-foreground rounded-full animate-spin" />
+          <div className="size-4 border-2 border-muted border-t-foreground rounded-full animate-spin" />
         </div>
       </SettingsShell>
     )

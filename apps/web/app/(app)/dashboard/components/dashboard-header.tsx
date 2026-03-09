@@ -131,7 +131,7 @@ export function DashboardHeader({
           <div className={cn('text-[10px] flex items-center gap-1.5 mr-2', sbConfig.color)}>
             <span
               className={cn(
-                'w-1.5 h-1.5 rounded-full',
+                'size-1.5 rounded-full',
                 sandboxStatus === 'active' && 'bg-green-500',
                 sandboxStatus === 'paused' && 'bg-muted-foreground/40',
                 sandboxStatus === 'error' && 'bg-red-500',
@@ -145,7 +145,7 @@ export function DashboardHeader({
         {/* WS status indicator */}
         {activeSessionId && wsStatus !== 'connected' && (
           <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mr-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
             {wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}
           </div>
         )}

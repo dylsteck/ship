@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { cn } from '@ship/ui/utils'
+import { API_URL } from '@/lib/config'
 
 interface TerminalTabProps {
   sessionId?: string
@@ -82,9 +83,7 @@ export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
       termRef.current = term
       fitRef.current = fit
 
-      const apiBase = window.location.origin
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${wsProtocol}//${window.location.host}/api/terminal/${sessionId}`
+      const wsUrl = `${API_URL.replace('http', 'ws')}/terminal/${sessionId}`
 
       try {
         const ws = new WebSocket(wsUrl)
