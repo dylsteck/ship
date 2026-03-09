@@ -182,7 +182,7 @@ graph TD
 | Auth      | GitHub OAuth (Arctic), JWT (jose)          |
 | Sandboxes | E2B (OpenCode SDK)                         |
 | Agents    | OpenCode SDK (Claude, GPT-4, etc.)         |
-| MCP       | Vercel, Grep, Context7                     |
+| MCP       | Grep, DeepWiki, Exa                       |
 | Real-time | SSE, WebSockets                            |
 
 ### Project structure

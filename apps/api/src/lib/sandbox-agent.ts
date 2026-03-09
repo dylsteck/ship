@@ -8,7 +8,13 @@
  * that manages ACP agents (Claude Code, OpenCode, Codex, Cursor) via stdio.
  */
 
-import { SandboxAgent, type Session, type SessionEvent } from 'sandbox-agent'
+import {
+  SandboxAgent,
+  SandboxAgentError,
+  type McpServerConfig,
+  type Session,
+  type SessionEvent,
+} from 'sandbox-agent'
 import type { Sandbox } from '@e2b/code-interpreter'
 import { getAgent, getDefaultAgentId, type AgentConfig } from './agent-registry'
 
@@ -25,6 +31,50 @@ const clientCache: Map<string, SandboxAgent> = new Map()
 
 // Default port for sandbox-agent server
 const SANDBOX_AGENT_PORT = 3000
+
+const SHARED_MCP_CONFIGS: Record<string, McpServerConfig> = {
+  grep: {
+    type: 'remote',
+    url: 'https://mcp.grep.app',
+    enabled: true,
+  },
+  deepwiki: {
+    type: 'remote',
+    url: 'https://mcp.deepwiki.com/mcp',
+    enabled: true,
+  },
+  exa: {
+    type: 'remote',
+    url: 'https://mcp.exa.ai/mcp',
+    enabled: true,
+  },
+}
+
+const REMOVED_SHARED_MCP_NAMES = ['context7'] as const
+
+async function syncSharedMcpConfigs(client: SandboxAgent, workingDir: string): Promise<void> {
+  for (const [mcpName, config] of Object.entries(SHARED_MCP_CONFIGS)) {
+    await client.setMcpConfig(
+      {
+        directory: workingDir,
+        mcpName,
+      },
+      config,
+    )
+  }
+
+  for (const mcpName of REMOVED_SHARED_MCP_NAMES) {
+    try {
+      await client.deleteMcpConfig({
+        directory: workingDir,
+        mcpName,
+      })
+    } catch (error) {
+      if (error instanceof SandboxAgentError && error.status === 404) continue
+      console.warn(`[sandbox-agent] Failed to delete MCP config "${mcpName}" for ${workingDir}`, error)
+    }
+  }
+}
 
 /**
  * Install sandbox-agent binary and requested agents in an E2B sandbox,
@@ -211,6 +261,8 @@ export async function createAgentSession(
   console.log(
     `[sandbox-agent] Creating session for agent: ${agentConfig.sandboxAgentName}, cwd: ${workingDir}, mode: ${config.mode ?? 'default'}, model: ${config.model ?? 'default'}`,
   )
+
+  await syncSharedMcpConfigs(client, workingDir)
 
   const session = await client.createSession({
     agent: agentConfig.sandboxAgentName,

@@ -175,10 +175,7 @@ OpenCode is configured automatically when you run `pnpm dev`. The OpenCode serve
 
 ### MCP Server Configuration
 
-The Vercel MCP server is configured in `opencode.json` at the project root. It points to:
-- `http://localhost:8787/mcp/vercel`
-
-**Note:** For MCP to work fully, you may need to configure userId extraction (see `MCP-SETUP.md`).
+Shared MCP servers are now registered by the API through the sandbox-agent SDK when creating agent sessions, so they apply across supported harnesses without a project-level `opencode.json`.
 
 ## Troubleshooting
 

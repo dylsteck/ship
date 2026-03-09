@@ -377,11 +377,10 @@ CURSOR_API_KEY=...         # Optional, for Cursor agent
 
 ## MCP Servers
 
-MCP (Model Context Protocol) servers are configured and loaded into agent sessions via sandbox-agent's `sessionInit.mcpServers`:
+Shared MCP (Model Context Protocol) servers are registered per repo directory through the sandbox-agent SDK before session creation, so they are available across supported agent harnesses:
 
 - **Grep**: GitHub code search — `https://mcp.grep.app`
 - **DeepWiki**: Deep documentation search — `https://mcp.deepwiki.com/mcp`
-- **Context7**: Library documentation — `https://mcp.context7.com/mcp`
 - **Exa**: Web search — `https://mcp.exa.ai/mcp`
 
 ## Browser Testing with agent-browser + Brave CDP

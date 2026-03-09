@@ -11,13 +11,11 @@
   },
   "dependencies": {
     "@e2b/code-interpreter": "^2.3.3",
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "@octokit/rest": "^22.0.1",
-    "sandbox-agent": "^0.3.0",
     "@ship/types": "workspace:*",
-    "@vercel/sdk": "^1.0.0",
     "hono": "^4.6.18",
-    "octokit-plugin-create-pull-request": "^6.0.1"
+    "octokit-plugin-create-pull-request": "^6.0.1",
+    "sandbox-agent": "^0.3.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250127.0",
