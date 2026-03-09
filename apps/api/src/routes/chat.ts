@@ -17,6 +17,7 @@ import { EventTranslatorState } from '../lib/event-translator'
 import { getAgent, getDefaultAgentId } from '../lib/agent-registry'
 import { executeWithRetry, classifyError, sanitizeError, safeErrorForLog } from '../lib/error-handler'
 import { generateBranchName } from '../lib/git-workflow'
+import { generateSessionTitle } from '../lib/generate-session-title'
 import type { Env } from '../env.d'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -652,6 +653,7 @@ app.post('/:sessionId', async (c) => {
         // Register event handler BEFORE prompting
         let eventCount = 0
         let lastEventTime = Date.now()
+        let receivedAiTitle = false
         const EVENT_TIMEOUT_MS = 300000 // 5 min — allow for retries (502, port not open)
         const HEARTBEAT_INTERVAL_MS = 10000
 
@@ -676,6 +678,7 @@ app.post('/:sessionId', async (c) => {
             if (sseEvent.type === 'session.updated') {
               const info = (sseEvent as { properties?: { info?: { title?: string } } }).properties?.info
               if (info?.title) {
+                receivedAiTitle = true
                 try {
                   await c.env.DB.prepare(
                     'UPDATE chat_sessions SET title = ?, last_activity = ? WHERE id = ?',
@@ -848,6 +851,54 @@ app.post('/:sessionId', async (c) => {
               }),
             }),
           )
+        }
+
+        // Generate LLM title when agent did not send session_info_update
+        if (!receivedAiTitle && content?.trim() && c.env.ANTHROPIC_API_KEY) {
+          const generatedTitle = await generateSessionTitle({
+            userPrompt: content,
+            assistantPreview: assistantContent?.slice(0, 300),
+            apiKey: c.env.ANTHROPIC_API_KEY,
+          })
+          if (generatedTitle) {
+            try {
+              await c.env.DB.prepare(
+                'UPDATE chat_sessions SET title = ?, last_activity = ? WHERE id = ?',
+              )
+                .bind(generatedTitle, Math.floor(Date.now() / 1000), sessionId)
+                .run()
+
+              const sessionUpdatedEvent = {
+                type: 'session.updated',
+                properties: {
+                  info: {
+                    id: sessionId,
+                    slug: '',
+                    version: '',
+                    projectID: '',
+                    directory: '',
+                    title: generatedTitle,
+                    time: { created: Math.floor(Date.now() / 1000), updated: Math.floor(Date.now() / 1000) },
+                    summary: { additions: 0, deletions: 0, files: 0 },
+                  },
+                },
+              }
+              await stream.writeSSE({
+                event: 'session.updated',
+                data: JSON.stringify(sessionUpdatedEvent),
+              })
+              await stub.fetch(
+                new Request(`${doUrl}/broadcast`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ type: 'agent-event', event: sessionUpdatedEvent }),
+                }),
+              )
+              console.log(`[chat:${sessionId}] Generated session title: ${generatedTitle.slice(0, 40)}...`)
+            } catch (titleErr) {
+              console.error(`[chat:${sessionId}] Failed to persist generated title:`, titleErr)
+            }
+          }
         }
 
         // Send done event

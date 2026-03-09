@@ -42,7 +42,6 @@ export class EventTranslatorState {
   toolCallMap: Map<string, { tool: string; state: string; input: string; output: string }> = new Map()
   private partCounter = 0
   private hasChanges = false
-  private hasReceivedSessionTitle = false
 
   constructor(shipSessionId: string) {
     this.shipSessionId = shipSessionId
@@ -134,14 +133,13 @@ export class EventTranslatorState {
 
     // Handle JSON-RPC response (prompt completion) — no method, has result
     if (!method && payload.result !== undefined) {
-      const events: ShipSSEEvent[] = []
-      const titleEvent = this.emitSessionTitleFromResponseIfNeeded()
-      if (titleEvent) events.push(titleEvent)
-      events.push(
-        { type: 'session.idle', properties: { sessionID: this.shipSessionId } },
+      return [
+        {
+          type: 'session.idle',
+          properties: { sessionID: this.shipSessionId },
+        },
         { type: 'done' },
-      )
-      return events
+      ]
     }
 
     // Route by ACP method
@@ -227,10 +225,10 @@ export class EventTranslatorState {
    * Agents send this to update session metadata (e.g. auto-generated title).
    */
   private handleAcpSessionInfoUpdate(update: Record<string, unknown>): ShipSSEEvent[] {
-    const title = update.title as string | undefined
+    const title = (update.title as string | undefined) ?? (update.info as Record<string, unknown>)?.title as string | undefined
     if (!title?.trim()) return []
 
-    this.hasReceivedSessionTitle = true
+    console.log(`[event-translator] Agent sent session_info_update title: "${title.slice(0, 40)}${title.length > 40 ? '...' : ''}"`)
     const now = Math.floor(Date.now() / 1000)
     return [
       {
@@ -508,44 +506,10 @@ export class EventTranslatorState {
   }
 
   private handleTurnEnded(): ShipSSEEvent[] {
-    const events: ShipSSEEvent[] = []
-    const titleEvent = this.emitSessionTitleFromResponseIfNeeded()
-    if (titleEvent) events.push(titleEvent)
-    events.push({
+    return [{
       type: 'session.idle',
       properties: { sessionID: this.shipSessionId },
-    })
-    return events
-  }
-
-  /**
-   * Fallback: emit session.updated with title derived from assistant response
-   * when agent never sent session_info_update. Many agents don't support it yet.
-   */
-  private emitSessionTitleFromResponseIfNeeded(): ShipSSEEvent | null {
-    if (this.hasReceivedSessionTitle) return null
-    const text = this.textAccumulator.trim()
-    if (!text || text.length < 10) return null
-    const firstLine = text.split(/\r?\n/)[0]?.trim() || text
-    const title = firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine
-    if (!title) return null
-    this.hasReceivedSessionTitle = true
-    const now = Math.floor(Date.now() / 1000)
-    return {
-      type: 'session.updated',
-      properties: {
-        info: {
-          id: this.shipSessionId,
-          slug: '',
-          version: '',
-          projectID: '',
-          directory: '',
-          title,
-          time: { created: now, updated: now },
-          summary: { additions: 0, deletions: 0, files: 0 },
-        },
-      },
-    }
+    }]
   }
 
   // ============ Item Lifecycle ============

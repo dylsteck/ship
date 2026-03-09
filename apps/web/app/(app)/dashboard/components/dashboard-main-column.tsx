@@ -109,6 +109,8 @@ export function DashboardMainColumn({
                 <MobileSessionList
                   sessions={sessions.localSessions}
                   isMobile={isMobile ?? false}
+                  activeSessionId={activeSessionId}
+                  isStreaming={messagesCtx.isStreaming}
                   onSessionClick={sessions.onSessionClick}
                   onDeleteSession={sessions.onDeleteSession}
                 />

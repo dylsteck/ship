@@ -11,6 +11,7 @@ import {
 } from '@ship/ui'
 import type { ChatSession } from '@/lib/api/server'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
+import { useSessionStatusStore } from '../hooks/use-session-status-store'
 
 function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor(Date.now() / 1000 - timestamp)
@@ -59,11 +60,20 @@ function groupSessionsByTime(sessions: ChatSession[]): { label: string; sessions
 interface MobileSessionListProps {
   sessions: ChatSession[]
   isMobile: boolean
+  activeSessionId?: string | null
+  isStreaming?: boolean
   onSessionClick: (session: ChatSession) => void
   onDeleteSession: (sessionId: string) => void
 }
 
-export function MobileSessionList({ sessions, isMobile, onSessionClick, onDeleteSession }: MobileSessionListProps) {
+export function MobileSessionList({
+  sessions,
+  isMobile,
+  activeSessionId = null,
+  isStreaming = false,
+  onSessionClick,
+  onDeleteSession,
+}: MobileSessionListProps) {
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -100,6 +110,8 @@ export function MobileSessionList({ sessions, isMobile, onSessionClick, onDelete
                 key={session.id}
                 session={session}
                 isMobile={isMobile}
+                isActive={activeSessionId === session.id}
+                isStreaming={isStreaming && activeSessionId === session.id}
                 isDeleting={deletingSessionId === session.id}
                 isConfirming={confirmDeleteId === session.id}
                 onSessionClick={onSessionClick}
@@ -117,6 +129,8 @@ export function MobileSessionList({ sessions, isMobile, onSessionClick, onDelete
 interface SessionRowProps {
   session: ChatSession
   isMobile: boolean
+  isActive?: boolean
+  isStreaming?: boolean
   isDeleting: boolean
   isConfirming: boolean
   onSessionClick: (session: ChatSession) => void
@@ -127,12 +141,18 @@ interface SessionRowProps {
 function SessionRow({
   session,
   isMobile,
+  isActive = false,
+  isStreaming = false,
   isDeleting,
   isConfirming,
   onSessionClick,
   onDelete,
   onCancelDelete,
 }: SessionRowProps) {
+  const { getStatus } = useSessionStatusStore()
+  const liveStatus = getStatus(session.id)
+  const isLive = liveStatus?.isRunning || (isStreaming && isActive)
+
   const sessionName = getSessionDisplayTitle(session) || session.repoName
   const repoPath = getSessionRepoLabel(session) || session.repoName
 
@@ -142,13 +162,21 @@ function SessionRow({
         onClick={() => onSessionClick(session)}
         className="flex-1 min-w-0 text-left py-0.5"
       >
-        <div className="text-sm font-medium text-foreground truncate leading-tight">
-          {sessionName}
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <span
+              className="shrink-0 w-2.5 h-2.5 border-[1.5px] border-primary/30 border-t-primary rounded-full animate-spin"
+              aria-hidden
+            />
+          )}
+          <div className="text-sm font-medium text-foreground truncate leading-tight min-w-0">
+            {sessionName}
+          </div>
         </div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-[11px] text-muted-foreground/80 truncate">{repoPath}</span>
           <span className="text-[11px] text-muted-foreground/50 shrink-0">
-            {formatRelativeTime(session.lastActivity)}
+            {isLive ? 'now' : formatRelativeTime(session.lastActivity)}
           </span>
         </div>
       </button>
