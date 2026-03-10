@@ -21,7 +21,7 @@ export function useRightSidebar() {
   const isMobile = useIsMobile()
 
   const [desktopOpen, setDesktopOpen] = useState(() =>
-    readStorage(STORAGE_KEY, 'true') !== 'false',
+    readStorage(STORAGE_KEY, 'false') !== 'false',
   )
   const [mobileOpen, setMobileOpen] = useState(false)
 

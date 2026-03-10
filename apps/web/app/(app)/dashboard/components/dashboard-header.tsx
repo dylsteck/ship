@@ -133,7 +133,7 @@ export function DashboardHeader({
           </div>
         )}
 
-        {activeSessionId && onToggleRightSidebar && (
+        {activeSessionId && onToggleRightSidebar && !rightSidebarOpen && (
           <button
             onClick={onToggleRightSidebar}
             className="p-1.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"

@@ -9,7 +9,7 @@
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
-const ANTHROPIC_FALLBACK_MODEL = 'claude-3-5-haiku-latest'
+const ANTHROPIC_FALLBACK_MODEL = 'claude-haiku-4-5-20251001'
 const OPENAI_FALLBACK_MODEL = 'gpt-4o-mini'
 const MAX_TITLE_LENGTH = 60
 

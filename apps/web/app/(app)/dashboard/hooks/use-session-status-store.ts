@@ -8,6 +8,8 @@ export interface SessionLiveStatus {
   isRunning: boolean
   /** First snippet of assistant text for preview */
   contentPreview?: string
+  /** Session title from agent or fallback generator */
+  title?: string
 }
 
 type Listener = () => void

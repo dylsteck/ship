@@ -106,8 +106,9 @@ export async function startSandboxAgentServer(
         return { url }
       }
       console.log(`[sandbox-agent:${sandboxId}] Cursor agent: restarting server to ensure CURSOR_API_KEY in env`)
-      await sandbox.commands.run(`pkill -f "sandbox-agent server" || true`, { timeoutMs: 5000 })
-      await new Promise((r) => setTimeout(r, 2000))
+      const killResult = await sandbox.commands.run(`pkill -f "sandbox-agent server" || true`, { timeoutMs: 5000 })
+      console.log(`[sandbox-agent:${sandboxId}] Cursor: pkill exit=${killResult.exitCode}, waiting 3s for process to terminate...`)
+      await new Promise((r) => setTimeout(r, 3000))
     }
   } catch {
     // Server not running, continue with setup
@@ -322,6 +323,7 @@ export async function validateAgentRuntime(
   }
 
   if (agentType === 'cursor') {
+    console.log(`[sandbox-agent] Cursor validation: installed=${agentInfo.installed}, credentialsAvailable=${agentInfo.credentialsAvailable}, configError=${agentInfo.configError ?? 'none'}`)
     if (agentInfo.configError) {
       throw new Error(`Cursor configuration error: ${agentInfo.configError}`)
     }
@@ -331,6 +333,7 @@ export async function validateAgentRuntime(
         'Cursor credentials unavailable. Verify CURSOR_API_KEY is set and is a headless Cursor API key compatible with the agent CLI.',
       )
     }
+    console.log(`[sandbox-agent] Cursor validation passed`)
   }
 }
 

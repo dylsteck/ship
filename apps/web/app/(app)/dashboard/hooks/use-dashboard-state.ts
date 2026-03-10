@@ -151,6 +151,7 @@ export function useDashboardState({ chat, handleSend, session, data }: UseDashbo
               } else if (type === 'session.updated') {
                 const info = (event as any).properties?.info
                 if (info?.title) {
+                  sessionStatusStore.update(sessionId, { title: info.title })
                   chat.setLocalSessions((prev) =>
                     prev.map((s) => (s.id === sessionId ? { ...s, title: info.title } : s)),
                   )

@@ -527,8 +527,10 @@ app.post('/:sessionId', async (c) => {
         }
 
         // Connect to sandbox-agent
+        console.log(`[chat:${sessionId}] Connecting to sandbox-agent at ${currentSandboxAgentUrl}, agentType=${agentType}`)
         const client = await connectToSandboxAgent(currentSandboxAgentUrl)
         await validateAgentRuntime(client, agentType)
+        console.log(`[chat:${sessionId}] Agent runtime validated for ${agentType}`)
 
         const sessionConfig = {
           mode,

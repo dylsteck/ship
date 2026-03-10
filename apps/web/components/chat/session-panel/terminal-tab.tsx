@@ -6,32 +6,38 @@ import { API_URL } from '@/lib/config'
 
 interface TerminalTabProps {
   sessionId?: string
-  agentUrl?: string
 }
 
-function TerminalPlaceholder({ message }: { message: string }) {
+function TerminalPlaceholder({ message, showSpinner }: { message: string; showSpinner?: boolean }) {
   return (
     <div className="size-full bg-[#1e1e1e] rounded-sm flex flex-col p-3 font-mono text-sm">
       <div className="flex items-center gap-1">
         <span className="text-[#4ec9b0]">workspace</span>
         <span className="text-muted-foreground/60">$</span>
-        <span className="w-1.5 h-4 bg-foreground/70 animate-pulse inline-block" />
+        {showSpinner && <span className="w-1.5 h-4 bg-foreground/70 animate-pulse inline-block" />}
       </div>
       <div className="mt-4 text-muted-foreground/40 text-xs">{message}</div>
     </div>
   )
 }
 
-export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
+const RETRY_INTERVAL = 5000
+
+export function TerminalTab({ sessionId }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<import('@xterm/xterm').Terminal | null>(null)
   const fitRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'unavailable'>(
-    agentUrl ? 'connecting' : 'unavailable',
+    sessionId ? 'connecting' : 'unavailable',
   )
 
   const cleanup = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
@@ -44,7 +50,7 @@ export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
   }, [])
 
   useEffect(() => {
-    if (!containerRef.current || !sessionId || !agentUrl) {
+    if (!containerRef.current || !sessionId) {
       setStatus('unavailable')
       return
     }
@@ -83,6 +89,12 @@ export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
       termRef.current = term
       fitRef.current = fit
 
+      connectWebSocket(term)
+    }
+
+    function connectWebSocket(term: import('@xterm/xterm').Terminal) {
+      if (cancelled) return
+
       const wsUrl = `${API_URL.replace('http', 'ws')}/terminal/${sessionId}`
 
       try {
@@ -104,11 +116,17 @@ export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
         }
 
         ws.onclose = () => {
-          if (!cancelled) setStatus('disconnected')
+          if (!cancelled) {
+            setStatus('connecting')
+            scheduleRetry(term)
+          }
         }
 
         ws.onerror = () => {
-          if (!cancelled) setStatus('disconnected')
+          if (!cancelled) {
+            setStatus('connecting')
+            // onclose will fire after onerror, retry handled there
+          }
         }
 
         term.onData((data) => {
@@ -123,8 +141,25 @@ export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
           }
         })
       } catch {
-        if (!cancelled) setStatus('disconnected')
+        if (!cancelled) {
+          setStatus('connecting')
+          scheduleRetry(term)
+        }
       }
+    }
+
+    function scheduleRetry(term: import('@xterm/xterm').Terminal) {
+      if (cancelled) return
+      retryTimerRef.current = setTimeout(() => {
+        if (!cancelled) {
+          // Close old ws if still around
+          if (wsRef.current) {
+            wsRef.current.close()
+            wsRef.current = null
+          }
+          connectWebSocket(term)
+        }
+      }, RETRY_INTERVAL)
     }
 
     initTerminal()
@@ -141,25 +176,21 @@ export function TerminalTab({ sessionId, agentUrl }: TerminalTabProps) {
       resizeObserver.disconnect()
       cleanup()
     }
-  }, [sessionId, agentUrl, cleanup])
+  }, [sessionId, cleanup])
 
   if (status === 'unavailable') {
-    return <TerminalPlaceholder message="Terminal unavailable — waiting for sandbox" />
-  }
-
-  if (status === 'disconnected' && !termRef.current) {
-    return <TerminalPlaceholder message="Disconnected from terminal" />
+    return <TerminalPlaceholder message="Terminal unavailable — no active session" />
   }
 
   return (
     <div className="size-full relative">
       <div
         ref={containerRef}
-        className={cn('size-full', status === 'connecting' && 'opacity-50')}
+        className={cn('size-full', status === 'connecting' && !termRef.current && 'opacity-50')}
       />
       {status === 'connecting' && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e]/80">
-          <span className="text-xs text-muted-foreground animate-pulse">Connecting...</span>
+          <span className="text-xs text-muted-foreground animate-pulse">Connecting to sandbox...</span>
         </div>
       )}
     </div>

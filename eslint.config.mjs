@@ -17,6 +17,13 @@ const eslintConfig = [
       '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    rules: {
+      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['warn', { max: 100, skipBlankLines: true, skipComments: true }],
+    },
+  },
 ]
 
 export default eslintConfig

@@ -206,7 +206,6 @@ function TabContent({
       return (
         <TerminalTab
           sessionId={data.sessionId}
-          agentUrl={data.agentUrl || undefined}
         />
       )
     case 'overview':

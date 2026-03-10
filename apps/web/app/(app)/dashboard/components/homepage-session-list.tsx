@@ -128,7 +128,7 @@ function HomepageSessionCard({
   const { getStatus } = useSessionStatusStore()
   const liveStatus = getStatus(session.id)
 
-  const title = getSessionDisplayTitle(session) || session.repoName
+  const title = liveStatus?.title || getSessionDisplayTitle(session) || session.repoName
   const repoPath = getSessionRepoLabel(session) || session.repoName
 
   // Determine if this session is actively running
