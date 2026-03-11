@@ -5,7 +5,7 @@ import { PromptInput, Button } from '@ship/ui'
 import { cn } from '@ship/ui'
 
 interface EnhancedPromptInputProps {
-  onSend: (content: string, mode: 'build' | 'plan') => void
+  onSend: (content: string, mode: string) => void
   onStop?: () => void
   isStreaming?: boolean
   disabled?: boolean
@@ -23,7 +23,7 @@ export function EnhancedPromptInput({
   className,
   placeholder,
 }: EnhancedPromptInputProps) {
-  const [mode, setMode] = useState<'build' | 'plan'>('build')
+  const [mode, setMode] = useState<string>('build')
   const [inputValue, setInputValue] = useState('')
 
   const handleSubmit = (content: string) => {

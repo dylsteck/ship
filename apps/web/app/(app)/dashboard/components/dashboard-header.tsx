@@ -1,25 +1,26 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import {
   cn,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  SidebarTrigger,
+  useSidebar,
+  useIsMobile,
 } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { PanelRightIcon, Settings01Icon, Logout01Icon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
+import { ArrowLeft01Icon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
-import { ClientOnly } from '@/components/client-only'
+import { UserDropdown } from '@/components/user-dropdown'
 
 interface DashboardHeaderProps {
   activeSessionId: string | null
   sessionTitle?: string
+  repoLabel?: string
   wsStatus: WebSocketStatus
   sandboxStatus?: string
   rightSidebarOpen?: boolean
   onToggleRightSidebar?: () => void
-  showBackButton?: boolean
   user?: {
     username: string
     avatarUrl: string | null
@@ -34,45 +35,98 @@ const sandboxStatusConfig: Record<string, { label: string; color: string; pulse?
   error: { label: 'Error', color: 'text-red-600 dark:text-red-400' },
 }
 
+function MobileNav({
+  activeSessionId,
+  user,
+}: {
+  activeSessionId: string | null
+  user?: { username: string; avatarUrl: string | null }
+}) {
+  const pathname = usePathname()
+  if (activeSessionId) return null
+
+  const isSettings = pathname === '/settings'
+  const isAgents = !isSettings
+
+  return (
+    <div className="flex items-center gap-2 ml-auto md:hidden">
+      <nav className="flex items-center gap-0.5">
+        <Link
+          href="/"
+          className={cn(
+            'px-1.5 py-1 text-sm transition-colors',
+            isAgents
+              ? 'text-foreground font-medium'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Agents
+        </Link>
+        <Link
+          href="/settings"
+          className={cn(
+            'px-1.5 py-1 text-sm transition-colors',
+            isSettings
+              ? 'text-foreground font-medium'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Settings
+        </Link>
+      </nav>
+      <UserDropdown user={user} />
+    </div>
+  )
+}
+
 export function DashboardHeader({
   activeSessionId,
   sessionTitle,
+  repoLabel,
   wsStatus,
   sandboxStatus,
   rightSidebarOpen,
   onToggleRightSidebar,
-  showBackButton,
   user,
 }: DashboardHeaderProps) {
   const sbConfig = sandboxStatus ? sandboxStatusConfig[sandboxStatus] : null
+  const { state } = useSidebar()
+  const isMobile = useIsMobile()
+  const showSidebarTrigger = state === 'collapsed' && !isMobile
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 relative z-10">
-      {/* Back button + Session title */}
+      {showSidebarTrigger && (
+        <SidebarTrigger className="size-5 cursor-pointer text-muted-foreground hover:text-foreground shrink-0" />
+      )}
+      {activeSessionId && isMobile && (
+        <Link
+          href="/"
+          className="shrink-0 p-1.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          aria-label="Back to home"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
+        </Link>
+      )}
       {activeSessionId && (
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {showBackButton && (
-            <button
-              onClick={() => (window.location.href = '/')}
-              className="shrink-0 p-1 -ml-1 text-muted-foreground hover:text-foreground"
-              aria-label="Back to home"
-            >
-              <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
-            </button>
-          )}
-          <span className="font-medium truncate text-xs sm:text-sm">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium truncate text-xs sm:text-sm">
             {sessionTitle || 'Untitled session'}
-          </span>
+          </div>
+          {repoLabel && (
+            <div className="truncate text-[11px] text-muted-foreground mt-0.5">
+              {repoLabel}
+            </div>
+          )}
         </div>
       )}
 
       <div className="flex items-center gap-1 ml-auto">
-        {/* Sandbox status pill */}
         {activeSessionId && sbConfig && sandboxStatus !== 'unknown' && (
           <div className={cn('text-[10px] flex items-center gap-1.5 mr-2', sbConfig.color)}>
             <span
               className={cn(
-                'w-1.5 h-1.5 rounded-full',
+                'size-1.5 rounded-full',
                 sandboxStatus === 'active' && 'bg-green-500',
                 sandboxStatus === 'paused' && 'bg-muted-foreground/40',
                 sandboxStatus === 'error' && 'bg-red-500',
@@ -83,84 +137,27 @@ export function DashboardHeader({
           </div>
         )}
 
-        {/* WS status indicator */}
         {activeSessionId && wsStatus !== 'connected' && (
           <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mr-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
             {wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}
           </div>
         )}
 
-        {/* Right sidebar toggle */}
-        {activeSessionId && onToggleRightSidebar && (
+        {activeSessionId && onToggleRightSidebar && !rightSidebarOpen && (
           <button
             onClick={onToggleRightSidebar}
             className="p-1.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
             title={rightSidebarOpen ? 'Hide context panel' : 'Show context panel'}
           >
-            <HugeiconsIcon icon={PanelRightIcon} className="size-4" strokeWidth={2} />
+            <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M15 3v18" />
+            </svg>
           </button>
         )}
 
-        {/* User avatar with dropdown - mobile only, homepage only */}
-        {!activeSessionId && (
-          <div className="shrink-0 ml-2 md:hidden">
-            <ClientOnly
-              fallback={
-                <a href="/settings" className="focus:outline-none rounded-full cursor-pointer block">
-                  {user?.avatarUrl ? (
-                    <img
-                      src={user.avatarUrl}
-                      alt={user.username}
-                      width={28}
-                      height={28}
-                      className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
-                    />
-                  ) : (
-                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
-                      {user?.username?.[0]?.toUpperCase() || '?'}
-                    </div>
-                  )}
-                </a>
-              }
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <button className="focus:outline-none rounded-full cursor-pointer">
-                      {user?.avatarUrl ? (
-                        <img
-                          src={user.avatarUrl}
-                          alt={user.username}
-                          width={28}
-                          height={28}
-                          className="w-7 h-7 rounded-full object-cover hover:opacity-80 transition-opacity"
-                        />
-                      ) : (
-                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
-                          {user?.username?.[0]?.toUpperCase() || '?'}
-                        </div>
-                      )}
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => (window.location.href = '/settings')} className="cursor-pointer">
-                    <HugeiconsIcon icon={Settings01Icon} className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => (window.location.href = '/api/auth/signout')}
-                    className="cursor-pointer text-red-600 dark:text-red-400"
-                  >
-                    <HugeiconsIcon icon={Logout01Icon} className="mr-2 h-4 w-4" />
-                    Log out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </ClientOnly>
-          </div>
-        )}
+        <MobileNav activeSessionId={activeSessionId} user={user} />
       </div>
     </header>
   )

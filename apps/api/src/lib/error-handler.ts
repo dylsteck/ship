@@ -47,6 +47,17 @@ export function classifyError(error: unknown): ErrorDetails {
   const message = error instanceof Error ? error.message : String(error)
   const lowerMessage = message.toLowerCase()
 
+  // Prompt timeout is not retryable — agent is blocked (e.g. waiting for question reply)
+  if (lowerMessage.includes('prompt timed out')) {
+    return {
+      category: ErrorCategory.Persistent,
+      retryable: false,
+      maxRetries: 0,
+      backoffMs: 0,
+      message,
+    }
+  }
+
   // Transient errors - network, timeouts, rate limits
   // These should auto-retry with exponential backoff
   if (
@@ -197,6 +208,33 @@ export async function executeWithRetry<T>(operation: () => Promise<T>, context: 
     // All retries exhausted
     throw lastError
   }
+}
+
+/**
+ * Safe string for logging errors in Cloudflare Workers.
+ * Avoids passing Response/ReadableStream to console — Workers cannot
+ * serialize I/O objects across request boundaries (causes "Formatting threw").
+ * AcpHttpError and similar may have a `response` property with streams.
+ *
+ * @param error - Error to format
+ * @returns Safe string for console.log/error
+ */
+export function safeErrorForLog(error: unknown): string {
+  if (error instanceof Error) {
+    const msg = error.message
+    const err = error as Error & { status?: number; problem?: unknown; response?: unknown }
+    const parts: string[] = [msg]
+    if (typeof err.status === 'number') parts.push(`status=${err.status}`)
+    if (err.problem != null) {
+      try {
+        parts.push(`problem=${JSON.stringify(err.problem)}`)
+      } catch {
+        parts.push('problem=[object]')
+      }
+    }
+    return parts.join(', ')
+  }
+  return String(error)
 }
 
 /**

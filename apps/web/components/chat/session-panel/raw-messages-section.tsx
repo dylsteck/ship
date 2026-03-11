@@ -69,7 +69,7 @@ export function RawMessagesSection({ messages }: { messages: UIMessage[] }) {
                     )}
                   </div>
                   <svg
-                    className={cn('w-3 h-3 text-muted-foreground/30 transition-transform shrink-0 mt-0.5', isExpanded && 'rotate-180')}
+                    className={cn('w-3 h-3 text-muted-foreground/30 transition-transform shrink-0 mt-0.5', !isExpanded && '-rotate-90')}
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"

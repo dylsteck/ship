@@ -153,7 +153,7 @@ git.post('/commit', async (c) => {
     const metaResponse = await doStub.fetch('http://do/meta')
     const meta = (await metaResponse.json()) as Record<string, string>
     const userName = meta['user_name'] || 'Ship Agent'
-    const userEmail = meta['user_email'] || 'agent@ship.dev'
+    const userEmail = meta['user_email'] || 'shipagent@dylansteck.com'
 
     // Connect to sandbox
     const sandbox = await Sandbox.connect(sandboxStatus.sandboxId, {

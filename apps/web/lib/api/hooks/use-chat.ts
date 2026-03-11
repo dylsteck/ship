@@ -193,3 +193,30 @@ export async function replyPermission(
     { reply }
   )
 }
+
+/**
+ * Reply to an agent question
+ */
+export async function replyQuestion(
+  sessionId: string,
+  questionId: string,
+  response: string
+): Promise<{ success: boolean }> {
+  return post<{ response: string }, { success: boolean }>(
+    apiUrl(`/chat/${sessionId}/question/${questionId}`),
+    { response }
+  )
+}
+
+/**
+ * Reject/skip an agent question
+ */
+export async function rejectQuestion(
+  sessionId: string,
+  questionId: string
+): Promise<{ success: boolean }> {
+  return post<Record<string, never>, { success: boolean }>(
+    apiUrl(`/chat/${sessionId}/question/${questionId}/reject`),
+    {}
+  )
+}

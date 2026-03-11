@@ -12,13 +12,24 @@ export interface CreateSessionParams {
   repoOwner: string
   repoName: string
   model: string
+  agentType?: string
   initialPrompt?: string
+  /** Initial title (e.g. from first prompt); persisted for cross-tab sync */
+  title?: string
+  /** Base branch to clone and create ship branch from (e.g. main). Defaults to main. */
+  baseBranch?: string
 }
 
 export interface SandboxStatus {
   ready: boolean
   url?: string
   terminalUrl?: string
+  /** Sandbox ID from E2B; from GET /sessions/:id/sandbox */
+  sandboxId?: string | null
+  /** Sandbox-agent URL for Desktop iframe; from GET /sessions/:id/sandbox */
+  sandboxAgentUrl?: string | null
+  /** Raw status from DO: provisioning, active, resuming, error, etc. */
+  status?: string | null
 }
 
 // ============ Chat ============
@@ -66,6 +77,30 @@ export interface ModelInfo {
 export interface DefaultModelResponse {
   model?: string | null
   modelId?: string | null
+}
+
+// ============ Agents ============
+
+/** All known agent mode IDs across all agents */
+export type AgentModeId =
+  | 'build' | 'plan'                    // OpenCode
+  | 'default' | 'acceptEdits'           // Claude Code
+  | 'auto' | 'read-only' | 'full-access' // Codex
+
+export interface AgentMode {
+  id: AgentModeId
+  label: string
+}
+
+export interface AgentInfo {
+  id: string
+  name: string
+  modes: AgentMode[]
+  models: ModelInfo[]
+}
+
+export interface DefaultAgentResponse {
+  agentId: string
 }
 
 // ============ GitHub ============

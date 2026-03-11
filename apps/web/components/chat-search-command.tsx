@@ -10,6 +10,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
 } from '@ship/ui'
 import type { ChatSession } from '@/lib/api'
 
@@ -18,6 +19,7 @@ interface ChatSearchCommandProps {
   onClose: () => void
   sessions: ChatSession[]
   currentSessionId?: string
+  currentSessionTitle?: string
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -39,7 +41,16 @@ function ChatIcon({ className }: { className?: string }) {
   )
 }
 
-export function ChatSearchCommand({ open, onClose, sessions, currentSessionId }: ChatSearchCommandProps) {
+function NewAgentIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  )
+}
+
+export function ChatSearchCommand({ open, onClose, sessions, currentSessionId, currentSessionTitle }: ChatSearchCommandProps) {
   const router = useRouter()
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -65,70 +76,106 @@ export function ChatSearchCommand({ open, onClose, sessions, currentSessionId }:
         if (e.target === overlayRef.current) onClose()
       }}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="relative w-full max-w-lg mx-4 bg-background rounded-xl border border-border/50 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg mx-4 bg-popover rounded-xl border border-border/60 shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150">
         <Command loop>
-          <CommandInput placeholder="Search chats..." autoFocus />
+          <CommandInput placeholder="Search agents..." autoFocus />
           <CommandList>
-            <CommandEmpty>No chats found.</CommandEmpty>
+            <CommandEmpty>No results found.</CommandEmpty>
+
+            <CommandGroup heading="Actions">
+              <CommandItem
+                onSelect={() => {
+                  router.push('/')
+                  onClose()
+                }}
+              >
+                <NewAgentIcon className="size-4 shrink-0 text-muted-foreground/60" />
+                <span>New Agent</span>
+              </CommandItem>
+            </CommandGroup>
 
             {active.length > 0 && (
-              <CommandGroup heading="Chats">
-                {active
-                  .sort((a, b) => b.lastActivity - a.lastActivity)
-                  .map((session) => {
-                    const title = session.repoName
-                    const sub = `${session.repoOwner}/${session.repoName}`
-                    return (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Chats">
+                  {active
+                    .sort((a, b) => b.lastActivity - a.lastActivity)
+                    .map((session) => {
+                      const title =
+                        currentSessionId === session.id
+                          ? (currentSessionTitle || session.title || session.repoName)
+                          : (session.title || session.repoName)
+                      const sub = `${session.repoOwner}/${session.repoName}`
+                      return (
+                        <CommandItem
+                          key={session.id}
+                          value={`${title} ${sub}`}
+                          onSelect={() => {
+                            router.push(`/session/${session.id}`)
+                            onClose()
+                          }}
+                          className={currentSessionId === session.id ? 'bg-accent' : ''}
+                        >
+                          <ChatIcon className="size-4 shrink-0 text-muted-foreground/50" />
+                          <div className="flex-1 min-w-0">
+                            <span className="truncate">{title}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground/40 shrink-0">
+                            {formatRelativeTime(session.lastActivity)}
+                          </span>
+                        </CommandItem>
+                      )
+                    })}
+                </CommandGroup>
+              </>
+            )}
+
+            {archived.length > 0 && (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Archived">
+                  {archived
+                    .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
+                    .map((session) => {
+                      const archivedTitle = session.title || session.repoName
+                      return (
                       <CommandItem
                         key={session.id}
-                        value={`${title} ${sub}`}
+                        value={`${archivedTitle} ${session.repoOwner}/${session.repoName}`}
                         onSelect={() => {
                           router.push(`/session/${session.id}`)
                           onClose()
                         }}
-                        className={currentSessionId === session.id ? 'bg-accent' : ''}
+                        className="opacity-50"
                       >
-                        <ChatIcon className="size-4 shrink-0 text-muted-foreground/50" />
-                        <div className="flex-1 min-w-0">
-                          <span className="truncate">{title}</span>
-                        </div>
-                        <span className="text-xs text-muted-foreground/40 shrink-0">
-                          {formatRelativeTime(session.lastActivity)}
+                        <ChatIcon className="size-4 shrink-0 text-muted-foreground/40" />
+                        <span className="flex-1 truncate">{archivedTitle}</span>
+                        <span className="text-xs text-muted-foreground/30 shrink-0">
+                          {formatRelativeTime(session.archivedAt ?? session.lastActivity)}
                         </span>
                       </CommandItem>
                     )
-                  })}
-              </CommandGroup>
-            )}
-
-            {archived.length > 0 && (
-              <CommandGroup heading="Archived">
-                {archived
-                  .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
-                  .map((session) => (
-                    <CommandItem
-                      key={session.id}
-                      value={`${session.repoName} ${session.repoOwner}/${session.repoName}`}
-                      onSelect={() => {
-                        router.push(`/session/${session.id}`)
-                        onClose()
-                      }}
-                      className="opacity-50"
-                    >
-                      <ChatIcon className="size-4 shrink-0 text-muted-foreground/40" />
-                      <span className="flex-1 truncate">{session.repoOwner}/{session.repoName}</span>
-                      <span className="text-xs text-muted-foreground/30 shrink-0">
-                        {formatRelativeTime(session.archivedAt ?? session.lastActivity)}
-                      </span>
-                    </CommandItem>
-                  ))}
-              </CommandGroup>
+                    })}
+                </CommandGroup>
+              </>
             )}
           </CommandList>
+
+          {/* Footer with keyboard shortcuts */}
+          <div className="flex items-center gap-4 border-t border-border/30 px-4 py-2 text-[11px] text-muted-foreground/50">
+            <span className="flex items-center gap-1.5">
+              <kbd className="inline-flex items-center justify-center rounded border border-border/40 bg-muted/50 px-1 py-0.5 font-mono text-[10px] leading-none">↑↓</kbd>
+              Navigate
+            </span>
+            <span className="flex items-center gap-1.5">
+              <kbd className="inline-flex items-center justify-center rounded border border-border/40 bg-muted/50 px-1 py-0.5 font-mono text-[10px] leading-none">↵</kbd>
+              Select
+            </span>
+            <span className="ml-auto flex items-center gap-1.5">
+              <kbd className="inline-flex items-center justify-center rounded border border-border/40 bg-muted/50 px-1 py-0.5 font-mono text-[10px] leading-none">Esc</kbd>
+              Close
+            </span>
+          </div>
         </Command>
       </div>
     </div>,

@@ -27,6 +27,8 @@ export interface ToolInvocation {
   state: ToolInvocationState
   args: Record<string, unknown>
   result?: unknown
+  /** Streaming output (partial) — used to extract session_id before tool completes */
+  rawOutput?: string
   duration?: number
   title?: string
   metadata?: Record<string, unknown>
@@ -45,6 +47,10 @@ export interface UIMessage {
   retryable?: boolean
   // Wall-clock elapsed time in ms (set when streaming completes)
   elapsed?: number
+  // Plan items from PlanPart events
+  planItems?: Array<{ id: string; title: string; status: string }>
+  /** Startup steps (e.g. "Provisioning sandbox...", "Server ready") — persisted, shown collapsible */
+  startupSteps?: string[]
   // Permission/question prompt data
   promptData?: {
     id: string
@@ -89,6 +95,7 @@ export function createToolInvocation(toolPart: ToolPart): ToolInvocation {
     state: mapSSEToolState(toolPart.state?.status),
     args: toolPart.state?.input || {},
     result: toolPart.state?.output,
+    rawOutput: toolPart.state?.raw,
     duration,
     title: toolPart.state?.title,
     metadata: toolPart.state?.metadata,
@@ -197,6 +204,17 @@ export function processPartUpdated(
       }
       if (reasoningRef.current) {
         return setReasoning(reasoningRef.current, streamingMessageId, messages)
+      }
+      return messages
+    }
+
+    case 'plan': {
+      const planPart = part as import('@/lib/sse-types').PlanPart
+      if (planPart.items) {
+        return messages.map((m) => {
+          if (m.id !== streamingMessageId) return m
+          return { ...m, planItems: planPart.items }
+        })
       }
       return messages
     }
@@ -411,11 +429,20 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
       try {
         const parts = JSON.parse(msg.parts) as MessagePart[]
         const tools: ToolInvocation[] = []
-        const reasoningTexts: string[] = []
+        let lastReasoningText = ''
         let textContent = ''
         let elapsed: number | undefined
+        let planItems: Array<{ id: string; title: string; status: string }> | undefined
 
         for (const part of parts) {
+          const partType = (part as { type: string }).type
+          if (partType === 'error') {
+            const ep = part as unknown as { type: 'error'; category?: string; retryable?: boolean }
+            uiMsg.type = 'error'
+            uiMsg.errorCategory = (ep.category as UIMessage['errorCategory']) || 'persistent'
+            uiMsg.retryable = ep.retryable ?? false
+            continue
+          }
           switch (part.type) {
             case 'tool': {
               const tp = part as ToolPart
@@ -424,12 +451,23 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
             }
             case 'reasoning': {
               const rp = part as ReasoningPart
-              if (rp.text) reasoningTexts.push(rp.text)
+              if (rp.text) {
+                // Parts are cumulative (each has full text so far); keep only the last
+                lastReasoningText = rp.text
+              }
               break
             }
             case 'text': {
               const txp = part as TextPart
-              if (txp.text) textContent += txp.text
+              if (txp.text) {
+                // Parts are cumulative (each has full text so far); keep only the last
+                textContent = txp.text
+              }
+              break
+            }
+            case 'plan': {
+              const pp = part as import('@/lib/sse-types').PlanPart
+              if (pp.items) planItems = pp.items
               break
             }
             case 'step-finish': {
@@ -447,7 +485,8 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
         }
 
         if (tools.length > 0) uiMsg.toolInvocations = tools
-        if (reasoningTexts.length > 0) uiMsg.reasoning = reasoningTexts
+        if (lastReasoningText) uiMsg.reasoning = [lastReasoningText]
+        if (planItems) uiMsg.planItems = planItems
         if (!uiMsg.content && textContent) uiMsg.content = textContent
         if (elapsed) uiMsg.elapsed = elapsed
 
@@ -469,7 +508,8 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
       }))
     }
     if (msg.reasoningBlocks?.length) {
-      uiMsg.reasoning = msg.reasoningBlocks.map((b) => b.text)
+      const lastBlock = msg.reasoningBlocks[msg.reasoningBlocks.length - 1]
+      if (lastBlock?.text) uiMsg.reasoning = [lastBlock.text]
     }
     return uiMsg
   })

@@ -8,6 +8,32 @@ Complete guide for deploying Ship to production.
 - GitHub account (for OAuth)
 - All API keys ready (Anthropic, E2B, etc.)
 
+## Environment Variables Checklist
+
+Before deploying, ensure these are set. Session creation and API calls will fail in production if any critical vars are missing.
+
+### Web App (Vercel / `apps/web`)
+
+| Variable | Required | What it does | How to set |
+|----------|----------|--------------|------------|
+| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Vercel Dashboard → Project → Settings → Environment Variables |
+| `API_BASE_URL` | Alternative | Same as above; used if `NEXT_PUBLIC_API_URL` is unset. | Same |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | e.g. `https://your-app.vercel.app` |
+| `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | From GitHub OAuth app settings |
+| `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | Same |
+| `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `openssl rand -hex 32` |
+
+### API Worker (Cloudflare / `apps/api`)
+
+| Variable | Required | What it does | How to set |
+|----------|----------|--------------|------------|
+| `ALLOWED_ORIGINS` | Yes (prod) | Comma-separated CORS origins. Must include production web URL exactly. | `npx wrangler secret put ALLOWED_ORIGINS --env production` |
+| `E2B_API_KEY` | Yes | E2B sandbox provisioning. | `npx wrangler secret put E2B_API_KEY --env production` |
+| `API_SECRET` | Yes | Internal auth between web and API. | `npx wrangler secret put API_SECRET --env production` |
+| `ANTHROPIC_API_KEY` | Optional | For Claude agent. | `npx wrangler secret put ANTHROPIC_API_KEY --env production` |
+
+**CLI to check secrets:** `cd apps/api && npx wrangler secret list --env production`
+
 ## Deploy Cloudflare Worker API
 
 ### Step 1: Create Production D1 Database
@@ -26,7 +52,7 @@ Edit `apps/api/wrangler.toml`:
 ```toml
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "ship-db"
+database_name = "ship-db-production"
 database_id = "your-production-database-id-here"  # Replace "TBD"
 ```
 
@@ -34,10 +60,10 @@ database_id = "your-production-database-id-here"  # Replace "TBD"
 
 ```bash
 cd apps/api
-npx wrangler d1 execute ship-db --file=src/db/schema.sql
+npx wrangler d1 execute ship-db-production --remote --file=src/db/schema.sql --env production
 ```
 
-**Note:** This runs against the production database (not `--local`). Make sure you're deploying to the right database!
+**Note:** Use `ship-db-production` (the production database name from wrangler.toml). The `--remote` flag ensures you run against the live D1 instance, not local.
 
 ### Step 4: Set Production Secrets
 
@@ -46,17 +72,18 @@ Set each secret interactively (Wrangler will prompt for the value):
 ```bash
 cd apps/api
 
-# Required secrets
-npx wrangler secret put API_SECRET
-npx wrangler secret put E2B_API_KEY
+# Required secrets (use --env production for production Worker)
+npx wrangler secret put API_SECRET --env production
+npx wrangler secret put E2B_API_KEY --env production
+npx wrangler secret put ALLOWED_ORIGINS --env production  # e.g. https://your-app.vercel.app
 
 # Optional secrets (if using these features)
-npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put ANTHROPIC_API_KEY --env production
 ```
 
 **Tip:** You can also set secrets non-interactively:
 ```bash
-echo "your-secret-value" | npx wrangler secret put API_SECRET
+echo "your-secret-value" | npx wrangler secret put API_SECRET --env production
 ```
 
 ### Step 5: Deploy to Production
@@ -103,13 +130,14 @@ npx wrangler deploy
    - **Output Directory:** `.next` (default)
 
 3. **Set Environment Variables:**
-   Add all variables from `apps/web/.env.example`:
+   Add all variables from `apps/web/.env.example`. **Critical for session creation:**
    ```
+   NEXT_PUBLIC_API_URL=https://ship-api-production.your-subdomain.workers.dev
+   API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
+   NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
    GITHUB_CLIENT_ID=your-production-github-client-id
    GITHUB_CLIENT_SECRET=your-production-github-client-secret
    SESSION_SECRET=your-production-session-secret
-   API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
-   NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
    LINEAR_CLIENT_ID=your-linear-client-id (optional)
    LINEAR_CLIENT_SECRET=your-linear-client-secret (optional)
    ```
@@ -181,8 +209,14 @@ API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
 3. **Test Database:**
    ```bash
    cd apps/api
-   npx wrangler d1 execute ship-db --command="SELECT COUNT(*) FROM users"
+   npx wrangler d1 execute ship-db-production --remote --command="SELECT COUNT(*) FROM users" --env production
    ```
+
+4. **Verify Session Creation:**
+   - Create a new session from the homepage
+   - Navigate to the session (click it in the sidebar)
+   - Reload the page — the session should still appear
+   - If you see "Session not found", check `NEXT_PUBLIC_API_URL` / `API_BASE_URL` in Vercel and `ALLOWED_ORIGINS` in Cloudflare
 
 ## Staging Environment (Optional)
 
@@ -300,7 +334,7 @@ NEXT_PUBLIC_APP_URL=https://your-app-staging.vercel.app
 
 3. **Run production migration:**
    ```bash
-   npx wrangler d1 execute ship-db --file=src/db/schema.sql
+   npx wrangler d1 execute ship-db-production --remote --file=src/db/schema.sql --env production
    ```
 
 ### CORS Issues

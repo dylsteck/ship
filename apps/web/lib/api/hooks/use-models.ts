@@ -80,6 +80,31 @@ export function useDefaultModel(userId: string | undefined) {
 }
 
 /**
+ * Hook to fetch the effective model for a specific session.
+ */
+export function useSessionModel(sessionId: string | undefined) {
+  const { data, error, isLoading, mutate } = useSWR<{ model: string; override: boolean } | null>(
+    sessionId ? apiUrl(`/models/sessions/${sessionId}`) : null,
+    async (url: string) => {
+      try {
+        return await fetcher<{ model: string; override: boolean }>(url)
+      } catch (err: unknown) {
+        if ((err as { status?: number })?.status === 404) return null
+        throw err
+      }
+    },
+  )
+
+  return {
+    sessionModelId: data?.model ?? null,
+    isLoading,
+    isError: !!error,
+    error,
+    mutate,
+  }
+}
+
+/**
  * Mutation hook to set user's default model
  */
 export function useSetDefaultModel() {

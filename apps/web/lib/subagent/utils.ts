@@ -52,6 +52,25 @@ export function isSubagentToolInvocation(tool: ToolInvocation): boolean {
   return false
 }
 
+/** Try to extract session_id from JSON string (handles partial streaming output) */
+function extractSessionIdFromJsonLike(str: string): string | null {
+  if (!str || typeof str !== 'string') return null
+  // Try full parse first
+  try {
+    const parsed = JSON.parse(str) as Record<string, unknown>
+    const id =
+      parsed.sessionId ?? parsed.session_id ?? parsed.sessionID ?? parsed.subagent_session_id ?? parsed.child_session_id
+    if (typeof id === 'string') return id
+  } catch {
+    // Partial JSON — use regex to find session_id: "uuid"
+    const m = str.match(
+      /["']?(?:session_id|sessionId|sessionID|subagent_session_id|child_session_id)["']?\s*:\s*["']([a-f0-9-]{36})["']/i,
+    )
+    if (m?.[1]) return m[1]
+  }
+  return null
+}
+
 /**
  * Extracts the subagent session ID from a tool invocation
  */
@@ -71,11 +90,21 @@ export function extractSubagentSessionId(tool: ToolInvocation): string | null {
     if (typeof metadata.sessionID === 'string') return metadata.sessionID
   }
 
-  // Check result for session ID
+  // Check result for session ID (object or string JSON)
   if (typeof tool.result === 'object' && tool.result !== null) {
     const result = tool.result as Record<string, unknown>
     const sessionId = result.sessionId || result.session_id || result.sessionID || result.subagent_session_id || result.child_session_id
     if (typeof sessionId === 'string') return sessionId
+  }
+  if (typeof tool.result === 'string') {
+    const id = extractSessionIdFromJsonLike(tool.result)
+    if (id) return id
+  }
+
+  // Check streaming raw output (session_id may appear before tool completes)
+  if (tool.rawOutput) {
+    const id = extractSessionIdFromJsonLike(tool.rawOutput)
+    if (id) return id
   }
 
   // Check args directly
@@ -156,6 +185,30 @@ export function extractChildToolsFromResult(tool: ToolInvocation): { name: strin
     }
   }
   return []
+}
+
+/**
+ * Returns true if the result would display as a raw JSON blob (no human-readable content).
+ * In that case we hide it and show "View full session" instead.
+ */
+export function isResultJsonBlob(tool: ToolInvocation): boolean {
+  if (!tool.result) return false
+  if (typeof tool.result === 'object' && tool.result !== null) {
+    const r = tool.result as Record<string, unknown>
+    // Has human-readable content — show it
+    if (typeof r.content === 'string' && r.content.trim().length > 0) return false
+    if (typeof r.text === 'string' && r.text.trim().length > 0) return false
+    if (typeof r.output === 'string' && r.output.trim().length > 0) return false
+    if (typeof r.message === 'string' && r.message.trim().length > 0) return false
+    if (typeof r.summary === 'string' && r.summary.trim().length > 0) return false
+    // Only sessionId / metadata — treat as JSON blob
+    return true
+  }
+  if (typeof tool.result === 'string') {
+    const s = tool.result.trim()
+    return (s.startsWith('{') && s.includes('"')) || (s.startsWith('[') && s.includes('"'))
+  }
+  return false
 }
 
 /**

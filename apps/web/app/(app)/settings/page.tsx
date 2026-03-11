@@ -1,16 +1,27 @@
-import { getSession } from '@/lib/session'
+import { cookies } from 'next/headers'
+import { verifySession, getUser } from '@/lib/dal'
+import { fetchSessions, type ChatSession } from '@/lib/api'
 import { SettingsClient } from './settings-client'
 
 export default async function SettingsPage() {
-  const session = await getSession()
+  const session = await verifySession()
+  const user = await getUser()
+  const cookieStore = await cookies()
+  const apiToken = cookieStore.get('session')?.value ?? ''
 
-  if (!session) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Please log in to access settings</p>
-      </div>
-    )
+  let sessions: ChatSession[] = []
+  try {
+    sessions = await fetchSessions(session.userId)
+  } catch (error) {
+    console.error('Failed to fetch sessions:', error)
   }
 
-  return <SettingsClient userId={session.userId} />
+  return (
+    <SettingsClient
+      userId={session.userId}
+      user={user}
+      sessions={sessions}
+      apiToken={apiToken}
+    />
+  )
 }

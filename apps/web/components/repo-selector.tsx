@@ -10,8 +10,9 @@ import {
   DropdownMenuTrigger,
   Input,
 } from '@ship/ui'
+import { cn } from '@ship/ui/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon, GithubIcon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
 import type { GitHubRepo } from '@/lib/api/types'
 
 export interface RepoSelectorProps {
@@ -27,6 +28,8 @@ export interface RepoSelectorProps {
   searchPlaceholder?: string
   /** Full-width trigger for settings/card layout */
   fullWidth?: boolean
+  /** Optional class for the trigger button (e.g. dark theme on homepage) */
+  triggerClassName?: string
   /** Show "None" option to clear selection (e.g. for default repo) */
   allowNone?: boolean
   onClear?: () => void
@@ -46,6 +49,7 @@ export function RepoSelector({
   fullWidth = false,
   allowNone = false,
   onClear,
+  triggerClassName,
 }: RepoSelectorProps) {
   const [repoSearch, setRepoSearch] = useState('')
   const filteredRepos = repoSearch
@@ -69,13 +73,13 @@ export function RepoSelector({
           <Button
             variant="ghost"
             disabled={disabled}
-            className={
+            className={cn(
               fullWidth
                 ? 'h-9 w-full justify-between px-3 rounded-md gap-2'
-                : 'h-8 px-2 sm:px-3 rounded-full gap-1.5'
-            }
+                : 'h-8 px-2 sm:px-3 rounded-full gap-1.5',
+              triggerClassName,
+            )}
           >
-            <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
             <span
               className={
                 fullWidth
@@ -117,7 +121,6 @@ export function RepoSelector({
               )}
               {filteredRepos.map((repo) => (
                 <DropdownMenuItem key={repo.id} onClick={() => onRepoSelect(repo)}>
-                  <HugeiconsIcon icon={GithubIcon} strokeWidth={2} />
                   <span className="truncate flex-1">{repo.fullName}</span>
                   {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
                 </DropdownMenuItem>

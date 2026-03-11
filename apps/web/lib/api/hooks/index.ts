@@ -9,6 +9,7 @@ export {
   useSandboxStatus,
   useCreateSession,
   useDeleteSession,
+  useDeleteAllSessions,
   useRetrySession,
 } from './use-sessions'
 
@@ -49,7 +50,16 @@ export {
   useMarkPRReady,
   useRetryChat,
   replyPermission,
+  replyQuestion,
+  rejectQuestion,
 } from './use-chat'
+
+// Agents
+export {
+  useAgents,
+  useDefaultAgent,
+  useSetDefaultAgent,
+} from './use-agents'
 
 // User
 export { useUser } from './use-user'

@@ -80,18 +80,16 @@ function MessageListContent({
                   <div className="text-foreground whitespace-pre-wrap">{msg.content}</div>
                 )}
 
-                {/* Assistant reasoning only = show collapsible reasoning content */}
-                {msg.role === 'assistant' &&
-                  msg.reasoning &&
-                  msg.reasoning.length > 0 &&
-                  !msg.toolInvocations?.length &&
-                  !msg.content && (
-                    <ReasoningCollapsible
-                      isStreaming={isCurrentlyStreaming}
-                    >
-                      {msg.reasoning.join('\n\n')}
-                    </ReasoningCollapsible>
-                  )}
+                {/* Assistant reasoning = show collapsible, collapsed by default when done */}
+                {msg.role === 'assistant' && msg.reasoning && msg.reasoning.length > 0 && (
+                  <ReasoningCollapsible
+                    reasoning={msg.reasoning}
+                    isStreaming={isCurrentlyStreaming}
+                    duration={
+                      msg.elapsed != null ? Math.floor(msg.elapsed / 1000) : undefined
+                    }
+                  />
+                )}
 
                 {/* Assistant tools - only show tool calls */}
                 {msg.role === 'assistant' && msg.toolInvocations && msg.toolInvocations.length > 0 && (

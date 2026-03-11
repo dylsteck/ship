@@ -9,13 +9,14 @@ import { ContextBreakdownBar } from './context-breakdown'
 
 export function StatsSection({
   sessionId,
+  agent,
   model,
   repo,
   tokens,
   cost,
   messages,
   sessionInfo,
-}: Pick<SessionPanelProps, 'sessionId' | 'model' | 'repo' | 'tokens' | 'cost' | 'sessionInfo'> & { messages: UIMessage[] }) {
+}: Pick<SessionPanelProps, 'sessionId' | 'agent' | 'model' | 'repo' | 'tokens' | 'cost' | 'sessionInfo'> & { messages: UIMessage[] }) {
   const messageCounts = useMemo(() => {
     const user = messages.filter((m) => m.role === 'user').length
     const assistant = messages.filter((m) => m.role === 'assistant').length
@@ -28,9 +29,17 @@ export function StatsSection({
 
   return (
     <div className="px-3 py-2 space-y-2.5">
-      {/* Model & Repo row */}
-      {(model || repo) && (
+      {/* Agent, Model & Repo row */}
+      {(agent || model || repo) && (
         <div className="space-y-1">
+          {agent && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground/60">Agent</span>
+              <span className="text-[11px] text-foreground/70 font-mono truncate ml-2 max-w-[60%] text-right">
+                {agent.name}
+              </span>
+            </div>
+          )}
           {model && (
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-muted-foreground/60">Model</span>
@@ -44,7 +53,9 @@ export function StatsSection({
               <span className="text-[11px] text-muted-foreground/60">Mode</span>
               <span className={cn(
                 'text-[9px] font-medium px-1.5 py-0.5 rounded-full',
-                model.mode === 'build' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500',
+                model.mode === 'build' || model.mode === 'agent' || model.mode === 'auto' || model.mode === 'default'
+                  ? 'bg-green-500/10 text-green-500'
+                  : 'bg-blue-500/10 text-blue-500',
               )}>
                 {model.mode}
               </span>

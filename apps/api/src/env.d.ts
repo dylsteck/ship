@@ -20,8 +20,13 @@ export interface Env {
   // Secrets (set via wrangler secret put or .dev.vars locally)
   ANTHROPIC_API_KEY: string;
   API_SECRET: string;
+  SESSION_SECRET: string;
   E2B_API_KEY: string;
   ALLOWED_ORIGINS?: string;
+  VERCEL_PROJECT_NAME?: string;
+
+  // Optional agent API keys
+  OPENAI_API_KEY?: string;
 
   // Login restriction (optional)
   LOGIN_RESTRICTED_TO_SINGLE_USER?: string;

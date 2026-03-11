@@ -83,22 +83,11 @@ export async function cloneRepo(sandbox: Sandbox, repoUrl: string, token: string
   const repoPath = '/home/user/repo'
 
   try {
-    // Insert token into HTTPS URL for authentication
-    // Format: https://TOKEN@github.com/owner/repo.git
-    let authUrl = repoUrl
-    if (repoUrl.startsWith('https://github.com/')) {
-      authUrl = repoUrl.replace('https://github.com/', `https://${token}@github.com/`)
-    } else if (repoUrl.startsWith('https://')) {
-      authUrl = repoUrl.replace('https://', `https://${token}@`)
-    }
-
-    // Ensure .git suffix
-    if (!authUrl.endsWith('.git')) {
-      authUrl += '.git'
-    }
-
-    // Clone repository
-    const result = await sandbox.commands.run(`git clone ${authUrl} ${repoPath}`)
+    // Use http.extraHeader to pass token (avoids embedding token in URL)
+    const url = repoUrl.endsWith('.git') ? repoUrl : `${repoUrl}.git`
+    const result = await sandbox.commands.run(
+      `git -c http.extraHeader="Authorization: Bearer ${token}" clone ${url} ${repoPath}`,
+    )
 
     if (result.error) {
       throw new GitWorkflowError(

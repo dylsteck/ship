@@ -1,6 +1,40 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "streamdown/styles.css";
+
+/* Code blocks: remove outer wrapper div, move language label to bottom */
+:has(> [data-streamdown="code-block"]) {
+  display: contents;
+}
+[data-streamdown="code-block"] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+[data-streamdown="code-block-header"] {
+  order: 2;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+[data-streamdown="code-block-body"] {
+  order: 1;
+}
+
+/* Mermaid/diagram blocks: remove outer wrapper, shrink to fit content */
+:has(> [data-streamdown="mermaid-block"]) {
+  display: contents;
+}
+[data-streamdown="mermaid-block"] {
+  width: fit-content !important;
+  max-width: 100%;
+  border: none !important;
+  padding: 0.5rem !important;
+  background: transparent !important;
+}
+[data-streamdown="mermaid-block"] > div:last-child {
+  border: none !important;
+  background: transparent !important;
+}
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../node_modules/streamdown/dist/*.js";
 
@@ -47,6 +81,25 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  --animate-collapsible-open: collapsible-open 0.2s ease-out forwards;
+  --animate-collapsible-closed: collapsible-closed 0.2s ease-in forwards;
+
+  @keyframes collapsible-open {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--collapsible-panel-height);
+    }
+  }
+  @keyframes collapsible-closed {
+    from {
+      height: var(--collapsible-panel-height);
+    }
+    to {
+      height: 0;
+    }
+  }
 }
 
 :root {
@@ -74,7 +127,7 @@
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: var(--background);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -108,13 +161,13 @@
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: var(--background);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.24 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 6%);
   --sidebar-ring: oklch(0.556 0 0);
 }
 

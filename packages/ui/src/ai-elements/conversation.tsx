@@ -72,19 +72,19 @@ export function ConversationScrollButton({ className }: { className?: string }) 
 
   return (
     <button
-      onClick={scrollToBottom}
+      onClick={() => scrollToBottom()}
+      aria-label="Scroll to bottom"
       className={cn(
-        'fixed bottom-32 left-1/2 -translate-x-1/2 z-20',
-        'flex items-center gap-1.5 px-3 py-1.5 rounded-full',
-        'bg-background/95 border border-border shadow-lg backdrop-blur-sm',
-        'text-xs text-muted-foreground hover:text-foreground transition-colors',
+        'sticky bottom-6 left-1/2 -translate-x-1/2 z-20',
+        'flex items-center justify-center w-8 h-8 rounded-full',
+        'bg-background/90 border border-border/60 shadow-md backdrop-blur-sm',
+        'text-muted-foreground hover:text-foreground hover:bg-background transition-colors',
         className,
       )}
     >
-      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7-7-7" />
       </svg>
-      Scroll to bottom
     </button>
   )
 }

@@ -147,9 +147,17 @@ export function createReconnectingWebSocket(options: WebSocketOptions): Reconnec
       reconnectTimeout = null
     }
 
-    // Close connection cleanly
+    // Close connection cleanly — skip close() when still connecting to avoid
+    // "WebSocket is closed before the connection is established" browser error
     if (ws) {
-      ws.close(1000, 'Client disconnected')
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+        ws.close(1000, 'Client disconnected')
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        ws.onopen = null
+        ws.onclose = null
+        ws.onerror = null
+        ws.onmessage = null
+      }
       ws = null
     }
 

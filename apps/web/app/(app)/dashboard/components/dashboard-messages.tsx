@@ -1,14 +1,18 @@
 'use client'
 
 import * as React from 'react'
-import { Message, Tool, Response, Loader, ReasoningCollapsible, SubagentTool, TodoProgress, Conversation, ConversationScrollButton } from '@ship/ui'
-import { Markdown } from '@/components/chat/markdown'
-import { ErrorMessage } from '@/components/chat/error-message'
-import { PermissionPrompt } from './permission-prompt'
-import { QuestionPrompt } from './question-prompt'
-import { type UIMessage, type ToolInvocation, getStreamingStatus, mapToolState } from '@/lib/ai-elements-adapter'
 import {
-  isSubagentToolInvocation,
+  Conversation,
+  ConversationScrollButton,
+  Message,
+  ThinkingBlock,
+  Loader,
+  SessionSetup,
+  Response,
+} from '@ship/ui'
+import type { UIMessage, ToolInvocation } from '@/lib/ai-elements-adapter'
+import { getStreamingStatus } from '@/lib/ai-elements-adapter'
+import {
   extractSubagentSessionId,
   getSubagentType,
   getSubagentDescription,
@@ -16,8 +20,203 @@ import {
   getSubagentResultText,
   extractChildToolsFromResult,
 } from '@/lib/subagent/utils'
+import { mapToolState } from '@/lib/ai-elements-adapter'
 import { SubagentView, type SubagentViewState } from './subagent-view'
 import type { TodoItem } from '../types'
+import { formatAgentType } from './messages/helpers'
+import { MessageItem, MessagesEmptyState } from './messages'
+import { MessageToolList } from './messages/tool-list'
+import { Markdown } from '@/components/chat/markdown'
+
+// ─── Message Grouping ──────────────────────────────────────────────
+
+type MessageGroup =
+  | { type: 'single'; message: UIMessage }
+  | { type: 'assistant-run'; messages: UIMessage[] }
+
+function groupConsecutiveAssistants(messages: UIMessage[]): MessageGroup[] {
+  const groups: MessageGroup[] = []
+  let run: UIMessage[] = []
+
+  const flushRun = () => {
+    if (run.length > 0) {
+      groups.push({ type: 'assistant-run', messages: [...run] })
+      run = []
+    }
+  }
+
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && !msg.type) {
+      run.push(msg)
+    } else {
+      flushRun()
+      groups.push({ type: 'single', message: msg })
+    }
+  }
+  flushRun()
+  return groups
+}
+
+// ─── Assistant Run Block ────────────────────────────────────────────
+
+interface AssistantRunBlockProps {
+  messages: UIMessage[]
+  streamingMessageId: string | null
+  streamStartTime: number | null
+  streamingStatusSteps: string[]
+  statusLabel: string
+  sessionTodos: TodoItem[]
+  todoRenderedRef: React.MutableRefObject<boolean>
+  onSubagentNavigate: (tool: ToolInvocation) => void
+  /** Only show SessionSetup for the first assistant in the thread */
+  showSessionSetup: boolean
+  /** Only show persisted startupSteps on the first assistant block */
+  isFirstAssistantBlock: boolean
+}
+
+function AssistantRunBlock({
+  messages,
+  streamingMessageId,
+  streamingStatusSteps,
+  statusLabel,
+  sessionTodos,
+  todoRenderedRef,
+  onSubagentNavigate,
+  showSessionSetup,
+  isFirstAssistantBlock,
+}: AssistantRunBlockProps) {
+  const isGroupStreaming = messages.some((m) => m.id === streamingMessageId)
+
+  const lastMsg = messages[messages.length - 1]
+  const isLastEmpty =
+    !lastMsg.content && !lastMsg.toolInvocations?.length && !lastMsg.reasoning?.length
+
+  // Single empty streaming message → show loader or session setup (only on first message)
+  if (messages.length === 1 && isLastEmpty && isGroupStreaming) {
+    if (showSessionSetup && streamingStatusSteps.length > 0) {
+      return (
+        <Message role="assistant">
+          <SessionSetup steps={streamingStatusSteps} isStreaming />
+        </Message>
+      )
+    }
+    return (
+      <Message role="assistant">
+        <Loader message={statusLabel || 'Thinking...'} />
+      </Message>
+    )
+  }
+
+  // Filter out completely empty messages (unless they're the streaming target)
+  const substantiveMessages = messages.filter(
+    (m) =>
+      m.content ||
+      m.toolInvocations?.length ||
+      m.reasoning?.length ||
+      m.id === streamingMessageId,
+  )
+
+  if (substantiveMessages.length === 0) return null
+
+  const allReasoning = substantiveMessages.flatMap((m) => m.reasoning || [])
+  const allToolsRaw = substantiveMessages.flatMap((m) => m.toolInvocations || [])
+  // Dedupe by toolCallId — keep last occurrence (most up-to-date state)
+  const toolsByCallId = new Map<string, ToolInvocation>()
+  const toolOrder: string[] = []
+  for (const t of allToolsRaw) {
+    if (!toolsByCallId.has(t.toolCallId)) toolOrder.push(t.toolCallId)
+    toolsByCallId.set(t.toolCallId, t)
+  }
+  const allTools = toolOrder.map((id) => toolsByCallId.get(id)!)
+  const startupStepsMsg = substantiveMessages.find((m) => m.startupSteps?.length)
+  const allPlanItemsRaw = substantiveMessages.flatMap((m) => m.planItems || [])
+  const planById = new Map(allPlanItemsRaw.map((p) => [p.id, p]))
+  const allPlanItems = Array.from(planById.values())
+  // Use only last message's content — parts are cumulative, last has full text
+  const lastMsgContent = substantiveMessages[substantiveMessages.length - 1]?.content ?? ''
+  const textContent = lastMsgContent
+
+  const hasReasoning = allReasoning.length > 0
+  const hasTools = allTools.length > 0
+
+  return (
+    <Message role="assistant" className={isGroupStreaming ? 'will-change-contents' : undefined}>
+      {isFirstAssistantBlock && startupStepsMsg?.startupSteps && (
+        <SessionSetup
+          steps={startupStepsMsg.startupSteps}
+          defaultOpen={false}
+          className="my-1"
+        />
+      )}
+
+      {(hasReasoning || hasTools) && (
+        <ThinkingBlock
+          reasoning={allReasoning}
+          isStreaming={isGroupStreaming}
+          duration={
+            substantiveMessages[substantiveMessages.length - 1]?.elapsed != null
+              ? Math.floor(substantiveMessages[substantiveMessages.length - 1]!.elapsed! / 1000)
+              : undefined
+          }
+        >
+          {hasTools && (
+            <MessageToolList
+              tools={allTools}
+              sessionTodos={sessionTodos}
+              todoRenderedRef={todoRenderedRef}
+              onSubagentNavigate={onSubagentNavigate}
+            />
+          )}
+        </ThinkingBlock>
+      )}
+
+      {allPlanItems.length > 0 && (
+        <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Plan
+          </div>
+          {allPlanItems.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 text-sm">
+              <span className="shrink-0 w-4 text-center">
+                {item.status === 'completed'
+                  ? '✓'
+                  : item.status === 'in_progress'
+                    ? '●'
+                    : item.status === 'cancelled'
+                      ? '✗'
+                      : '○'}
+              </span>
+              <span
+                className={
+                  item.status === 'completed'
+                    ? 'text-muted-foreground line-through'
+                    : item.status === 'in_progress'
+                      ? 'text-foreground font-medium'
+                      : item.status === 'cancelled'
+                        ? 'text-muted-foreground/50 line-through'
+                        : 'text-foreground'
+                }
+              >
+                {item.title}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {textContent && (
+        <div className={hasTools ? 'mt-4' : undefined}>
+          <Response>
+            <Markdown content={textContent} isAnimating={isGroupStreaming} />
+          </Response>
+        </div>
+      )}
+
+    </Message>
+  )
+}
+
+// ─── Dashboard Messages ─────────────────────────────────────────────
 
 interface DashboardMessagesProps {
   activeSessionId: string | null
@@ -25,8 +224,12 @@ interface DashboardMessagesProps {
   isStreaming: boolean
   streamingMessageId: string | null
   streamStartTime: number | null
+  streamingStatus?: string
+  streamingStatusSteps?: string[]
   sessionTodos?: TodoItem[]
   onPermissionReply?: (permissionId: string, approved: boolean) => Promise<void>
+  onQuestionReply?: (questionId: string, response: string) => Promise<void>
+  onQuestionSkip?: (questionId: string) => Promise<void>
 }
 
 export function DashboardMessages({
@@ -35,17 +238,46 @@ export function DashboardMessages({
   isStreaming,
   streamingMessageId,
   streamStartTime,
+  streamingStatus = '',
+  streamingStatusSteps = [],
   sessionTodos = [],
   onPermissionReply,
+  onQuestionReply,
+  onQuestionSkip,
 }: DashboardMessagesProps) {
   const [subagentStack, setSubagentStack] = React.useState<SubagentViewState[]>([])
+  const todoRenderedRef = React.useRef(false)
+
+  const messageGroups = React.useMemo(() => groupConsecutiveAssistants(messages), [messages])
+
+  const { showSessionSetup, firstAssistantBlockIndex } = React.useMemo(() => {
+    const hasCompletedAssistant = messages.some(
+      (m) =>
+        m.role === 'assistant' &&
+        m.id !== streamingMessageId &&
+        (m.content || (m.toolInvocations?.length ?? 0) > 0),
+    )
+    let firstIdx = -1
+    for (let i = 0; i < messageGroups.length; i++) {
+      if (messageGroups[i].type === 'assistant-run') {
+        firstIdx = i
+        break
+      }
+    }
+    return {
+      showSessionSetup: !hasCompletedAssistant,
+      firstAssistantBlockIndex: firstIdx,
+    }
+  }, [messages, streamingMessageId, messageGroups])
 
   if (!activeSessionId) return null
 
-  const statusLabel = isStreaming ? getStreamingStatus(messages, streamingMessageId) : ''
+  todoRenderedRef.current = false
+  const statusLabel = isStreaming
+    ? getStreamingStatus(messages, streamingMessageId) || streamingStatus
+    : ''
   const hasContent = messages.some((m) => m.content || m.toolInvocations?.length)
 
-  // Sub-agent navigation handlers
   const handleSubagentNavigate = (tool: ToolInvocation) => {
     const agentType = getSubagentType(tool) || String(tool.args?.subagent_type || 'Agent')
     const description = getSubagentDescription(tool) || String(tool.args?.description || '')
@@ -75,232 +307,93 @@ export function DashboardMessages({
     setSubagentStack((prev) => prev.slice(0, -1))
   }
 
-  // If we're viewing a sub-agent, render that instead
-  if (subagentStack.length > 0) {
-    const currentSubagent = subagentStack[subagentStack.length - 1]
+  // When in subagent view, sync with latest tool data from parent messages.
+  // The tool may not have sessionId yet when user first clicks — it arrives via SSE later.
+  const resolvedSubagent = React.useMemo(() => {
+    if (subagentStack.length === 0) return null
+    const stackTop = subagentStack[subagentStack.length - 1]!
+    const toolCallId = stackTop.toolCallId
+
+    // Find the tool in messages (most up-to-date occurrence)
+    let latestTool: ToolInvocation | null = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      const tools = msg?.toolInvocations ?? []
+      const found = tools.find((t) => t.toolCallId === toolCallId)
+      if (found) {
+        latestTool = found
+        break
+      }
+    }
+
+    if (!latestTool) return stackTop
+
+    const sessionId = extractSubagentSessionId(latestTool) || stackTop.sessionId
+    const resultText = getSubagentResultText(latestTool) || stackTop.resultText
+    const childTools = extractChildToolsFromResult(latestTool)
+    const toolStatus = mapToolState(latestTool.state)
+
+    return {
+      ...stackTop,
+      sessionId: sessionId || stackTop.sessionId,
+      resultText: resultText || stackTop.resultText,
+      childTools: childTools.length > 0 ? childTools : stackTop.childTools,
+      toolStatus,
+      duration: latestTool.duration ?? stackTop.duration,
+    }
+  }, [subagentStack, messages])
+
+  if (resolvedSubagent) {
     return (
       <SubagentView
-        subagent={currentSubagent}
+        subagent={resolvedSubagent}
         onBack={handleSubagentBack}
         parentSessionId={activeSessionId}
       />
     )
   }
 
-  // Track if we've rendered the todo progress card inline
-  let todoRendered = false
-
   return (
     <Conversation className="h-full">
       <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
-        {/* Empty state */}
-        {!hasContent && !isStreaming && (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <svg
-              className="w-8 h-8 mb-3 text-muted-foreground/30"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span className="text-sm">Send a message to start the conversation.</span>
-          </div>
-        )}
+        {!hasContent && !isStreaming && <MessagesEmptyState />}
 
-        {/* Messages */}
         <div className="space-y-6">
-          {messages.map((message) => {
-            // Permission prompts
-            if (message.type === 'permission' && message.promptData) {
+          {messageGroups.map((group, idx) => {
+            if (group.type === 'single') {
               return (
-                <div key={message.id} className="py-2">
-                  <PermissionPrompt
-                    id={message.promptData.id}
-                    permission={message.promptData.permission || ''}
-                    description={message.promptData.description}
-                    patterns={message.promptData.patterns}
-                    status={message.promptData.status as 'pending' | 'granted' | 'denied'}
-                    onApprove={
-                      onPermissionReply && activeSessionId
-                        ? () => onPermissionReply(message.promptData!.id, true)
-                        : undefined
-                    }
-                    onDeny={
-                      onPermissionReply && activeSessionId
-                        ? () => onPermissionReply(message.promptData!.id, false)
-                        : undefined
-                    }
-                  />
-                </div>
+                <MessageItem
+                  key={group.message.id}
+                  message={group.message}
+                  isCurrentlyStreaming={group.message.id === streamingMessageId}
+                  streamStartTime={streamStartTime}
+                  streamingStatusSteps={streamingStatusSteps}
+                  statusLabel={statusLabel}
+                  sessionTodos={sessionTodos}
+                  todoRenderedRef={todoRenderedRef}
+                  activeSessionId={activeSessionId}
+                  onPermissionReply={onPermissionReply}
+                  onQuestionReply={onQuestionReply}
+                  onQuestionSkip={onQuestionSkip}
+                  onSubagentNavigate={handleSubagentNavigate}
+                  showSessionSetup={showSessionSetup}
+                />
               )
             }
-
-            // Question prompts
-            if (message.type === 'question' && message.promptData) {
-              return (
-                <div key={message.id} className="py-2">
-                  <QuestionPrompt
-                    id={message.promptData.id}
-                    text={message.promptData.text || message.content}
-                    status={message.promptData.status as 'pending' | 'replied' | 'rejected'}
-                  />
-                </div>
-              )
-            }
-
-            // Error messages
-            if (message.type === 'error') {
-              return (
-                <div key={message.id} className="py-2">
-                  <ErrorMessage
-                    message={message.content}
-                    category={message.errorCategory || 'persistent'}
-                    retryable={message.retryable || false}
-                  />
-                </div>
-              )
-            }
-
-            // PR notification
-            if (message.type === 'pr-notification') {
-              return (
-                <Message key={message.id} role="system">
-                  <div className="border border-green-500/50 bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-green-600">&#x2714;</span>
-                      <span className="text-foreground">{message.content}</span>
-                    </div>
-                  </div>
-                </Message>
-              )
-            }
-
-            // Skip empty streaming assistant messages
-            const isCurrentlyStreaming = message.id === streamingMessageId
-            if (
-              message.role === 'assistant' &&
-              !message.content &&
-              !message.toolInvocations?.length &&
-              !message.reasoning?.length &&
-              isCurrentlyStreaming
-            ) {
-              return (
-                <Message key={message.id} role="assistant">
-                  <Loader message={statusLabel || 'Thinking...'} />
-                </Message>
-              )
-            }
-
-            // Skip truly empty messages
-            if (!message.content && !message.toolInvocations?.length && !message.reasoning?.length) {
-              return null
-            }
-
-            const hasOnlyReasoning =
-              message.role === 'assistant' &&
-              (message.reasoning && message.reasoning.length > 0) &&
-              (!message.toolInvocations || message.toolInvocations.length === 0) &&
-              !message.content
-
-            const hasSteps =
-              message.role === 'assistant' &&
-              (message.toolInvocations && message.toolInvocations.length > 0)
-
             return (
-              <Message
-                key={message.id}
-                role={message.role}
-                className={isCurrentlyStreaming ? 'will-change-[contents]' : undefined}
-              >
-                {/* User messages */}
-                {message.role === 'user' && message.content && (
-                  <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
-                )}
-
-                {/* Reasoning-only: show collapsible reasoning content (like ai-elements Reasoning) */}
-                {hasOnlyReasoning && (
-                  <ReasoningCollapsible
-                    isStreaming={isCurrentlyStreaming}
-                    duration={
-                      streamStartTime
-                        ? Math.floor((Date.now() - streamStartTime) / 1000)
-                        : undefined
-                    }
-                  >
-                    {message.reasoning?.join('\n\n') ?? ''}
-                  </ReasoningCollapsible>
-                )}
-
-                {/* Tool calls — each Tool has its own collapsible with arrow */}
-                {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
-                  <div className="space-y-2 my-1">
-                    {message.toolInvocations.map((tool) => {
-                          // Check for todo tools — render inline TodoProgress
-                          const isTodoTool = tool.toolName.toLowerCase().includes('todo')
-                          if (isTodoTool && sessionTodos.length > 0 && !todoRendered) {
-                            if (tool.toolName.toLowerCase().includes('todoread')) {
-                              return null
-                            }
-                            todoRendered = true
-                            return (
-                              <TodoProgress key={tool.toolCallId} todos={sessionTodos} />
-                            )
-                          }
-                          if (isTodoTool) {
-                            return null
-                          }
-
-                          // Check for sub-agent tools
-                          const isSubagent = isSubagentToolInvocation(tool)
-                          if (isSubagent) {
-                            const agentType = getSubagentType(tool) || String(tool.args?.subagent_type || tool.args?.description || 'Agent')
-                            const description = getSubagentDescription(tool) || String(tool.args?.prompt || tool.args?.description || '')
-                            const childTools = extractChildToolsFromResult(tool)
-                            const resultText = getSubagentResultText(tool)
-                            const toolStatus = mapToolState(tool.state)
-                            return (
-                              <SubagentTool
-                                key={tool.toolCallId}
-                                toolCallId={tool.toolCallId}
-                                agentType={agentType}
-                                description={description}
-                                status={toolStatus}
-                                duration={tool.duration}
-                                childTools={childTools.length > 0 ? childTools : undefined}
-                                result={resultText ? <Markdown content={resultText} /> : undefined}
-                                onNavigate={() => handleSubagentNavigate(tool)}
-                              />
-                            )
-                          }
-
-                          // Regular tool
-                          return (
-                            <Tool
-                              key={tool.toolCallId}
-                              name={tool.toolName}
-                              status={mapToolState(tool.state)}
-                              input={tool.args}
-                              output={tool.result}
-                              duration={tool.duration}
-                            />
-                          )
-                        })}
-                  </div>
-                )}
-
-                {/* Assistant response content */}
-                {message.role === 'assistant' && message.content && (
-                  <div className={hasSteps ? 'mt-4' : undefined}>
-                    <Response>
-                      <Markdown content={message.content} isAnimating={isCurrentlyStreaming} />
-                    </Response>
-                  </div>
-                )}
-              </Message>
+              <AssistantRunBlock
+                key={group.messages[0].id}
+                messages={group.messages}
+                streamingMessageId={streamingMessageId}
+                streamStartTime={streamStartTime}
+                streamingStatusSteps={streamingStatusSteps}
+                statusLabel={statusLabel}
+                sessionTodos={sessionTodos}
+                todoRenderedRef={todoRenderedRef}
+                onSubagentNavigate={handleSubagentNavigate}
+                showSessionSetup={showSessionSetup}
+                isFirstAssistantBlock={idx === firstAssistantBlockIndex}
+              />
             )
           })}
         </div>
@@ -309,13 +402,4 @@ export function DashboardMessages({
       <ConversationScrollButton />
     </Conversation>
   )
-}
-
-// Helper
-function formatAgentType(raw: string): string {
-  if (!raw) return 'Agent'
-  return raw
-    .split(/[-_]/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
 }

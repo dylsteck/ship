@@ -6,14 +6,33 @@
 export { API_URL } from '@/lib/config'
 import { API_URL } from '@/lib/config'
 
+let _apiToken: string | null = null
+
+/** Set the API auth token (session JWT passed from server components) */
+export function setApiToken(token: string): void {
+  _apiToken = token
+}
+
+/** Get the current API auth token (for WebSocket connections that need query param auth) */
+export function getApiToken(): string | null {
+  return _apiToken
+}
+
+function authHeaders(extra?: HeadersInit): HeadersInit {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (_apiToken) headers['Authorization'] = `Bearer ${_apiToken}`
+  if (extra) {
+    const entries = extra instanceof Headers ? Array.from(extra.entries()) : Object.entries(extra)
+    for (const [k, v] of entries) headers[k] = v as string
+  }
+  return headers
+}
+
 // Type-safe fetcher for SWR
 export async function fetcher<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
+    headers: authHeaders(init?.headers as HeadersInit | undefined),
   })
 
   if (!res.ok) {
@@ -30,9 +49,9 @@ export async function fetcher<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-// Fetcher with credentials (for authenticated requests)
+// Fetcher with credentials (for authenticated requests — auth header added automatically)
 export async function authFetcher<T>(url: string): Promise<T> {
-  return fetcher<T>(url, { credentials: 'include' })
+  return fetcher<T>(url)
 }
 
 // POST request helper
@@ -42,9 +61,8 @@ export async function post<TBody, TResponse>(
 ): Promise<TResponse> {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(body),
-    credentials: 'include',
   })
 
   if (!res.ok) {
@@ -65,7 +83,7 @@ export async function post<TBody, TResponse>(
 export async function del<TResponse = void>(url: string): Promise<TResponse> {
   const res = await fetch(url, {
     method: 'DELETE',
-    credentials: 'include',
+    headers: authHeaders(),
   })
 
   if (!res.ok) {

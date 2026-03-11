@@ -25,10 +25,15 @@ export interface SSEHandlerContext {
   setLastStepCost: React.Dispatch<React.SetStateAction<StepCostInfo | null>>
   setSessionTodos: React.Dispatch<React.SetStateAction<TodoItem[]>>
   setFileDiffs: React.Dispatch<React.SetStateAction<FileDiff[]>>
-  setOpenCodeUrl: React.Dispatch<React.SetStateAction<string>>
+  setAgentUrl: React.Dispatch<React.SetStateAction<string>>
   setSessionTitle: React.Dispatch<React.SetStateAction<string>>
   setSessionInfo: React.Dispatch<React.SetStateAction<SessionInfo | null>>
+  setAgentSessionId: React.Dispatch<React.SetStateAction<string>>
   setStreamStartTime: (value: number | null) => void
+  setStreamingStatus: (value: string, appendToSteps?: boolean) => void
+  accumulateSetupStepsRef: React.MutableRefObject<boolean>
+  streamingStatusStepsRef: React.MutableRefObject<string[]>
+  clearStreamingStatusSteps: () => void
   streamingMessageRef: React.MutableRefObject<string | null>
   assistantTextRef: React.MutableRefObject<string>
   reasoningRef: React.MutableRefObject<string>
@@ -84,6 +89,9 @@ export function handleDoneOrIdle(
     const elapsed = streamStartTimeRef.current
       ? Date.now() - streamStartTimeRef.current
       : 0
+    const startupSteps = ctx.streamingStatusStepsRef.current.length > 0
+      ? [...ctx.streamingStatusStepsRef.current]
+      : undefined
     ctx.setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== finalMsgId) return m
@@ -91,6 +99,7 @@ export function handleDoneOrIdle(
           ...m,
           content: finalText,
           ...(finalReasoning ? { reasoning: [finalReasoning] } : {}),
+          ...(startupSteps ? { startupSteps } : {}),
           elapsed,
         }
       }),
@@ -98,6 +107,8 @@ export function handleDoneOrIdle(
   }
   ctx.setIsStreaming(false)
   ctx.setStreamStartTime(null)
+  ctx.setStreamingStatus('')
+  ctx.clearStreamingStatusSteps()
   ctx.streamingMessageRef.current = null
 }
 
@@ -115,14 +126,20 @@ export function handleSessionError(
   const { category, retryable } = classifyError(errorMessage)
   ctx.setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
   ctx.setIsStreaming(false)
+  ctx.setStreamingStatus('')
   ctx.streamingMessageRef.current = null
 }
 
 export function handleGenericError(error: unknown, ctx: SSEHandlerContext) {
   const errorMessage = parseErrorMessage(error)
   const { category, retryable } = classifyError(errorMessage)
-  ctx.setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
+  const msgId = ctx.streamingMessageRef.current
+  ctx.setMessages((prev) => {
+    const withoutPlaceholder = msgId ? prev.filter((m) => m.id !== msgId) : prev
+    return [...withoutPlaceholder, createErrorMessage(errorMessage, category, retryable)]
+  })
   ctx.setIsStreaming(false)
+  ctx.setStreamingStatus('')
   ctx.streamingMessageRef.current = null
 }
 
@@ -159,10 +176,18 @@ export function handleQuestionResolved(
   ctx.setMessages((prev) => updatePromptStatus(id, status, prev))
 }
 
-export function handleOpenCodeUrl(url: string, ctx: SSEHandlerContext) {
-  ctx.setOpenCodeUrl(url)
-  try { localStorage.setItem(`opencode-url-${ctx.targetSessionId}`, url) } catch {}
+export function handleAgentUrl(url: string, ctx: SSEHandlerContext) {
+  ctx.setAgentUrl(url)
+  try { localStorage.setItem(`agent-url-${ctx.targetSessionId}`, url) } catch {}
 }
+
+export function handleAgentSession(agentSessionId: string, ctx: SSEHandlerContext) {
+  ctx.setAgentSessionId(agentSessionId)
+  try { localStorage.setItem(`agent-session-id-${ctx.targetSessionId}`, agentSessionId) } catch {}
+}
+
+/** @deprecated Use handleAgentUrl */
+export const handleOpenCodeUrl = handleAgentUrl
 
 export function handleRawDataFallbacks(
   rawData: Record<string, unknown>,

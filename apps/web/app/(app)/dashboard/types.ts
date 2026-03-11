@@ -1,6 +1,8 @@
 import type { SessionInfo } from '@/lib/sse-types'
 import type { StepFinishPart } from '@/lib/sse-types'
 
+export type RightSidebarTab = 'git' | 'desktop' | 'terminal' | 'overview'
+
 export interface TodoItem {
   id: string
   content: string
@@ -22,13 +24,16 @@ export interface StepCostInfo {
 export interface SessionPanelData {
   sessionId: string
   selectedRepo: { id: number; name: string; fullName: string; owner: string; private: boolean; description: string | null } | null
+  selectedAgent: { id: string; name: string } | null
   selectedModel: { id: string; name: string; provider: string } | null
-  mode: 'build' | 'plan'
+  mode: string
   lastStepCost: StepCostInfo | null
   totalCost: number
   sessionTodos: TodoItem[]
   fileDiffs: FileDiff[]
-  openCodeUrl: string
+  agentUrl: string
+  agentSessionId?: string
   sessionInfo: SessionInfo | null
   messages: import('@/lib/ai-elements-adapter').UIMessage[]
+  sandboxStatus?: string
 }

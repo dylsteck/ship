@@ -28,14 +28,18 @@ users.post('/upsert', async (c) => {
       .first<{ id: string }>()
 
     // Login restriction: only allow ALLOWED_USER_ID when enabled
-    if (c.env.LOGIN_RESTRICTED_TO_SINGLE_USER && c.env.ALLOWED_USER_ID) {
+    // Env vars are strings; "false" is truthy in JS, so check explicitly
+    const loginRestricted = c.env.LOGIN_RESTRICTED_TO_SINGLE_USER === 'true'
+    const allowedUserId = c.env.ALLOWED_USER_ID?.trim()
+    const isRestricted = loginRestricted && !!allowedUserId
+    if (isRestricted && allowedUserId) {
       if (!existing) {
         return c.json(
           { error: 'access_restricted', message: 'Access is restricted.' },
           403
         )
       }
-      if (existing.id !== c.env.ALLOWED_USER_ID) {
+      if (existing.id !== allowedUserId) {
         return c.json(
           { error: 'access_restricted', message: 'Access is restricted.' },
           403

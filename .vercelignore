@@ -2,3 +2,10 @@ node_modules
 .next
 .turbo
 .wrangler
+.agents
+.cursor
+.planning
+.claude
+AGENTS.md
+DEPLOYMENT.md
+LOCAL-SETUP.md

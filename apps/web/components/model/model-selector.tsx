@@ -86,14 +86,17 @@ export function ModelSelector({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        {Object.entries(groupedModels).map(([provider, providerModels]) => (
-          <SelectGroup key={provider}>
-            <SelectLabel className="capitalize">{provider}</SelectLabel>
-            {providerModels.map((model) => (
-              <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
+        {Object.entries(groupedModels).map(([provider, providerModels]) => {
+          const singleGroup = Object.keys(groupedModels).length === 1
+          return (
+            <SelectGroup key={provider}>
+              {!singleGroup && <SelectLabel className="capitalize">{provider}</SelectLabel>}
+              {providerModels.map((model) => (
+                <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+              ))}
+            </SelectGroup>
+          )
+        })}
       </SelectContent>
     </Select>
   )

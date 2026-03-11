@@ -1,10 +1,20 @@
 'use client'
 
 import * as React from 'react'
-import { Message, Tool, Response, Loader, ReasoningCollapsible, Conversation, ConversationScrollButton } from '@ship/ui'
+import {
+  Message,
+  Tool,
+  Response,
+  Loader,
+  ThinkingBlock,
+  SessionSetup,
+  Conversation,
+  ConversationScrollButton,
+} from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { mapToolState } from '@/lib/ai-elements-adapter'
 import { useSubagentStream } from '../hooks/use-subagent-stream'
+import { MessageToolList } from './messages/tool-list'
 
 interface SubagentViewState {
   toolCallId: string
@@ -34,7 +44,7 @@ function formatDuration(ms: number): string {
 }
 
 export function SubagentView({ subagent, onBack, parentSessionId }: SubagentViewProps) {
-  const { messages, isStreaming, status } = useSubagentStream({
+  const { messages, isStreaming, status, statusSteps } = useSubagentStream({
     parentSessionId,
     subagentSessionId: subagent.sessionId || null,
   })
@@ -49,128 +59,101 @@ export function SubagentView({ subagent, onBack, parentSessionId }: SubagentView
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/30 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+      {/* Compact inline bar: Back + label */}
+      <div className="flex items-center gap-2 px-4 py-1.5 text-xs">
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
+          ← Back
         </button>
-        <div className="h-4 w-px bg-border/50" />
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <svg
-            className="w-4 h-4 shrink-0 text-muted-foreground/70"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-          <span className="text-sm font-medium text-foreground truncate">
-            {subagent.description || subagent.agentType}
-          </span>
-          <span className="text-xs text-muted-foreground/50 shrink-0">(@{subagent.agentType.toLowerCase().replace(/\s+/g, '-')} subagent)</span>
-          {isStreaming && (
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-            </span>
-          )}
-        </div>
-        {subagent.duration && (
-          <span className="text-xs text-muted-foreground/50 shrink-0">{formatDuration(subagent.duration)}</span>
-        )}
+        <span className="text-muted-foreground/60">·</span>
+        <span className="text-muted-foreground truncate min-w-0">
+          {subagent.description || subagent.agentType}
+          {isStreaming && status && ` · ${status}`}
+          {subagent.duration && !isStreaming && ` · ${formatDuration(subagent.duration)}`}
+        </span>
       </div>
 
       {/* Content */}
-      <Conversation className="flex-1">
-        <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
-          {/* Agent prompt */}
+      <Conversation className="flex-1 min-h-0">
+        <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6 sm:py-5">
+          {/* Agent prompt — compact */}
           {subagent.prompt && (
-            <div className="mb-6">
-              <div className="text-sm text-foreground/80 bg-muted/30 rounded-lg px-4 py-3 border border-border/20">
+            <div className="mb-4">
+              <div className="text-sm text-foreground/80 leading-relaxed rounded-md px-3 py-2.5 bg-muted/15 border border-border/20">
                 {subagent.prompt}
               </div>
             </div>
           )}
 
-          {/* Live streaming content from child session (priority 1) */}
+          {/* Live streaming content from child session (priority 1) — same structure as main page */}
           {showStreamData && (
             <div className="space-y-4">
-              {status && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-                  {isStreaming && (
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/50 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary/60" />
-                    </span>
-                  )}
-                  {status}
-                </div>
+              {/* Session setup steps (like main page) */}
+              {statusSteps.length > 0 && (
+                <SessionSetup
+                  steps={statusSteps}
+                  isStreaming={isStreaming}
+                  defaultOpen={isStreaming}
+                />
               )}
-              {messages.map((message) => {
-                if (!message.content && !message.toolInvocations?.length && !message.reasoning?.length) {
-                  return isStreaming ? (
-                    <Message key={message.id} role="assistant">
-                      <Loader message={status || 'Working...'} />
-                    </Message>
-                  ) : null
-                }
-
-                const hasSteps =
-                  message.role === 'assistant' &&
-                  message.toolInvocations &&
-                  message.toolInvocations.length > 0
-
-                const hasOnlyReasoning =
-                  message.role === 'assistant' &&
-                  message.reasoning &&
-                  message.reasoning.length > 0 &&
-                  !message.toolInvocations?.length &&
-                  !message.content
-
-                return (
-                  <Message key={message.id} role={message.role}>
-                    {hasOnlyReasoning && (
-                      <ReasoningCollapsible isStreaming={isStreaming}>
-                        {message.reasoning?.join('\n\n') ?? ''}
-                      </ReasoningCollapsible>
-                    )}
-                    {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
-                      <div className="space-y-2 my-1">
-                        {message.toolInvocations.map((tool) => (
-                          <Tool
-                            key={tool.toolCallId}
-                            name={tool.toolName}
-                            status={mapToolState(tool.state)}
-                            input={tool.args}
-                            output={tool.result}
-                            duration={tool.duration}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {message.role === 'assistant' && message.content && (
-                      <div className={hasSteps ? 'mt-4' : undefined}>
-                        <Response>
-                          <Markdown content={message.content} isAnimating={isStreaming} />
-                        </Response>
-                      </div>
-                    )}
+              {/* Empty streaming message → show Loader with status (like main page) */}
+              {messages.length === 1 &&
+                !messages[0].content &&
+                !messages[0].toolInvocations?.length &&
+                !messages[0].reasoning?.length &&
+                isStreaming &&
+                statusSteps.length === 0 && (
+                  <Message role="assistant">
+                    <Loader message={status || 'Thinking...'} />
                   </Message>
+                )}
+              {/* Messages with content — use ThinkingBlock + tools (like main page) */}
+              {messages
+                .filter(
+                  (m) =>
+                    m.content || m.toolInvocations?.length || m.reasoning?.length,
                 )
-              })}
+                .map((message) => {
+                  const allReasoning = message.reasoning || []
+                  const allTools = message.toolInvocations || []
+                  const hasReasoning = allReasoning.length > 0
+                  const hasTools = allTools.length > 0
+
+                  return (
+                    <Message key={message.id} role={message.role}>
+                      {(hasReasoning || hasTools) && (
+                        <ThinkingBlock
+                          reasoning={allReasoning}
+                          isStreaming={isStreaming}
+                          duration={
+                            message.elapsed != null
+                              ? Math.floor(message.elapsed / 1000)
+                              : undefined
+                          }
+                        >
+                          {hasTools && (
+                            <MessageToolList
+                              tools={allTools}
+                              sessionTodos={[]}
+                              todoRenderedRef={{ current: false }}
+                              onSubagentNavigate={() => {}}
+                            />
+                          )}
+                        </ThinkingBlock>
+                      )}
+                      {message.role === 'assistant' && message.content && (
+                        <div className={hasTools ? 'mt-4' : undefined}>
+                          <Response>
+                            <Markdown content={message.content} isAnimating={isStreaming} />
+                          </Response>
+                        </div>
+                      )}
+                    </Message>
+                  )
+                })}
             </div>
           )}
 
@@ -211,9 +194,12 @@ export function SubagentView({ subagent, onBack, parentSessionId }: SubagentView
           {/* No data at all — shouldn't happen but handle gracefully */}
           {!subagent.sessionId && !showResultFallback && !showChildToolsFallback && (
             <Message role="assistant">
-              <div className="text-sm text-muted-foreground/60">
+              <div className="flex items-center gap-3 text-sm text-muted-foreground/70">
+                {(subagent.toolStatus === 'in_progress' || subagent.toolStatus === 'pending') && (
+                  <span className="h-4 w-4 shrink-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                )}
                 {subagent.toolStatus === 'in_progress' || subagent.toolStatus === 'pending'
-                  ? <Loader message="Sub-agent is working..." />
+                  ? 'Thinking...'
                   : 'Sub-agent completed without output.'}
               </div>
             </Message>

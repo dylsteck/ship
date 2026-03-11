@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext } from 'react'
-import type { GitHubRepo, ModelInfo } from '@/lib/api/types'
+import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId } from '@/lib/api/types'
 
 export interface ComposerContextValue {
   activeSessionId: string | null
@@ -15,12 +15,21 @@ export interface ComposerContextValue {
   reposLoadMore: () => void
   reposHasMore: boolean
   reposLoadingMore: boolean
+  selectedBranch: string
+  onBranchSelect: (branch: string) => void
+  branches: string[]
+  branchesLoading: boolean
+  selectedAgent: AgentInfo | null
+  onAgentSelect: (agent: AgentInfo) => void
+  agents: AgentInfo[]
+  agentsLoading: boolean
   selectedModel: ModelInfo | null
   onModelSelect: (model: ModelInfo) => void
   modelsLoading: boolean
   groupedByProvider: Record<string, ModelInfo[]>
-  mode: 'build' | 'plan'
-  onModeChange: (mode: 'build' | 'plan') => void
+  mode: AgentModeId
+  onModeChange: (mode: AgentModeId) => void
+  availableModes: AgentMode[]
   onSubmit: () => void
   onStop: () => void
   isCreating: boolean

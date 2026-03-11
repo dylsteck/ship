@@ -392,8 +392,13 @@ export class SessionDO extends DurableObject<Env> {
       this.sandboxManager = new SandboxManager(apiKey, sessionId)
     }
 
-    // Provision new sandbox
-    const info = await this.sandboxManager.provision()
+    // Build env vars for agent auth (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+    const envs: Record<string, string> = {}
+    if (this.env.ANTHROPIC_API_KEY) envs.ANTHROPIC_API_KEY = this.env.ANTHROPIC_API_KEY
+    if (this.env.OPENAI_API_KEY) envs.OPENAI_API_KEY = this.env.OPENAI_API_KEY
+
+    // Provision new sandbox with envs baked in
+    const info = await this.sandboxManager.provision(envs)
 
     // Store sandbox ID and status in session_meta
     await this.setSessionMeta('sandbox_id', info.id)
@@ -492,13 +497,24 @@ export class SessionDO extends DurableObject<Env> {
    * Get sandbox status
    * Returns current status from session_meta
    */
-  async getSandboxStatus(): Promise<{ sandboxId: string | null; status: string | null; opencodeUrl?: string | null; opencodeSessionId?: string | null }> {
+  async getSandboxStatus(): Promise<{
+    sandboxId: string | null
+    status: string | null
+    ready?: boolean
+    sandboxAgentUrl?: string | null
+    agentSessionId?: string | null
+    agentType?: string | null
+  }> {
     const meta = await this.getSessionMeta()
+    const sandboxId = meta['sandbox_id'] || null
+    const status = meta['sandbox_status'] || null
     return {
-      sandboxId: meta['sandbox_id'] || null,
-      status: meta['sandbox_status'] || null,
-      opencodeUrl: meta['opencode_url'] || null,
-      opencodeSessionId: meta['opencodeSessionId'] || null,
+      sandboxId,
+      status,
+      ready: !!(sandboxId && (status === 'active' || status === 'ready')),
+      sandboxAgentUrl: meta['sandbox_agent_url'] || null,
+      agentSessionId: meta['agent_session_id'] || null,
+      agentType: meta['agent_type'] || null,
     }
   }
 
@@ -975,10 +991,14 @@ export class SessionDO extends DurableObject<Env> {
 
   /**
    * WebSocket close handler (required for Hibernation API)
-   * CRITICAL: Must reciprocate close to avoid 1006 errors
+   * CRITICAL: Must reciprocate close to avoid 1006 errors.
+   * Codes 1005, 1006, 1015 are reserved and cannot be sent in close() — skip reciprocation.
    */
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    // Reciprocate the close
+    const RESERVED_CODES = [1005, 1006, 1015]
+    if (RESERVED_CODES.includes(code) || code < 1000 || code > 4999) {
+      return
+    }
     ws.close(code, reason)
   }
 

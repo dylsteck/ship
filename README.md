@@ -43,14 +43,14 @@ cp .env.example .env.local
 
 Edit `.env.local`:
 
-| Variable | Description |
-|---------|-------------|
-| `GITHUB_CLIENT_ID` | From [GitHub OAuth App](https://github.com/settings/developers) |
-| `GITHUB_CLIENT_SECRET` | From same OAuth App |
-| `SESSION_SECRET` | `openssl rand -hex 32` |
-| `API_BASE_URL` | `http://localhost:8787` (local) |
-| `NEXT_PUBLIC_API_URL` | Same as `API_BASE_URL` |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` |
+| Variable               | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `GITHUB_CLIENT_ID`     | From [GitHub OAuth App](https://github.com/settings/developers) |
+| `GITHUB_CLIENT_SECRET` | From same OAuth App                                             |
+| `SESSION_SECRET`       | `openssl rand -hex 32`                                          |
+| `API_BASE_URL`         | `http://localhost:8787` (local)                                 |
+| `NEXT_PUBLIC_API_URL`  | Same as `API_BASE_URL`                                          |
+| `NEXT_PUBLIC_APP_URL`  | `http://localhost:3000`                                         |
 
 **API** (`apps/api`):
 
@@ -61,14 +61,14 @@ cp .dev.vars.example .dev.vars
 
 Edit `.dev.vars`:
 
-| Variable | Description |
-|---------|-------------|
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| `E2B_API_KEY` | [e2b.dev/dashboard](https://e2b.dev/dashboard) → Settings → API Keys |
-| `API_SECRET` | `openssl rand -hex 32` (must match web app expectations) |
-| `ALLOWED_ORIGINS` | `http://localhost:3000` |
-| `LOGIN_RESTRICTED_TO_SINGLE_USER` | *(optional)* `true` to restrict login to one user |
-| `ALLOWED_USER_ID` | *(optional)* Your user ID from `users` table (required when restricted) |
+| Variable                          | Description                                                             |
+| --------------------------------- | ----------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`               | [console.anthropic.com](https://console.anthropic.com/settings/keys)    |
+| `E2B_API_KEY`                     | [e2b.dev/dashboard](https://e2b.dev/dashboard) → Settings → API Keys    |
+| `API_SECRET`                      | `openssl rand -hex 32` (must match web app expectations)                |
+| `ALLOWED_ORIGINS`                 | `http://localhost:3000`                                                 |
+| `LOGIN_RESTRICTED_TO_SINGLE_USER` | _(optional)_ `true` to restrict login to one user                       |
+| `ALLOWED_USER_ID`                 | _(optional)_ Your user ID from `users` table (required when restricted) |
 
 > **Tip:** For private instances, set `LOGIN_RESTRICTED_TO_SINGLE_USER=true` and `ALLOWED_USER_ID` to your user ID (from `SELECT id FROM users`) so only you can sign in.
 
@@ -116,21 +116,23 @@ pnpm dev
 
 ### Commands
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start web + API |
-| `pnpm build` | Build all apps |
-| `pnpm lint` | Lint |
-| `pnpm type-check` | TypeScript check |
+| Command            | Description                   |
+| ------------------ | ----------------------------- |
+| `pnpm dev`         | Start web + API               |
+| `pnpm build`       | Build all apps                |
+| `pnpm lint`        | Lint                          |
+| `pnpm type-check`  | TypeScript check              |
+| `pnpm deploy`      | Deploy preview (web + API)    |
+| `pnpm deploy:prod` | Deploy production (web + API) |
 
 ### API commands (from `apps/api`)
 
-| Command | Description |
-|---------|-------------|
-| `npx wrangler dev` | Run Worker locally |
-| `npx wrangler d1 execute ship-db --local --file=<sql>` | Run migration |
-| `npx wrangler d1 execute ship-db --local --command="SELECT * FROM users"` | Query DB |
-| `npx wrangler tail ship-api-production` | Stream prod logs |
+| Command                                                                   | Description        |
+| ------------------------------------------------------------------------- | ------------------ |
+| `npx wrangler dev`                                                        | Run Worker locally |
+| `npx wrangler d1 execute ship-db --local --file=<sql>`                    | Run migration      |
+| `npx wrangler d1 execute ship-db --local --command="SELECT * FROM users"` | Query DB           |
+| `npx wrangler tail ship-api-production`                                   | Stream prod logs   |
 
 ### Code style
 
@@ -160,6 +162,8 @@ pnpm dev
 
 ## Architecture
 
+For a detailed architecture overview, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
 ```mermaid
 graph TD
     A[Next.js Web] -->|SSE| B[Cloudflare Worker]
@@ -171,17 +175,17 @@ graph TD
 
 ### Tech stack
 
-| Layer | Tech |
-|-------|------|
-| Monorepo | Turborepo, pnpm workspaces |
-| Frontend | Next.js 16, React 19, Tailwind v4, Base UI |
-| Backend | Cloudflare Workers (Hono), Durable Objects |
-| Database | Cloudflare D1 (SQLite) |
-| Auth | GitHub OAuth (Arctic), JWT (jose) |
-| Sandboxes | E2B (OpenCode SDK) |
-| Agents | OpenCode SDK (Claude, GPT-4, etc.) |
-| MCP | Vercel, Grep, Context7 |
-| Real-time | SSE, WebSockets |
+| Layer     | Tech                                       |
+| --------- | ------------------------------------------ |
+| Monorepo  | Turborepo, pnpm workspaces                 |
+| Frontend  | Next.js 16, React 19, Tailwind v4, Base UI |
+| Backend   | Cloudflare Workers (Hono), Durable Objects |
+| Database  | Cloudflare D1 (SQLite)                     |
+| Auth      | GitHub OAuth (Arctic), JWT (jose)          |
+| Sandboxes | E2B (OpenCode SDK)                         |
+| Agents    | OpenCode SDK (Claude, GPT-4, etc.)         |
+| MCP       | Grep, DeepWiki, Exa                       |
+| Real-time | SSE, WebSockets                            |
 
 ### Project structure
 
@@ -208,7 +212,16 @@ ship/
 
 ## Deployment
 
-### Cloudflare Worker (API)
+From the repo root:
+
+```bash
+pnpm deploy        # Preview deploy (web + API)
+pnpm deploy:prod  # Production deploy (web + API)
+```
+
+### Manual commands
+
+#### Cloudflare Worker (API)
 
 ```bash
 cd apps/api

@@ -12,6 +12,8 @@ interface SessionDTO {
   createdAt: number
   archivedAt: number | null
   title?: string
+  model?: string
+  agentType?: string
 }
 
 // Database row type
@@ -33,6 +35,11 @@ interface CreateSessionInput {
   repoOwner: string
   repoName: string
   model?: string
+  agentType?: string
+  /** Initial title (e.g. from first prompt) */
+  title?: string
+  /** Base branch to create ship branch from (e.g. main). Defaults to main. */
+  baseBranch?: string
 }
 
 const sessions = new Hono<{ Bindings: Env }>()
@@ -97,58 +104,55 @@ sessions.post('/', async (c) => {
     const sessionId = crypto.randomUUID()
     const now = Math.floor(Date.now() / 1000)
 
-    // Create DO instance and initialize metadata
-    const doId = c.env.SESSION_DO.idFromName(sessionId)
-    const doStub = c.env.SESSION_DO.get(doId)
-
-    // Initialize session metadata in DO
-    await doStub.setSessionMeta('userId', input.userId)
-    await doStub.setSessionMeta('repoOwner', input.repoOwner)
-    await doStub.setSessionMeta('repoName', input.repoName)
-    await doStub.setSessionMeta('createdAt', now.toString())
-
-    // Store model override if provided
-    if (input.model) {
-      await doStub.setSessionMeta('model', input.model)
-    }
-
-    // Set initial sandbox status to provisioning
-    await doStub.setSessionMeta('sandbox_status', 'provisioning')
-
-    // Store session record in D1 FIRST (don't block on sandbox)
+    // Store session record in D1 FIRST — ensures session exists before any DO cold start
     await c.env.DB.prepare(
-      `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+      `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at, title)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
     )
-      .bind(sessionId, input.userId, input.repoOwner, input.repoName, now, now)
+      .bind(sessionId, input.userId, input.repoOwner, input.repoName, now, now, input.title ?? null)
       .run()
 
-    // Start sandbox provisioning in background (don't block session creation)
+    // Start DO init + sandbox provisioning in background (don't block session creation)
     c.executionCtx.waitUntil(
-      doStub
-        .fetch(`http://do/sandbox/provision`, {
-          method: 'POST',
-        })
-        .then(async (res) => {
-          if (!res.ok) {
-            const error = await res.json().catch(() => ({ error: 'Unknown error' }))
-            console.error(`[sessions] Sandbox provisioning failed for ${sessionId}:`, error)
-            // Set error status so chat endpoint knows
-            await doStub.setSessionMeta('sandbox_status', 'error')
-            await doStub.fetch(`http://do/broadcast`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'sandbox-status',
-                status: 'error',
-                error: (error as { error?: string }).error || 'Sandbox provisioning failed',
-              }),
-            })
-          }
-        })
-        .catch(async (err) => {
-          console.error(`[sessions] Sandbox provisioning error for ${sessionId}:`, err)
-          // Set error status
+      (async () => {
+        const doId = c.env.SESSION_DO.idFromName(sessionId)
+        const doStub = c.env.SESSION_DO.get(doId)
+
+        // Initialize session metadata in DO
+        await doStub.setSessionMeta('userId', input.userId)
+        await doStub.setSessionMeta('repoOwner', input.repoOwner)
+        await doStub.setSessionMeta('repoName', input.repoName)
+        await doStub.setSessionMeta('createdAt', now.toString())
+        if (input.model) {
+          await doStub.setSessionMeta('model', input.model)
+        }
+        if (input.agentType) {
+          await doStub.setSessionMeta('agent_type', input.agentType)
+        }
+        await doStub.setSessionMeta('base_branch', input.baseBranch || 'main')
+        await doStub.setSessionMeta('sandbox_status', 'provisioning')
+
+        // Sandbox provision
+        const res = await doStub.fetch(`http://do/sandbox/provision`, { method: 'POST' })
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({ error: 'Unknown error' }))
+          console.error(`[sessions] Sandbox provisioning failed for ${sessionId}:`, error)
+          await doStub.setSessionMeta('sandbox_status', 'error')
+          await doStub.fetch(`http://do/broadcast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'sandbox-status',
+              status: 'error',
+              error: (error as { error?: string }).error || 'Sandbox provisioning failed',
+            }),
+          })
+        }
+      })().catch(async (err) => {
+        console.error(`[sessions] Sandbox provisioning error for ${sessionId}:`, err)
+        try {
+          const doId = c.env.SESSION_DO.idFromName(sessionId)
+          const doStub = c.env.SESSION_DO.get(doId)
           await doStub.setSessionMeta('sandbox_status', 'error')
           await doStub.fetch(`http://do/broadcast`, {
             method: 'POST',
@@ -159,7 +163,10 @@ sessions.post('/', async (c) => {
               error: err instanceof Error ? err.message : 'Sandbox provisioning failed',
             }),
           })
-        }),
+        } catch {
+          /* ignore */
+        }
+      }),
     )
 
     // Return session object immediately with provisioning status
@@ -172,6 +179,9 @@ sessions.post('/', async (c) => {
       lastActivity: now,
       createdAt: now,
       archivedAt: null,
+      title: input.title ?? undefined,
+      model: input.model,
+      agentType: input.agentType,
       sandboxId: null,
       sandboxStatus: 'provisioning',
     }
@@ -203,11 +213,18 @@ sessions.get('/:id', async (c) => {
       return c.json({ error: 'Session not found' }, 404)
     }
 
-    // Get message count from DO
-    const doId = c.env.SESSION_DO.idFromName(id)
-    const doStub = c.env.SESSION_DO.get(doId)
-    const messages = await doStub.getRecentMessages(1000)
-    const messageCount = messages.length
+    // Get message count and metadata from DO (best-effort — DO may be cold-starting)
+    let messageCount = 0
+    let meta: Record<string, string> = {}
+    try {
+      const doId = c.env.SESSION_DO.idFromName(id)
+      const doStub = c.env.SESSION_DO.get(doId)
+      const messages = await doStub.getRecentMessages(1000)
+      messageCount = messages.length
+      meta = await doStub.getSessionMeta()
+    } catch (doError) {
+      console.warn(`[sessions] DO calls failed for session ${id}, returning partial data:`, doError)
+    }
 
     // Map to DTO with message count
     const session: SessionDTO & { messageCount: number } = {
@@ -220,6 +237,8 @@ sessions.get('/:id', async (c) => {
       createdAt: row.created_at,
       archivedAt: row.archived_at,
       title: row.title ?? undefined,
+      model: meta['model'] || undefined,
+      agentType: meta['agent_type'] || undefined,
       messageCount,
     }
 
@@ -227,6 +246,61 @@ sessions.get('/:id', async (c) => {
   } catch (error) {
     console.error('Error fetching session:', error)
     return c.json({ error: 'Failed to fetch session' }, 500)
+  }
+})
+
+/**
+ * DELETE /sessions
+ * Bulk delete all sessions for a user (soft delete in D1, best-effort sandbox termination)
+ * Query param: userId (required)
+ */
+sessions.delete('/', async (c) => {
+  try {
+    const userId = c.req.query('userId')
+    if (!userId) {
+      return c.json({ error: 'userId query parameter is required' }, 400)
+    }
+
+    // Get all active sessions for this user
+    const cursor = await c.env.DB.prepare(
+      `SELECT id FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`,
+    )
+      .bind(userId)
+      .all<{ id: string }>()
+
+    const sessionIds = cursor.results.map((r) => r.id)
+
+    if (sessionIds.length === 0) {
+      return c.json({ success: true, deletedCount: 0 })
+    }
+
+    // Bulk soft-delete in D1
+    const now = Math.floor(Date.now() / 1000)
+    await c.env.DB.prepare(
+      `UPDATE chat_sessions SET status = 'deleted', archived_at = ? WHERE user_id = ? AND status != 'deleted'`,
+    )
+      .bind(now, userId)
+      .run()
+
+    // Best-effort sandbox termination in background
+    c.executionCtx.waitUntil(
+      Promise.allSettled(
+        sessionIds.map(async (sessionId) => {
+          try {
+            const doId = c.env.SESSION_DO.idFromName(sessionId)
+            const doStub = c.env.SESSION_DO.get(doId)
+            await doStub.fetch('http://do/sandbox/terminate', { method: 'POST' })
+          } catch (err) {
+            console.warn(`[sessions] Failed to terminate sandbox for session ${sessionId}:`, err)
+          }
+        }),
+      ),
+    )
+
+    return c.json({ success: true, deletedCount: sessionIds.length })
+  } catch (error) {
+    console.error('Error bulk deleting sessions:', error)
+    return c.json({ error: 'Failed to delete sessions' }, 500)
   }
 })
 

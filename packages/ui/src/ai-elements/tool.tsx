@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { cn } from '../utils'
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible'
+import { ScrollArea } from '../scroll-area'
 
 interface ToolProps {
   name: string
@@ -13,6 +14,8 @@ interface ToolProps {
   className?: string
   onClick?: () => void
   isSubagent?: boolean
+  /** When true, renders as flat list item (no bg/border) for use inside ThinkingBlock */
+  compact?: boolean
 }
 
 // ============ Tool Icons ============
@@ -93,8 +96,39 @@ function ToolIcon({ name }: { name: string }) {
 }
 
 function getInputSummary(name: string, input: Record<string, unknown>): string | null {
-  if (input.file_path || input.path || input.filePath) {
-    const path = String(input.file_path || input.path || input.filePath || '')
+  const lower = name.toLowerCase()
+  const path = String(input.file_path ?? input.path ?? input.filePath ?? input.directory ?? input.cwd ?? '')
+  const pattern = String(input.pattern ?? input.query ?? '')
+  const start = input.start_line ?? input.startLine ?? input.start
+  const end = input.end_line ?? input.endLine ?? input.end
+
+  // grep: "Grepped {pattern} in {path}"
+  if (lower.includes('grep') && (pattern || path)) {
+    const scope = path || 'codebase'
+    return pattern ? `Grepped ${pattern} in ${scope}` : `Grepped in ${scope}`
+  }
+
+  // read: "Read {path} L{start}-{end}" or "Read {path}"
+  if (lower.includes('read') && path) {
+    if (start != null && end != null) return `Read ${path} L${start}-${end}`
+    if (start != null) return `Read ${path} L${start}`
+    return `Read ${path}`
+  }
+
+  // glob/search: "Searched {query} in {path}"
+  if ((lower.includes('glob') || lower.includes('search')) && (pattern || input.glob || path)) {
+    const q = String(input.glob ?? pattern)
+    return q ? `Searched ${q} in ${path || 'codebase'}` : `Searched in ${path || 'codebase'}`
+  }
+
+  // web/fetch: "Searched web {query}"
+  if ((lower.includes('web') || lower.includes('fetch')) && (pattern || input.url)) {
+    const q = String(input.url ?? pattern)
+    return q ? `Searched web ${q}` : 'Searched web'
+  }
+
+  // Fallback: generic summaries with truncation
+  if (path) {
     const segments = path.split('/')
     return segments.length > 3 ? '.../' + segments.slice(-3).join('/') : path
   }
@@ -102,10 +136,7 @@ function getInputSummary(name: string, input: Record<string, unknown>): string |
     const cmd = String(input.command)
     return cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd
   }
-  if (input.pattern || input.query) {
-    const q = String(input.pattern || input.query)
-    return q.length > 60 ? q.slice(0, 57) + '...' : q
-  }
+  if (pattern) return pattern.length > 60 ? pattern.slice(0, 57) + '...' : pattern
   if (input.glob) return String(input.glob)
   if (input.content) {
     const c = String(input.content)
@@ -128,13 +159,143 @@ function getInputSummary(name: string, input: Record<string, unknown>): string |
 }
 
 function formatOutput(output: unknown): [string, boolean] {
-  const text = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-  const MAX_LINES = 20
+  let text: string
+  if (typeof output === 'string') {
+    try {
+      const parsed = JSON.parse(output)
+      text = JSON.stringify(parsed, null, 2)
+    } catch {
+      text = output
+    }
+  } else {
+    text = JSON.stringify(output, null, 2)
+  }
+  const MAX_LINES = 30
   const lines = text.split('\n')
   if (lines.length > MAX_LINES) {
     return [lines.slice(0, MAX_LINES).join('\n'), true]
   }
   return [text, false]
+}
+
+const FILE_ICON = (
+  <svg className="w-3 h-3 shrink-0 text-muted-foreground/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+  </svg>
+)
+
+function parseGrepOutput(output: unknown): Array<{ path: string; count?: number }> | null {
+  if (!output) return null
+  let data: unknown
+  if (typeof output === 'string') {
+    try {
+      data = JSON.parse(output)
+    } catch {
+      const pathCounts = new Map<string, number>()
+      for (const line of output.split('\n')) {
+        const colonIdx = line.indexOf(':')
+        if (colonIdx > 0) {
+          const path = line.slice(0, colonIdx).trim()
+          if (path && !path.startsWith('{')) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1)
+        }
+      }
+      return pathCounts.size > 0
+        ? Array.from(pathCounts.entries()).map(([path, count]) => ({ path, count }))
+        : null
+    }
+  } else {
+    data = output
+  }
+  if (Array.isArray(data)) {
+    return data
+      .map((item) => {
+        if (typeof item === 'string') return { path: item }
+        if (item && typeof item === 'object' && 'path' in item) return { path: String(item.path), count: (item as { count?: number }).count }
+        if (item && typeof item === 'object' && 'file' in item) return { path: String((item as { file: string }).file) }
+        return null
+      })
+      .filter((x): x is { path: string; count?: number } => x !== null)
+  }
+  if (data && typeof data === 'object' && 'matches' in data) {
+    const matches = (data as { matches?: unknown[] }).matches
+    if (Array.isArray(matches)) {
+      const paths = new Map<string, number>()
+      for (const m of matches) {
+        const path = m && typeof m === 'object' && 'path' in m ? String((m as { path: string }).path) : null
+        if (path) paths.set(path, (paths.get(path) ?? 0) + 1)
+      }
+      return Array.from(paths.entries()).map(([path, count]) => ({ path, count }))
+    }
+  }
+  return null
+}
+
+function renderToolOutput(
+  name: string,
+  input: Record<string, unknown> | undefined,
+  output: unknown,
+  compact?: boolean,
+): React.ReactNode | null {
+  const lower = name.toLowerCase()
+
+  if (lower.includes('grep')) {
+    const items = parseGrepOutput(output)
+    if (items && items.length > 0) {
+      return (
+        <ul className="space-y-1 text-foreground/80 font-mono text-[11px]">
+          {items.map(({ path, count }, i) => (
+            <li key={i} className="flex items-center gap-2 pl-1">
+              {FILE_ICON}
+              <span className="truncate flex-1 min-w-0">{path}</span>
+              {count != null && count > 0 && (
+                <span className="text-muted-foreground/60 text-[10px] shrink-0">
+                  {count === 1 ? '1 match' : `${count} matches`}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  }
+
+  if (lower.includes('read') && input) {
+    const path = String(input.file_path ?? input.path ?? input.filePath ?? '')
+    const start = input.start_line ?? input.startLine ?? input.start
+    const end = input.end_line ?? input.endLine ?? input.end
+    if (path) {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-foreground/90 font-mono text-[11px]">
+            {FILE_ICON}
+            <span className="font-medium">{path}</span>
+            {(start != null || end != null) && (
+              <span className="text-muted-foreground/60">
+                {start != null && end != null ? `L${start}-${end}` : start != null ? `L${start}` : end != null ? `L${end}` : ''}
+              </span>
+            )}
+          </div>
+          {output != null && (
+            <ScrollArea
+              className={cn(
+                'rounded border max-h-[300px]',
+                compact ? 'border-border/20 bg-muted/10' : 'border-border/40 bg-muted/20',
+              )}
+            >
+              <pre className="p-3 text-foreground/80 font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
+                {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
+              </pre>
+            </ScrollArea>
+          )}
+        </div>
+      )
+    }
+  }
+
+  return null
 }
 
 export function Tool({
@@ -146,6 +307,7 @@ export function Tool({
   className,
   onClick,
   isSubagent,
+  compact = false,
 }: ToolProps) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [showFullOutput, setShowFullOutput] = React.useState(false)
@@ -155,21 +317,38 @@ export function Tool({
 
   const [truncatedOutput, isOutputTruncated] = output !== undefined ? formatOutput(output) : ['', false]
   const fullOutputText =
-    output !== undefined ? (typeof output === 'string' ? output : JSON.stringify(output, null, 2)) : ''
+    output !== undefined
+      ? (() => {
+          if (typeof output === 'string') {
+            try {
+              return JSON.stringify(JSON.parse(output), null, 2)
+            } catch {
+              return output
+            }
+          }
+          return JSON.stringify(output, null, 2)
+        })()
+      : ''
 
-  const durationLabel = duration !== undefined
-    ? (duration >= 60000 ? `${Math.floor(duration / 60000)}m ${((duration % 60000) / 1000).toFixed(0)}s` : duration >= 1000 ? `${(duration / 1000).toFixed(1)}s` : `${duration}ms`)
-    : null
+  const durationLabel =
+    duration !== undefined && duration > 0
+      ? duration >= 60000
+        ? `${Math.floor(duration / 60000)}m ${((duration % 60000) / 1000).toFixed(0)}s`
+        : duration >= 1000
+          ? `${(duration / 1000).toFixed(1)}s`
+          : `${duration}ms`
+      : null
 
   return (
     <CollapsiblePrimitive.Root open={isOpen} onOpenChange={isSubagent ? undefined : setIsOpen}>
       <div
-        className={cn('group/tool', isSubagent && 'cursor-pointer', className)}
+        className={cn('group/tool', isSubagent && 'cursor-pointer', compact && 'border-none', className)}
         onClick={isSubagent ? onClick : undefined}
       >
         <CollapsiblePrimitive.Trigger
           className={cn(
-            'w-full flex items-center gap-2 py-1 -mx-1 px-1 rounded hover:bg-muted/40 transition-colors text-left',
+            'w-full flex items-center gap-2 py-1 -mx-1 px-1 rounded transition-colors text-left',
+            compact ? 'hover:bg-muted/20' : 'hover:bg-muted/40',
             isSubagent && 'pointer-events-none',
           )}
         >
@@ -191,7 +370,7 @@ export function Tool({
               </svg>
             ) : hasDetails ? (
               <svg
-                className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', isOpen && 'rotate-180')}
+                className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', !isOpen && '-rotate-90')}
                 fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -201,35 +380,58 @@ export function Tool({
         </CollapsiblePrimitive.Trigger>
         {hasDetails && !isSubagent && (
           <CollapsiblePrimitive.Panel>
-            <div className="pl-5 pr-2 py-2 border-l border-border/30 ml-1.5 space-y-3 text-[11px]">
+            <div
+              className={cn(
+                'pl-5 pr-2 py-2 ml-1.5 space-y-4 text-[11px]',
+                !compact && 'border-l border-border/30',
+              )}
+            >
               {input && Object.keys(input).length > 0 && (
-                <div>
-                  <p className="font-medium mb-1.5 text-muted-foreground/40 text-[10px] uppercase tracking-wider">
+                <div className="space-y-1.5">
+                  <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
                     Input
                   </p>
-                  <pre className="bg-muted/30 rounded-md px-3 py-2 overflow-x-auto text-foreground/70 leading-relaxed font-mono text-[11px]">
-                    {JSON.stringify(input, null, 2)}
-                  </pre>
+                  <ScrollArea
+                    className={cn(
+                      'rounded-lg',
+                      compact ? 'border border-border/20 bg-muted/10' : 'border border-border/40 bg-muted/20',
+                    )}
+                  >
+                    <pre className="p-3.5 text-foreground/80 leading-relaxed font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
+                      {JSON.stringify(input, null, 2)}
+                    </pre>
+                  </ScrollArea>
                 </div>
               )}
               {output !== undefined && (
-                <div>
-                  <p className="font-medium mb-1.5 text-muted-foreground/40 text-[10px] uppercase tracking-wider">
+                <div className="space-y-1.5">
+                  <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
                     Output
                   </p>
-                  <pre className="bg-muted/30 rounded-md px-3 py-2 overflow-x-auto text-foreground/70 leading-relaxed font-mono text-[11px] max-h-[400px] overflow-y-auto">
-                    {showFullOutput ? fullOutputText : truncatedOutput}
-                  </pre>
-                  {isOutputTruncated && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowFullOutput(!showFullOutput)
-                      }}
-                      className="text-[10px] text-primary/70 hover:text-primary mt-1.5 transition-colors"
-                    >
-                      {showFullOutput ? 'Show less' : 'Show more'}
-                    </button>
+                  {renderToolOutput(name, input, output, compact) ?? (
+                    <>
+                      <ScrollArea
+                        className={cn(
+                          'rounded-lg max-h-[400px]',
+                          compact ? 'border border-border/20 bg-muted/10' : 'border border-border/40 bg-muted/20',
+                        )}
+                      >
+                        <pre className="p-3.5 text-foreground/80 leading-relaxed font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
+                          {showFullOutput ? fullOutputText : truncatedOutput}
+                        </pre>
+                      </ScrollArea>
+                      {isOutputTruncated && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShowFullOutput(!showFullOutput)
+                          }}
+                          className="text-[10px] text-primary/70 hover:text-primary transition-colors"
+                        >
+                          {showFullOutput ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}

@@ -56,27 +56,77 @@ export function Reasoning({ children, isStreaming = false, duration, className }
   )
 }
 
-/** Collapsible reasoning block — opens during streaming, closes when done. Like ai-elements Reasoning. */
+/** Collapsible reasoning block — opens during streaming, closes when done. Supports multi-chunk "Thought briefly" pattern. */
 interface ReasoningCollapsibleProps {
-  children: React.ReactNode
+  /** Reasoning content. string[] = multiple chunks (each as "Thought briefly" block); string = split on \n\n for chunks. */
+  children?: React.ReactNode
+  reasoning?: string | string[]
   isStreaming?: boolean
   duration?: number
   className?: string
 }
 
+function ThoughtBrieflyBlock({ content }: { content: string }) {
+  if (!content.trim()) return null
+  return (
+    <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{content.trim()}</div>
+  )
+}
+
 export function ReasoningCollapsible({
   children,
+  reasoning,
   isStreaming = false,
   duration,
   className,
 }: ReasoningCollapsibleProps) {
   const [open, setOpen] = React.useState(isStreaming)
+  const prevStreamingRef = React.useRef(isStreaming)
 
   React.useEffect(() => {
-    if (isStreaming) setOpen(true)
+    if (isStreaming) {
+      setOpen(true)
+    } else if (prevStreamingRef.current) {
+      setOpen(false)
+    }
+    prevStreamingRef.current = isStreaming
   }, [isStreaming])
 
-  if (!children) return null
+  const chunks: string[] = React.useMemo(() => {
+    if (reasoning !== undefined) {
+      if (Array.isArray(reasoning)) {
+        // Parts are cumulative; show only the latest (full) text, not history
+        const filtered = reasoning.filter(Boolean).map(String)
+        const last = filtered[filtered.length - 1]
+        return last ? [last] : []
+      }
+      return String(reasoning)
+        .split(/\n\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    }
+    if (children && typeof children === 'string') {
+      return children
+        .split(/\n\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    }
+    return []
+  }, [reasoning, children])
+
+  const hasContent = chunks.length > 0 || (children && typeof children !== 'string')
+  if (!hasContent) return null
+
+  const contentNode =
+    chunks.length > 0 ? (
+      <div className="space-y-2">
+        {chunks.map((chunk, i) => (
+          <ThoughtBrieflyBlock key={i} content={chunk} />
+        ))}
+      </div>
+    ) : (
+      <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{children}</div>
+    )
 
   return (
     <Collapsible
@@ -101,7 +151,7 @@ export function ReasoningCollapsible({
           {getThinkingLabel(isStreaming, duration)}
         </span>
         <svg
-          className={cn('w-4 h-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
+          className={cn('w-4 h-4 shrink-0 text-muted-foreground transition-transform', !open && '-rotate-90')}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -111,9 +161,7 @@ export function ReasoningCollapsible({
         </svg>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t border-border/30 px-4 py-3">
-          <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{children}</div>
-        </div>
+        <div className="border-t border-border/30 px-4 py-3">{contentNode}</div>
       </CollapsibleContent>
     </Collapsible>
   )

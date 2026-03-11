@@ -87,16 +87,18 @@ export function CodeBlock({ code, language = 'text', className }: CodeBlockProps
   }
 
   return (
-    <div className={cn('rounded-lg overflow-hidden border border-border/30 bg-[#0d1117] my-3', className)}>
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-border/20">
-        <span className="text-[11px] font-medium text-muted-foreground/60 font-mono">{language}</span>
+    <div className={cn('group/codeblock relative rounded-lg overflow-hidden border border-border/30 bg-[#0d1117] my-3', className)}>
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-2 opacity-0 group-hover/codeblock:opacity-100 transition-opacity">
+        {language && language !== 'text' && (
+          <span className="text-[10px] text-muted-foreground/40 font-mono select-none">{language}</span>
+        )}
         <button
           onClick={handleCopy}
           className={cn(
-            'text-[11px] px-2 py-0.5 rounded-md transition-all font-medium',
+            'text-[11px] px-1.5 py-0.5 rounded transition-all font-medium',
             copied
               ? 'text-green-400'
-              : 'text-muted-foreground/40 hover:text-muted-foreground/70',
+              : 'text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-white/5',
           )}
         >
           {copied ? 'Copied!' : 'Copy'}

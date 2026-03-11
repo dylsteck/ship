@@ -1,99 +1,75 @@
 'use client'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Cancel01Icon } from '@hugeicons/core-free-icons'
-import { SidebarProvider, SidebarInset, cn, useIsMobile } from '@ship/ui'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@ship/ui'
-import { AppSidebar } from '@/components/app-sidebar'
+import { useCallback, useRef, useEffect, useState, useMemo } from 'react'
+import { postSessionSync, subscribeSessionSync } from '@/lib/session-sync-channel'
+import { useSyncExternalStore } from 'react'
+import { sessionStatusStore } from './hooks/use-session-status-store'
+import { useSearchParams } from 'next/navigation'
+import { useIsMobile } from '@ship/ui'
+import { setApiToken } from '@/lib/api/client'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
-import { useModels, useDefaultModel } from '@/lib/api/hooks/use-models'
+import { useGitHubBranches } from '@/lib/api/hooks/use-branches'
+import { useModels, useDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
+import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
-import { useCreateSession, useDeleteSession } from '@/lib/api/hooks/use-sessions'
-import { replyPermission } from '@/lib/api/hooks/use-chat'
+import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks/use-sessions'
+import { replyPermission, replyQuestion, rejectQuestion } from '@/lib/api/hooks/use-chat'
 import type { ChatSession } from '@/lib/api/server'
-import type { GitHubRepo, ModelInfo, User } from '@/lib/api/types'
+import type { User } from '@/lib/api/types'
+import type { UIMessage } from '@/lib/ai-elements-adapter'
+import type { SessionPanelData } from './types'
 import { useDashboardChat } from './hooks/use-dashboard-chat'
 import { useDashboardSSE } from './hooks/use-dashboard-sse'
+import { useDashboardState } from './hooks/use-dashboard-state'
+import { useDashboardDerived } from './hooks/use-dashboard-derived'
 import { useRightSidebar } from './hooks/use-right-sidebar'
 import { useSessionSync } from './hooks/use-session-sync'
-import { DashboardHeader } from './components/dashboard-header'
-import { DashboardMessages } from './components/dashboard-messages'
-import { DashboardComposer } from './components/composer'
-import { RightSidebar } from './components/right-sidebar'
-
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor(Date.now() / 1000 - timestamp)
-  if (seconds < 60) return 'now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  const days = Math.floor(seconds / 86400)
-  if (days < 14) return `${days}d`
-  if (days < 60) return `${Math.floor(days / 7)}w`
-  return `${Math.floor(days / 30)}mo`
-}
-
-function groupSessionsByTime(sessions: ChatSession[]): { label: string; sessions: ChatSession[] }[] {
-  const now = Math.floor(Date.now() / 1000)
-  const oneDay = 24 * 60 * 60
-  const todayStart = now - oneDay
-  const yesterdayStart = now - 2 * oneDay
-  const weekStart = now - 7 * oneDay
-  const monthStart = now - 30 * oneDay
-
-  const today: ChatSession[] = []
-  const yesterday: ChatSession[] = []
-  const thisWeek: ChatSession[] = []
-  const thisMonth: ChatSession[] = []
-  const older: ChatSession[] = []
-
-  for (const s of sessions) {
-    const t = s.lastActivity
-    if (t >= todayStart) today.push(s)
-    else if (t >= yesterdayStart) yesterday.push(s)
-    else if (t >= weekStart) thisWeek.push(s)
-    else if (t >= monthStart) thisMonth.push(s)
-    else older.push(s)
-  }
-
-  const sortByActivity = (a: ChatSession, b: ChatSession) => b.lastActivity - a.lastActivity
-  const groups: { label: string; sessions: ChatSession[] }[] = []
-  if (today.length) groups.push({ label: 'Today', sessions: today.sort(sortByActivity) })
-  if (yesterday.length) groups.push({ label: 'Yesterday', sessions: yesterday.sort(sortByActivity) })
-  if (thisWeek.length) groups.push({ label: 'This Week', sessions: thisWeek.sort(sortByActivity) })
-  if (thisMonth.length) groups.push({ label: 'This Month', sessions: thisMonth.sort(sortByActivity) })
-  if (older.length) groups.push({ label: 'Older', sessions: older.sort(sortByActivity) })
-  return groups
-}
+import { useProvisionSandboxWhenNeeded } from './hooks/use-provision-sandbox-when-needed'
+import { DashboardLayout } from './components/dashboard-layout'
+import { DashboardMainColumn } from './components/dashboard-main-column'
 
 interface DashboardClientProps {
   sessions: ChatSession[]
   userId: string
   user: User
+  initialSessionId?: string | null
+  initialMessages?: UIMessage[]
+  /** Stable timestamp from server for SSR-safe time formatting (avoids hydration mismatch) */
+  serverTimestamp?: number
+  /** Session JWT for API authentication */
+  apiToken?: string
 }
 
-export function DashboardClient({ sessions: initialSessions, userId, user }: DashboardClientProps) {
-  const router = useRouter()
+export function DashboardClient({
+  sessions: initialSessions,
+  userId,
+  user,
+  initialSessionId = null,
+  initialMessages,
+  serverTimestamp = Math.floor(Date.now() / 1000),
+  apiToken,
+}: DashboardClientProps) {
+  // Set API auth token on mount (session JWT passed from server component)
+  useEffect(() => {
+    if (apiToken) setApiToken(apiToken)
+  }, [apiToken])
   const searchParams = useSearchParams()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
-  const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
-  const [mode, setMode] = useState<'build' | 'plan'>('build')
-  const [prompt, setPrompt] = useState('')
-  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-
-  const { deleteSession } = useDeleteSession()
   const isMobile = useIsMobile()
+  const modeRef = useRef('agent')
+  const onAgentEventRef = useRef<((sessionId: string, event: { type: string; [k: string]: unknown }) => void) | null>(
+    null,
+  )
 
-  // ---- Core chat state ----
-  const chat = useDashboardChat(initialSessions)
+  const resumeStreamRef = useRef<((sessionId: string) => void) | null>(null)
+  const onResumeStream = useCallback((id: string) => resumeStreamRef.current?.(id), [])
+  const chat = useDashboardChat(initialSessions, initialSessionId, {
+    onAgentEventRef,
+    initialMessages,
+    onResumeStream,
+  })
+
+  // Provision sandbox when opening a session that has none (error or never provisioned)
+  useProvisionSandboxWhenNeeded(chat.activeSessionId)
 
   const handlePermissionReply = useCallback(
     async (permissionId: string, approved: boolean) => {
@@ -103,29 +79,38 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     [chat.activeSessionId],
   )
 
-  // ---- SSE streaming ----
-  const { handleSend } = useDashboardSSE({
-    activeSessionId: chat.activeSessionId,
-    isStreaming: chat.isStreaming,
-    mode,
-    setIsStreaming: chat.setIsStreaming,
-    setMessages: chat.setMessages,
-    setTotalCost: chat.setTotalCost,
-    setLastStepCost: chat.setLastStepCost,
-    setSessionTodos: chat.setSessionTodos,
-    setFileDiffs: chat.setFileDiffs,
-    setMessageQueue: chat.setMessageQueue,
-    setOpenCodeUrl: chat.setOpenCodeUrl,
-    setSessionTitle: chat.setSessionTitle,
-    setSessionInfo: chat.setSessionInfo,
-    updateSessionTitle: chat.updateSessionTitle,
-    streamingMessageRef: chat.streamingMessageRef,
-    assistantTextRef: chat.assistantTextRef,
-    reasoningRef: chat.reasoningRef,
-    setStreamStartTime: chat.setStreamStartTime,
-  })
+  const handleQuestionReply = useCallback(
+    async (questionId: string, response: string) => {
+      if (!chat.activeSessionId) return
+      await replyQuestion(chat.activeSessionId, questionId, response)
+    },
+    [chat.activeSessionId],
+  )
 
-  // ---- Data fetching ----
+  const handleQuestionSkip = useCallback(
+    async (questionId: string) => {
+      if (!chat.activeSessionId) return
+      await rejectQuestion(chat.activeSessionId, questionId)
+    },
+    [chat.activeSessionId],
+  )
+
+  const { handleSend, processStreamEventForSession, resumeStream } = useDashboardSSE({ chat, modeRef })
+
+  useEffect(() => {
+    resumeStreamRef.current = resumeStream
+    return () => {
+      resumeStreamRef.current = null
+    }
+  }, [resumeStream])
+
+  useEffect(() => {
+    onAgentEventRef.current = processStreamEventForSession
+    return () => {
+      onAgentEventRef.current = null
+    }
+  }, [processStreamEventForSession])
+
   const {
     repos,
     isLoading: reposLoading,
@@ -133,481 +118,310 @@ export function DashboardClient({ sessions: initialSessions, userId, user }: Das
     hasMore: reposHasMore,
     isLoadingMore: reposLoadingMore,
   } = useGitHubRepos(userId)
-  const { models, groupedByProvider, isLoading: modelsLoading } = useModels()
+  const { models, isLoading: modelsLoading } = useModels()
+  const { agents, isLoading: agentsLoading } = useAgents()
+  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
   const { defaultModelId, isLoading: defaultModelLoading } = useDefaultModel(userId)
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
   const { createSession, isCreating } = useCreateSession()
-
-  // ---- Sync effects (URL param, default model, repo, message queue) ----
-  useSessionSync({
-    sessionParam: searchParams.get('session'),
-    activeSessionId: chat.activeSessionId,
-    setActiveSessionId: chat.setActiveSessionId,
-    connectWebSocket: chat.connectWebSocket,
-    models,
-    selectedModel,
-    setSelectedModel,
-    defaultModelId,
-    defaultModelLoading,
-    repos,
-    selectedRepo,
-    setSelectedRepo,
-    localSessions: chat.localSessions,
-    defaultRepoLoading,
-    defaultRepoFullName,
-    isStreaming: chat.isStreaming,
-    messageQueue: chat.messageQueue,
-    setMessageQueue: chat.setMessageQueue,
-    handleSend,
+  const { deleteSession } = useDeleteSession()
+  const { sessionModelId } = useSessionModel(chat.activeSessionId ?? undefined)
+  const {
+    sessions: swrSessions,
+    mutate: mutateSessions,
+  } = useSessions(userId, {
+    refreshInterval: 8000,
+    revalidateOnFocus: true,
   })
 
-  // ---- Default repo fallback when no saved default ----
+  // Sync SWR sessions into local state so list/sidebar stay fresh across tabs.
+  // Merge to preserve optimistic session creates and titles (in localSessions but not yet in swrSessions).
+  const prevSwrLenRef = useRef(0)
+  const { activeSessionId, setLocalSessions } = chat
   useEffect(() => {
-    if (chat.activeSessionId || defaultRepoLoading || selectedRepo) return
-    if (repos.length === 0) return
-    if (defaultRepoFullName) return // useSessionSync handles saved default
+    if (swrSessions.length === 0 && prevSwrLenRef.current === 0) return
+    prevSwrLenRef.current = swrSessions.length
+    setLocalSessions((prev) => {
+      const swrIds = new Set(swrSessions.map((s) => s.id))
+      const optimisticOnly = prev.filter((s) => !swrIds.has(s.id))
+      // Preserve optimistic titles when API returns session without title
+      const merged = swrSessions.map((s) => {
+        const p = prev.find((x) => x.id === s.id)
+        return p && p.title && !s.title ? { ...s, title: p.title } : s
+      })
+      return [...optimisticOnly, ...merged]
+    })
+  }, [swrSessions, setLocalSessions])
 
-    // No saved default: use first repo owned by user
-    const userOwnedRepo = repos.find((r) => r.owner === user.username)
-    if (userOwnedRepo) setSelectedRepo(userOwnedRepo)
-  }, [chat.activeSessionId, defaultRepoLoading, defaultRepoFullName, repos, selectedRepo, user.username, setSelectedRepo])
+  // Cross-tab sync: when another tab creates/deletes a session, revalidate; when streaming state changes, update
+  const [streamingFromOtherTabs, setStreamingFromOtherTabs] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    return subscribeSessionSync((msg) => {
+      if (msg.type === 'session-created' || msg.type === 'session-deleted' || msg.type === 'sessions-invalidate') {
+        mutateSessions()
+      } else if (msg.type === 'session-streaming') {
+        setStreamingFromOtherTabs((prev) => new Set(prev).add(msg.sessionId))
+      } else if (msg.type === 'session-stopped') {
+        setStreamingFromOtherTabs((prev) => {
+          const next = new Set(prev)
+          next.delete(msg.sessionId)
+          return next
+        })
+      }
+    })
+  }, [mutateSessions])
 
-  // ---- Right sidebar ----
+  // Cross-tab streaming: broadcast when our sessions start/stop
+  const storeMap = useSyncExternalStore(
+    sessionStatusStore.subscribe,
+    sessionStatusStore.getSnapshot,
+    sessionStatusStore.getSnapshot,
+  )
+  const prevStoreRef = useRef<Map<string, { isRunning: boolean }>>(new Map())
+  useEffect(() => {
+    const toPost: Array<{ type: 'session-streaming' | 'session-stopped'; sessionId: string }> = []
+    for (const [sessionId, status] of storeMap) {
+      const prev = prevStoreRef.current.get(sessionId)?.isRunning ?? false
+      if (status.isRunning !== prev) {
+        toPost.push({ type: status.isRunning ? 'session-streaming' : 'session-stopped', sessionId })
+      }
+      prevStoreRef.current.set(sessionId, { isRunning: status.isRunning })
+    }
+    for (const msg of toPost) {
+      postSessionSync(msg)
+    }
+  }, [storeMap])
+
+  const streamingSessionIds = useMemo(() => {
+    const ids = new Set(streamingFromOtherTabs)
+    if (chat.activeSessionId && chat.isStreaming) ids.add(chat.activeSessionId)
+    for (const [sessionId, status] of storeMap) {
+      if (status.isRunning) ids.add(sessionId)
+    }
+    return ids
+  }, [streamingFromOtherTabs, chat.activeSessionId, chat.isStreaming, storeMap])
+
+  const state = useDashboardState({
+    chat,
+    handleSend,
+    processStreamEventForSession,
+    session: {
+      createSession,
+      deleteSession,
+      userId,
+      user,
+      mutateSessions,
+      onSessionCreated: () => postSessionSync({ type: 'session-created' }),
+      onSessionDeleted: () => postSessionSync({ type: 'session-deleted' }),
+    },
+    data: {
+      repos,
+      isCreating,
+      agents,
+      agentsLoading,
+      defaultAgentId,
+      defaultAgentLoading,
+      defaultRepoFullName,
+      defaultRepoLoading,
+      models,
+    },
+  })
+
+  const { branches, isLoading: branchesLoading } = useGitHubBranches(
+    userId,
+    state.selectedRepo?.owner,
+    state.selectedRepo?.name,
+  )
+
+  const derived = useDashboardDerived({
+    chat,
+    state,
+    data: {
+      repos,
+      reposLoading: reposLoading ?? false,
+      reposLoadMore,
+      reposHasMore: reposHasMore ?? false,
+      reposLoadingMore: reposLoadingMore ?? false,
+      agents,
+      agentsLoading,
+      modelsLoading: modelsLoading ?? false,
+      branches,
+      branchesLoading: branchesLoading ?? false,
+    },
+    isCreating,
+  })
+
+  useSessionSync({
+    initialSessionId,
+    sessionParam: searchParams.get('session'),
+    handleSend,
+    chat: {
+      activeSessionId: chat.activeSessionId,
+      setActiveSessionId: chat.setActiveSessionId,
+      connectWebSocket: chat.connectWebSocket,
+      localSessions: chat.localSessions,
+      isStreaming: chat.isStreaming,
+      messageQueue: chat.messageQueue,
+      setMessageQueue: chat.setMessageQueue,
+    },
+    model: {
+      models,
+      selectedModel: state.selectedModel,
+      setSelectedModel: state.setSelectedModel,
+      defaultModelId,
+      defaultModelLoading,
+    },
+    repo: {
+      repos,
+      selectedRepo: state.selectedRepo,
+      setSelectedRepo: state.setSelectedRepo,
+      defaultRepoLoading,
+      defaultRepoFullName,
+    },
+  })
+
   const rightSidebar = useRightSidebar()
 
-  // ---- Session creation ----
-  const handleCreate = useCallback(
-    async (data: { repoOwner: string; repoName: string; model?: string }) => {
-      try {
-        const newSession = await createSession({
-          userId,
-          repoOwner: data.repoOwner,
-          repoName: data.repoName,
-          model: data.model || selectedModel?.id || 'opencode/big-pickle',
-        })
+  modeRef.current = state.mode
 
-        if (newSession) {
-          const newSessionData: ChatSession = {
-            id: newSession.id,
-            userId,
-            repoOwner: data.repoOwner,
-            repoName: data.repoName,
-            status: 'active',
-            lastActivity: Math.floor(Date.now() / 1000),
-            createdAt: Math.floor(Date.now() / 1000),
-            archivedAt: null,
-            messageCount: 0,
-          }
-          chat.setLocalSessions((prev) => [newSessionData, ...prev])
-          chat.setActiveSessionId(newSession.id)
-          window.history.replaceState({}, '', `/session/${newSession.id}`)
-          chat.connectWebSocket(newSession.id)
+  const activeSession = chat.activeSessionId
+    ? chat.localSessions.find((session) => session.id === chat.activeSessionId) ?? null
+    : null
 
-          const trimmedPrompt = prompt.trim()
-          if (trimmedPrompt) {
-            setPrompt('')
-            handleSend(trimmedPrompt, mode, newSession.id)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to create session:', error)
-      }
-    },
-    [createSession, userId, selectedModel, prompt, mode, chat, handleSend],
-  )
+  const activeSessionAgent =
+    chat.activeSessionId
+      ? agents.find(
+          (agent) =>
+            agent.id === activeSession?.agentType ||
+            agent.id === chat.sessionInfo?.agentType ||
+            (!!(activeSession?.model || sessionModelId) &&
+              agent.models.some((model) => model.id === (activeSession?.model || sessionModelId))),
+        ) ?? null
+      : state.selectedAgent
 
-  const handleDeleteSession = useCallback(
-    async (session: ChatSession, confirmed = false) => {
-      if (!confirmed) {
-        setConfirmDeleteId(session.id)
-        return
-      }
+  const activeSessionModel =
+    chat.activeSessionId
+      ? models.find((model) => model.id === (activeSession?.model || sessionModelId)) ?? null
+      : state.selectedModel
 
-      try {
-        setDeletingSessionId(session.id)
-        await deleteSession({ sessionId: session.id })
-        chat.setLocalSessions((prev) => prev.filter((s) => s.id !== session.id))
-        if (chat.activeSessionId === session.id) {
-          chat.setActiveSessionId(null)
-          chat.setMessages([])
-          router.push('/')
-          window.location.href = '/'
-        } else {
-          router.refresh()
-        }
-      } catch (error) {
-        console.error('Failed to delete session:', error)
-        router.refresh()
-      } finally {
-        setDeletingSessionId(null)
-        setConfirmDeleteId(null)
-      }
-    },
-    [chat, deleteSession, router],
-  )
+  useEffect(() => {
+    if (!chat.activeSessionId || !activeSessionAgent) return
+    if (state.selectedAgent?.id !== activeSessionAgent.id) {
+      state.handleAgentSelect(activeSessionAgent)
+      return
+    }
 
-  // ---- Submit / keyboard ----
-  const handleSubmit = useCallback(() => {
-    if (chat.activeSessionId) {
-      if (!prompt.trim() || chat.isStreaming) return
-      const content = prompt.trim()
-      setPrompt('')
-      handleSend(content, mode)
-    } else {
-      if (!selectedRepo || !prompt.trim() || isCreating) return
-      handleCreate({
-        repoOwner: selectedRepo.owner,
-        repoName: selectedRepo.name,
-        model: selectedModel?.id,
-      })
+    if (activeSessionModel && state.selectedModel?.id !== activeSessionModel.id) {
+      state.setSelectedModel(activeSessionModel)
     }
   }, [
     chat.activeSessionId,
-    chat.isStreaming,
-    prompt,
-    selectedRepo,
-    isCreating,
-    selectedModel,
-    handleSend,
-    handleCreate,
-    mode,
+    activeSessionAgent,
+    activeSessionModel,
+    state.selectedAgent,
+    state.selectedModel,
+    state.handleAgentSelect,
+    state.setSelectedModel,
   ])
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        handleSubmit()
+  const rightSidebarData: SessionPanelData | null = chat.activeSessionId
+    ? {
+        sessionId: chat.activeSessionId,
+        selectedRepo: activeSession
+          ? {
+              id: -1,
+              name: activeSession.repoName,
+              fullName: `${activeSession.repoOwner}/${activeSession.repoName}`,
+              owner: activeSession.repoOwner,
+              private: false,
+              description: null,
+            }
+          : state.selectedRepo,
+        selectedAgent: activeSessionAgent
+          ? { id: activeSessionAgent.id, name: activeSessionAgent.name }
+          : null,
+        selectedModel: activeSessionModel
+          ? {
+              id: activeSessionModel.id,
+              name: activeSessionModel.name,
+              provider: activeSessionModel.provider,
+            }
+          : null,
+        mode: state.mode,
+        lastStepCost: chat.lastStepCost,
+        totalCost: chat.totalCost,
+        sessionTodos: chat.sessionTodos,
+        fileDiffs: chat.fileDiffs,
+        agentUrl: chat.agentUrl ?? '',
+        agentSessionId: chat.agentSessionId || undefined,
+        sessionInfo: chat.sessionInfo,
+        messages: chat.messages,
+        sandboxStatus: chat.sandboxStatus ?? undefined,
       }
-    },
-    [handleSubmit],
-  )
+    : null
 
-  // ---- Derived values ----
-  const displayTitle = useMemo(
-    () => chat.sessionInfo?.title || chat.sessionTitle || undefined,
-    [chat.sessionInfo?.title, chat.sessionTitle],
-  )
-
-  const stats = useMemo(() => {
-    const now = Math.floor(Date.now() / 1000)
-    const oneDay = 24 * 60 * 60
-    const oneWeekAgo = now - 7 * oneDay
-    const recent = chat.localSessions.filter((s) => s.lastActivity > oneWeekAgo)
-
-    // Build 7 daily buckets (oldest to newest) for chart data
-    const sessionsChartData: number[] = []
-    const messagesChartData: number[] = []
-    const activeReposChartData: number[] = []
-
-    for (let i = 6; i >= 0; i--) {
-      const bucketStart = now - (i + 1) * oneDay
-      const bucketEnd = now - i * oneDay
-      const inBucket = chat.localSessions.filter((s) => s.lastActivity >= bucketStart && s.lastActivity < bucketEnd)
-      sessionsChartData.push(inBucket.length)
-      messagesChartData.push(inBucket.reduce((acc, s) => acc + (s.messageCount || 0), 0))
-      activeReposChartData.push(new Set(inBucket.map((s) => `${s.repoOwner}/${s.repoName}`)).size)
-    }
-
-    return {
-      sessionsPastWeek: recent.length,
-      messagesPastWeek: recent.reduce((acc, s) => acc + (s.messageCount || 0), 0),
-      activeRepos: new Set(chat.localSessions.map((s) => `${s.repoOwner}/${s.repoName}`)).size,
-      sessionsChartData,
-      messagesChartData,
-      activeReposChartData,
-    }
-  }, [chat.localSessions])
-
-  const canSubmit = Boolean(
-    chat.activeSessionId ? prompt.trim() && !chat.isStreaming : selectedRepo && prompt.trim() && !isCreating,
-  )
-
-  // ---- Render ----
   return (
-    <SidebarProvider defaultOpen={!!chat.activeSessionId}>
-      <AppSidebar
-        className="hidden md:block"
-        sessions={chat.localSessions}
-        user={user}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        currentSessionId={chat.activeSessionId || undefined}
-        currentSessionTitle={displayTitle}
-        onSessionDeleted={(id) => chat.setLocalSessions((prev) => prev.filter((s) => s.id !== id))}
-        onNewChat={() => {
+    <DashboardLayout
+      defaultOpen={!!chat.activeSessionId}
+      sidebarProps={{
+        sessions: chat.localSessions,
+        user,
+        searchQuery: state.searchQuery,
+        onSearchChange: state.setSearchQuery,
+        currentSessionId: chat.activeSessionId ?? undefined,
+        currentSessionTitle: derived.displayTitle,
+        onSessionDeleted: (id) => {
+          chat.setLocalSessions((prev) => prev.filter((s) => s.id !== id))
+          mutateSessions()
+          postSessionSync({ type: 'session-deleted' })
+        },
+        onSessionDeleteFailed: (session) => {
+          chat.setLocalSessions((prev) => {
+            if (prev.some((s) => s.id === session.id)) return prev
+            return [...prev, session].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0))
+          })
+        },
+        onNewChat: () => {
           chat.setActiveSessionId(null)
           chat.setMessages([])
+        },
+        isStreaming: chat.isStreaming,
+        streamingSessionIds,
+      }}
+    >
+      <DashboardMainColumn
+        isMobile={isMobile ?? false}
+        user={user}
+        serverTimestamp={serverTimestamp}
+        header={{
+          activeSessionId: chat.activeSessionId,
+          displayTitle: derived.displayTitle,
+          displayRepoLabel: derived.displayRepoLabel,
+          wsStatus: chat.wsStatus,
+          sandboxStatus: chat.sandboxStatus,
         }}
-        isStreaming={chat.isStreaming}
+        messages={{
+          messages: chat.messages,
+          isStreaming: chat.isStreaming,
+          streamingMessageId: chat.streamingMessageRef.current,
+          streamStartTime: chat.streamStartTime,
+          streamingStatus: chat.streamingStatus,
+          streamingStatusSteps: chat.streamingStatusSteps,
+          sessionTodos: chat.sessionTodos,
+          onPermissionReply: handlePermissionReply,
+          onQuestionReply: handleQuestionReply,
+          onQuestionSkip: handleQuestionSkip,
+        }}
+        sessions={{
+          localSessions: chat.localSessions,
+          onSessionClick: state.handleSessionClick,
+          onDeleteSession: state.handleDeleteSession,
+        }}
+        composer={{ context: derived.composerContext }}
+        rightSidebar={rightSidebar}
+        rightSidebarData={rightSidebarData}
+        agentLabel={state.selectedAgent?.name ?? 'Ship'}
       />
-
-      <SidebarInset>
-        <div className="flex h-screen h-[100dvh] relative overflow-hidden">
-          {/* Main column */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <DashboardHeader
-              activeSessionId={chat.activeSessionId}
-              sessionTitle={displayTitle}
-              wsStatus={chat.wsStatus}
-              sandboxStatus={chat.sandboxStatus}
-              rightSidebarOpen={rightSidebar.desktopOpen}
-              onToggleRightSidebar={rightSidebar.toggle}
-              showBackButton={true}
-              user={user}
-            />
-
-            <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
-              {/* Mobile: composer at top + session list (no active session) OR messages + composer at bottom (active session) */}
-              <div className="md:hidden flex-1 flex flex-col overflow-hidden">
-                {!chat.activeSessionId && (
-                  <>
-                    <div className="shrink-0">
-                      <DashboardComposer
-                        compactLayout={true}
-                        activeSessionId={chat.activeSessionId}
-                        prompt={prompt}
-                        onPromptChange={setPrompt}
-                        onKeyDown={handleKeyDown}
-                        selectedRepo={selectedRepo}
-                        onRepoSelect={setSelectedRepo}
-                        repos={repos}
-                        reposLoading={reposLoading ?? false}
-                        reposLoadMore={reposLoadMore}
-                        reposHasMore={reposHasMore ?? false}
-                        reposLoadingMore={reposLoadingMore ?? false}
-                        selectedModel={selectedModel}
-                        onModelSelect={setSelectedModel}
-                        modelsLoading={modelsLoading ?? false}
-                        groupedByProvider={groupedByProvider}
-                        mode={mode}
-                        onModeChange={setMode}
-                        onSubmit={handleSubmit}
-                        onStop={chat.handleStop}
-                        isCreating={!!isCreating}
-                        isStreaming={!!chat.isStreaming}
-                        messageQueueLength={chat.messageQueue.length}
-                        stats={stats}
-                        canSubmit={!!canSubmit}
-                      />
-                    </div>
-
-                    {chat.localSessions.length > 0 && (
-                      <div className="flex-1 overflow-y-auto px-3 pb-3 pt-2 min-h-0">
-                        {groupSessionsByTime(chat.localSessions.filter((s) => !s.archivedAt)).map((group) => (
-                          <div key={group.label} className="mb-6">
-                            <h3 className="text-xs font-medium text-muted-foreground mb-2 sticky top-0 bg-background py-1">
-                              {group.label}
-                            </h3>
-                            <div className="space-y-1">
-                              {group.sessions.map((session) => {
-                                const sessionName = session.title || session.repoName
-                                const repoPath = `${session.repoOwner}/${session.repoName}`
-                                return (
-                                  <div
-                                    key={session.id}
-                                    className="group/item relative flex items-stretch gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/40"
-                                  >
-                                    <button
-                                      onClick={() => {
-                                        chat.setActiveSessionId(session.id)
-                                        chat.connectWebSocket(session.id)
-                                        window.history.replaceState({}, '', `/session/${session.id}`)
-                                      }}
-                                      className="flex-1 min-w-0 text-left py-0.5"
-                                    >
-                                      <div className="text-sm font-medium text-foreground truncate leading-tight">
-                                        {sessionName}
-                                      </div>
-                                      <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-[11px] text-muted-foreground/80 truncate">
-                                          {repoPath}
-                                        </span>
-                                        <span className="text-[11px] text-muted-foreground/50 shrink-0">
-                                          {formatRelativeTime(session.lastActivity)}
-                                        </span>
-                                      </div>
-                                    </button>
-                                    {isMobile && (
-                                      <button
-                                        type="button"
-                                        title="Delete chat"
-                                        disabled={deletingSessionId === session.id}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          handleDeleteSession(session, true)
-                                        }}
-                                        className="shrink-0 self-center p-1.5 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-30"
-                                      >
-                                        <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
-                                      </button>
-                                    )}
-                                    {!isMobile && (
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger
-                                          render={
-                                            <button
-                                              type="button"
-                                              title="Delete chat"
-                                              disabled={deletingSessionId === session.id}
-                                              onClick={(e) => e.stopPropagation()}
-                                              className="shrink-0 self-center p-1.5 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-30 opacity-0 group-hover/item:opacity-100"
-                                            >
-                                              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
-                                            </button>
-                                          }
-                                        />
-                                        <DropdownMenuContent align="end" className="w-48">
-                                          {confirmDeleteId === session.id ? (
-                                            <>
-                                              <DropdownMenuItem
-                                                onClick={() => handleDeleteSession(session, true)}
-                                                className="cursor-pointer text-red-600 dark:text-red-400"
-                                              >
-                                                Yes, delete
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                onClick={() => setConfirmDeleteId(null)}
-                                                className="cursor-pointer"
-                                              >
-                                                Cancel
-                                              </DropdownMenuItem>
-                                            </>
-                                          ) : (
-                                            <DropdownMenuItem
-                                              onClick={() => handleDeleteSession(session)}
-                                              className="cursor-pointer"
-                                            >
-                                              Delete
-                                            </DropdownMenuItem>
-                                          )}
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Active session on mobile: messages + composer at bottom */}
-                {chat.activeSessionId && (
-                  <div className="flex-1 flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-hidden">
-                      <DashboardMessages
-                        activeSessionId={chat.activeSessionId}
-                        messages={chat.messages}
-                        isStreaming={chat.isStreaming}
-                        streamingMessageId={chat.streamingMessageRef.current}
-                        streamStartTime={chat.streamStartTime}
-                        sessionTodos={chat.sessionTodos}
-                        onPermissionReply={handlePermissionReply}
-                      />
-                    </div>
-                    <DashboardComposer
-                      compactLayout={false}
-                      activeSessionId={chat.activeSessionId}
-                      prompt={prompt}
-                      onPromptChange={setPrompt}
-                      onKeyDown={handleKeyDown}
-                      selectedRepo={selectedRepo}
-                      onRepoSelect={setSelectedRepo}
-                      repos={repos}
-                      reposLoading={reposLoading ?? false}
-                      reposLoadMore={reposLoadMore}
-                      reposHasMore={reposHasMore ?? false}
-                      reposLoadingMore={reposLoadingMore ?? false}
-                      selectedModel={selectedModel}
-                      onModelSelect={setSelectedModel}
-                      modelsLoading={modelsLoading}
-                      groupedByProvider={groupedByProvider}
-                      mode={mode}
-                      onModeChange={setMode}
-                      onSubmit={handleSubmit}
-                      onStop={chat.handleStop}
-                      isCreating={!!isCreating}
-                      isStreaming={!!chat.isStreaming}
-                      messageQueueLength={chat.messageQueue.length}
-                      stats={stats}
-                      canSubmit={!!canSubmit}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Desktop: composer at bottom */}
-              <div className="hidden md:flex flex-col h-full">
-                <div className={cn('flex-1 overflow-hidden', chat.activeSessionId ? 'opacity-100' : 'opacity-0 h-0')}>
-                  <DashboardMessages
-                    activeSessionId={chat.activeSessionId}
-                    messages={chat.messages}
-                    isStreaming={chat.isStreaming}
-                    streamingMessageId={chat.streamingMessageRef.current}
-                    streamStartTime={chat.streamStartTime}
-                    sessionTodos={chat.sessionTodos}
-                    onPermissionReply={handlePermissionReply}
-                  />
-                </div>
-
-                <DashboardComposer
-                  activeSessionId={chat.activeSessionId}
-                  prompt={prompt}
-                  onPromptChange={setPrompt}
-                  onKeyDown={handleKeyDown}
-                  selectedRepo={selectedRepo}
-                  onRepoSelect={setSelectedRepo}
-                  repos={repos}
-                  reposLoading={reposLoading ?? false}
-                  reposLoadMore={reposLoadMore}
-                  reposHasMore={reposHasMore ?? false}
-                  reposLoadingMore={reposLoadingMore ?? false}
-                  selectedModel={selectedModel}
-                  onModelSelect={setSelectedModel}
-                  modelsLoading={modelsLoading}
-                  groupedByProvider={groupedByProvider}
-                  mode={mode}
-                  onModeChange={setMode}
-                  onSubmit={handleSubmit}
-                  onStop={chat.handleStop}
-                  isCreating={!!isCreating}
-                  isStreaming={!!chat.isStreaming}
-                  messageQueueLength={chat.messageQueue.length}
-                  stats={stats}
-                  canSubmit={!!canSubmit}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Right sidebar (desktop + mobile) */}
-          {chat.activeSessionId && (
-            <RightSidebar
-              data={{
-                sessionId: chat.activeSessionId,
-                selectedRepo,
-                selectedModel,
-                mode,
-                lastStepCost: chat.lastStepCost,
-                totalCost: chat.totalCost,
-                sessionTodos: chat.sessionTodos,
-                fileDiffs: chat.fileDiffs,
-                openCodeUrl: chat.openCodeUrl,
-                sessionInfo: chat.sessionInfo,
-                messages: chat.messages,
-              }}
-              desktopOpen={rightSidebar.desktopOpen}
-              mobileOpen={rightSidebar.mobileOpen}
-              isMobile={rightSidebar.isMobile ?? false}
-              onMobileOpenChange={rightSidebar.setMobileOpen}
-            />
-          )}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    </DashboardLayout>
   )
 }

@@ -4,35 +4,33 @@ import { useEffect } from 'react'
 import type { ChatSession } from '@/lib/api/server'
 import type { GitHubRepo, ModelInfo } from '@/lib/api/types'
 
-interface UseSessionSyncParams {
-  /** URL search params (from useSearchParams) */
+export interface UseSessionSyncParams {
+  initialSessionId: string | null
   sessionParam: string | null
-  /** Current active session ID */
-  activeSessionId: string | null
-  setActiveSessionId: (id: string) => void
-  connectWebSocket: (id: string) => void
-  /** Model data */
-  models: ModelInfo[]
-  selectedModel: ModelInfo | null
-  setSelectedModel: (model: ModelInfo) => void
-  /** User's saved default model ID from settings */
-  defaultModelId: string | null
-  /** Whether default model is still loading (wait before initial selection) */
-  defaultModelLoading: boolean
-  /** Repo data */
-  repos: GitHubRepo[]
-  selectedRepo: GitHubRepo | null
-  setSelectedRepo: (repo: GitHubRepo) => void
-  localSessions: ChatSession[]
-  /** Whether default repo is still loading (wait before initial selection) */
-  defaultRepoLoading: boolean
-  /** User's saved default repo full name from settings */
-  defaultRepoFullName: string | null
-  /** Message queue */
-  isStreaming: boolean
-  messageQueue: string[]
-  setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
   handleSend: (content: string) => void
+  chat: {
+    activeSessionId: string | null
+    setActiveSessionId: (id: string) => void
+    connectWebSocket: (id: string) => void
+    localSessions: ChatSession[]
+    isStreaming: boolean
+    messageQueue: string[]
+    setMessageQueue: React.Dispatch<React.SetStateAction<string[]>>
+  }
+  model: {
+    models: ModelInfo[]
+    selectedModel: ModelInfo | null
+    setSelectedModel: (model: ModelInfo) => void
+    defaultModelId: string | null
+    defaultModelLoading: boolean
+  }
+  repo: {
+    repos: GitHubRepo[]
+    selectedRepo: GitHubRepo | null
+    setSelectedRepo: (repo: GitHubRepo) => void
+    defaultRepoLoading: boolean
+    defaultRepoFullName: string | null
+  }
 }
 
 /**
@@ -43,34 +41,42 @@ interface UseSessionSyncParams {
  * - Processing queued messages when streaming completes
  */
 export function useSessionSync({
+  initialSessionId,
   sessionParam,
-  activeSessionId,
-  setActiveSessionId,
-  connectWebSocket,
-  models,
-  selectedModel,
-  setSelectedModel,
-  defaultModelId,
-  defaultModelLoading,
-  repos,
-  selectedRepo,
-  setSelectedRepo,
-  localSessions,
-  defaultRepoLoading,
-  defaultRepoFullName,
-  isStreaming,
-  messageQueue,
-  setMessageQueue,
   handleSend,
+  chat,
+  model,
+  repo,
 }: UseSessionSyncParams) {
-  // Activate session from URL param (e.g., /?session=abc123 from /session/[id] redirect)
+  const {
+    activeSessionId,
+    setActiveSessionId,
+    localSessions,
+    isStreaming,
+    messageQueue,
+    setMessageQueue,
+  } = chat
+  const {
+    models,
+    selectedModel,
+    setSelectedModel,
+    defaultModelId,
+    defaultModelLoading,
+  } = model
+  const {
+    repos,
+    selectedRepo,
+    setSelectedRepo,
+    defaultRepoLoading,
+    defaultRepoFullName,
+  } = repo
+  // Support the legacy /?session=<id> bootstrap as a fallback.
   useEffect(() => {
-    if (sessionParam && !activeSessionId) {
+    if (!initialSessionId && sessionParam && !activeSessionId) {
       setActiveSessionId(sessionParam)
-      connectWebSocket(sessionParam)
       window.history.replaceState({}, '', `/session/${sessionParam}`)
     }
-  }, [sessionParam, activeSessionId, setActiveSessionId, connectWebSocket])
+  }, [initialSessionId, sessionParam, activeSessionId, setActiveSessionId])
 
   // Set default model once defaults have loaded — prefer user's saved default from settings
   // Wait for defaultModelLoading to finish so we don't pick Kimi before "big pickle" loads

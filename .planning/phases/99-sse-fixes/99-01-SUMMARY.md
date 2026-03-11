@@ -101,7 +101,7 @@
 - **Auto-clone on chat start**: Added logic to clone repository when `repo_owner` and `repo_name` are in session meta but `repo_url` is not set
 - **GitHub token retrieval**: Fetches GitHub access token from accounts table for git authentication
 - **Branch creation**: Automatically creates branch with name format `ship-{timestamp}-{session-slice}`
-- **Git config**: Sets git user.name to "Ship Agent" and user.email to "agent@ship.dev"
+- **Git config**: Sets git user.name to "Ship Agent" and user.email to "shipagent@dylansteck.com"
 - **Store repo metadata**: Saves `repo_url`, `current_branch`, and `repo_path` in session meta
 - **Error handling**: Logs but doesn't fail chat if cloning fails (agent can still work without repo)
 

@@ -8,11 +8,20 @@ import type { CreateSessionParams, SandboxStatus } from '../types'
 
 /**
  * Hook to fetch all sessions for a user
+ * @param userId - User ID (undefined to disable fetch)
+ * @param options - Optional SWR config (e.g. refreshInterval when on homepage)
  */
-export function useSessions(userId: string | undefined) {
+export function useSessions(
+  userId: string | undefined,
+  options?: { refreshInterval?: number; revalidateOnFocus?: boolean },
+) {
   const { data, error, isLoading, mutate } = useSWR<ChatSession[]>(
     userId ? apiUrl('/sessions', { userId }) : null,
-    fetcher
+    fetcher,
+    {
+      refreshInterval: options?.refreshInterval,
+      revalidateOnFocus: options?.revalidateOnFocus ?? true,
+    },
   )
 
   return {
@@ -97,6 +106,42 @@ export function useDeleteSession() {
   return {
     deleteSession: trigger,
     isDeleting: isMutating,
+    error,
+  }
+}
+
+/**
+ * Mutation hook to delete all sessions for a user
+ */
+export function useDeleteAllSessions() {
+  const { trigger, isMutating, error } = useSWRMutation(
+    'delete-all-sessions',
+    async (_key: string, { arg }: { arg: { userId: string } }) => {
+      return del<{ success: boolean; deletedCount: number }>(apiUrl('/sessions', { userId: arg.userId }))
+    }
+  )
+
+  return {
+    deleteAllSessions: trigger,
+    isDeleting: isMutating,
+    error,
+  }
+}
+
+/**
+ * Provision sandbox for a session (e.g. when opening one that has no sandbox)
+ */
+export function useProvisionSandbox() {
+  const { trigger, isMutating, error } = useSWRMutation(
+    'provision-sandbox',
+    async (_key: string, { arg }: { arg: { sessionId: string } }) => {
+      return post<{ sessionId: string }, unknown>(apiUrl('/sandbox'), { sessionId: arg.sessionId })
+    }
+  )
+
+  return {
+    provisionSandbox: trigger,
+    isProvisioning: isMutating,
     error,
   }
 }

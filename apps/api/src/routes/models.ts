@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
+import { listAgents, getDefaultAgentId } from '../lib/agent-registry'
 
 const models = new Hono<{ Bindings: Env }>()
 
@@ -239,6 +240,75 @@ models.get('/sessions/:id', async (c) => {
   } catch (error) {
     console.error('Error getting session model:', error)
     return c.json({ error: 'Failed to get session model' }, 500)
+  }
+})
+
+/**
+ * GET /models/agents
+ * List all available agents with their models and modes
+ */
+models.get('/agents', (c) => {
+  const agents = listAgents()
+  return c.json(agents)
+})
+
+/**
+ * GET /models/default-agent
+ * Get user's default agent preference
+ * Query param: userId (required)
+ */
+models.get('/default-agent', async (c) => {
+  try {
+    const userId = c.req.query('userId')
+
+    if (!userId) {
+      return c.json({ error: 'userId query parameter is required' }, 400)
+    }
+
+    const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
+      .bind(userId, 'default_agent')
+      .first<{ value: string }>()
+
+    const agentId = result?.value || getDefaultAgentId()
+
+    return c.json({ agentId })
+  } catch (error) {
+    console.error('Error fetching default agent:', error)
+    return c.json({ error: 'Failed to fetch default agent' }, 500)
+  }
+})
+
+/**
+ * POST /models/default-agent
+ * Set user's default agent preference
+ * Body: { userId: string, agentId: string }
+ */
+models.post('/default-agent', async (c) => {
+  try {
+    const { userId, agentId } = await c.req.json<{ userId: string; agentId: string }>()
+
+    if (!userId || !agentId) {
+      return c.json({ error: 'userId and agentId are required' }, 400)
+    }
+
+    // Validate agent exists
+    const agents = listAgents()
+    if (!agents.some((a) => a.id === agentId)) {
+      return c.json({ error: 'Invalid agent ID' }, 400)
+    }
+
+    await c.env.DB.prepare(
+      `INSERT INTO user_preferences (user_id, key, value)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+    )
+      .bind(userId, 'default_agent', agentId)
+      .run()
+
+    return c.json({ success: true, agentId })
+  } catch (error) {
+    console.error('Error setting default agent:', error)
+    return c.json({ error: 'Failed to set default agent' }, 500)
   }
 })
 
