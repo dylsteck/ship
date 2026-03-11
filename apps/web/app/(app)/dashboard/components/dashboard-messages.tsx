@@ -222,6 +222,8 @@ interface DashboardMessagesProps {
   streamingStatusSteps?: string[]
   sessionTodos?: TodoItem[]
   onPermissionReply?: (permissionId: string, approved: boolean) => Promise<void>
+  onQuestionReply?: (questionId: string, response: string) => Promise<void>
+  onQuestionSkip?: (questionId: string) => Promise<void>
 }
 
 export function DashboardMessages({
@@ -234,6 +236,8 @@ export function DashboardMessages({
   streamingStatusSteps = [],
   sessionTodos = [],
   onPermissionReply,
+  onQuestionReply,
+  onQuestionSkip,
 }: DashboardMessagesProps) {
   const [subagentStack, setSubagentStack] = React.useState<SubagentViewState[]>([])
   const todoRenderedRef = React.useRef(false)
@@ -343,6 +347,8 @@ export function DashboardMessages({
                   todoRenderedRef={todoRenderedRef}
                   activeSessionId={activeSessionId}
                   onPermissionReply={onPermissionReply}
+                  onQuestionReply={onQuestionReply}
+                  onQuestionSkip={onQuestionSkip}
                   onSubagentNavigate={handleSubagentNavigate}
                 />
               )

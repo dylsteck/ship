@@ -1401,4 +1401,74 @@ app.post('/:sessionId/permission/:permissionId', async (c) => {
   }
 })
 
+// POST /chat/:sessionId/question/:questionId - Reply to agent question
+app.post('/:sessionId/question/:questionId', async (c) => {
+  const sessionId = c.req.param('sessionId')
+  const questionId = c.req.param('questionId')
+
+  const body = await c.req.json<{ response: string }>()
+  const response = body.response?.trim()
+  if (!response) {
+    return c.json({ error: 'response is required' }, 400)
+  }
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  const metaRes = await stub.fetch(new Request('https://do/meta'))
+  const meta = (await metaRes.json()) as Record<string, string>
+
+  if (!meta.sandbox_agent_url) {
+    return c.json({ error: 'Agent server not available' }, 400)
+  }
+
+  try {
+    const url = `${meta.sandbox_agent_url}/opencode/question/${questionId}/reply`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: [[response]] }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`[chat:${sessionId}] Question reply failed: ${res.status} ${text}`)
+      return c.json({ error: 'Failed to reply to question' }, res.status >= 500 ? 502 : 400)
+    }
+    return c.json({ success: true })
+  } catch (error) {
+    console.error(`[chat:${sessionId}] Failed to reply to question:`, safeErrorForLog(error))
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to reply' }, 500)
+  }
+})
+
+// POST /chat/:sessionId/question/:questionId/reject - Reject/skip agent question
+app.post('/:sessionId/question/:questionId/reject', async (c) => {
+  const sessionId = c.req.param('sessionId')
+  const questionId = c.req.param('questionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  const metaRes = await stub.fetch(new Request('https://do/meta'))
+  const meta = (await metaRes.json()) as Record<string, string>
+
+  if (!meta.sandbox_agent_url) {
+    return c.json({ error: 'Agent server not available' }, 400)
+  }
+
+  try {
+    const url = `${meta.sandbox_agent_url}/opencode/question/${questionId}/reject`
+    const res = await fetch(url, { method: 'POST' })
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`[chat:${sessionId}] Question reject failed: ${res.status} ${text}`)
+      return c.json({ error: 'Failed to reject question' }, res.status >= 500 ? 502 : 400)
+    }
+    return c.json({ success: true })
+  } catch (error) {
+    console.error(`[chat:${sessionId}] Failed to reject question:`, safeErrorForLog(error))
+    return c.json({ error: error instanceof Error ? error.message : 'Failed to reject' }, 500)
+  }
+})
+
 export default app

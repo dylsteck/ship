@@ -26,6 +26,8 @@ export interface MessageItemProps {
   todoRenderedRef: React.MutableRefObject<boolean>
   activeSessionId: string | null
   onPermissionReply?: (permissionId: string, approved: boolean) => Promise<void>
+  onQuestionReply?: (questionId: string, response: string) => Promise<void>
+  onQuestionSkip?: (questionId: string) => Promise<void>
   onSubagentNavigate: (tool: import('@/lib/ai-elements-adapter').ToolInvocation) => void
 }
 
@@ -39,6 +41,8 @@ export function MessageItem({
   todoRenderedRef,
   activeSessionId,
   onPermissionReply,
+  onQuestionReply,
+  onQuestionSkip,
   onSubagentNavigate,
 }: MessageItemProps) {
   if (message.type === 'permission' && message.promptData) {
@@ -72,6 +76,16 @@ export function MessageItem({
           id={message.promptData.id}
           text={message.promptData.text || message.content}
           status={message.promptData.status as 'pending' | 'replied' | 'rejected'}
+          onReply={
+            onQuestionReply && activeSessionId
+              ? (answer) => onQuestionReply(message.promptData!.id, answer)
+              : undefined
+          }
+          onSkip={
+            onQuestionSkip && activeSessionId
+              ? () => onQuestionSkip(message.promptData!.id)
+              : undefined
+          }
         />
       </div>
     )

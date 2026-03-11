@@ -15,6 +15,26 @@ const DEFAULT_MODES: AgentMode[] = [
   { id: 'plan', label: 'plan' },
 ]
 
+const MODE_STORAGE_KEY = 'ship-chat-mode'
+
+function getStoredMode(): AgentModeId {
+  try {
+    const s = localStorage.getItem(MODE_STORAGE_KEY)
+    if (s === 'build' || s === 'plan') return s
+  } catch {
+    // ignore
+  }
+  return 'build'
+}
+
+function setStoredMode(mode: AgentModeId): void {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, mode)
+  } catch {
+    // ignore
+  }
+}
+
 export interface UseDashboardStateParams {
   chat: ReturnType<typeof useDashboardChat>
   handleSend: (content: string, modeOverride?: string, sessionIdOverride?: string) => void
@@ -60,7 +80,11 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
   const [selectedBranch, setSelectedBranch] = useState<string>('main')
   const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
-  const [mode, setMode] = useState<AgentModeId>('build')
+  const [mode, setModeState] = useState<AgentModeId>(getStoredMode)
+  const setMode = useCallback((next: AgentModeId) => {
+    setModeState(next)
+    setStoredMode(next)
+  }, [])
   const [availableModes, setAvailableModes] = useState<AgentMode[]>(DEFAULT_MODES)
   const [prompt, setPrompt] = useState<string>('')
 
@@ -72,21 +96,25 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
     if (agent) {
       setSelectedAgent(agent)
       setAvailableModes(agent.modes)
-      setMode(agent.modes[0]?.id || 'build')
+      const savedMode = getStoredMode()
+      const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
+      setMode(validMode)
       if (agent.models.length > 0) {
         setSelectedModel(agent.models[0])
       }
     }
-  }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent])
+  }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent, setMode])
 
   const handleAgentSelect = useCallback((agent: AgentInfo) => {
     setSelectedAgent(agent)
     setAvailableModes(agent.modes)
-    setMode(agent.modes[0]?.id || 'build')
+    const savedMode = getStoredMode()
+    const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
+    setMode(validMode)
     if (agent.models.length > 0) {
       setSelectedModel(agent.models[0])
     }
-  }, [])
+  }, [setMode])
 
   /** Read SSE stream in background to populate live status for a homepage session card */
   const streamSessionInBackground = useCallback(

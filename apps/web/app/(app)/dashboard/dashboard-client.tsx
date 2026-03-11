@@ -12,7 +12,7 @@ import { useModels, useDefaultModel, useSessionModel } from '@/lib/api/hooks/use
 import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
 import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks/use-sessions'
-import { replyPermission } from '@/lib/api/hooks/use-chat'
+import { replyPermission, replyQuestion, rejectQuestion } from '@/lib/api/hooks/use-chat'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
@@ -67,6 +67,22 @@ export function DashboardClient({
     async (permissionId: string, approved: boolean) => {
       if (!chat.activeSessionId) return
       await replyPermission(chat.activeSessionId, permissionId, approved ? 'once' : 'reject')
+    },
+    [chat.activeSessionId],
+  )
+
+  const handleQuestionReply = useCallback(
+    async (questionId: string, response: string) => {
+      if (!chat.activeSessionId) return
+      await replyQuestion(chat.activeSessionId, questionId, response)
+    },
+    [chat.activeSessionId],
+  )
+
+  const handleQuestionSkip = useCallback(
+    async (questionId: string) => {
+      if (!chat.activeSessionId) return
+      await rejectQuestion(chat.activeSessionId, questionId)
     },
     [chat.activeSessionId],
   )
@@ -384,6 +400,8 @@ export function DashboardClient({
           streamingStatusSteps: chat.streamingStatusSteps,
           sessionTodos: chat.sessionTodos,
           onPermissionReply: handlePermissionReply,
+          onQuestionReply: handleQuestionReply,
+          onQuestionSkip: handleQuestionSkip,
         }}
         sessions={{
           localSessions: chat.localSessions,

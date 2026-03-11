@@ -47,6 +47,17 @@ export function classifyError(error: unknown): ErrorDetails {
   const message = error instanceof Error ? error.message : String(error)
   const lowerMessage = message.toLowerCase()
 
+  // Prompt timeout is not retryable — agent is blocked (e.g. waiting for question reply)
+  if (lowerMessage.includes('prompt timed out')) {
+    return {
+      category: ErrorCategory.Persistent,
+      retryable: false,
+      maxRetries: 0,
+      backoffMs: 0,
+      message,
+    }
+  }
+
   // Transient errors - network, timeouts, rate limits
   // These should auto-retry with exponential backoff
   if (

@@ -50,6 +50,8 @@ export {
   useMarkPRReady,
   useRetryChat,
   replyPermission,
+  replyQuestion,
+  rejectQuestion,
 } from './use-chat'
 
 // Agents

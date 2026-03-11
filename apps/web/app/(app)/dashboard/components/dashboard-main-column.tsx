@@ -33,6 +33,8 @@ export interface DashboardMainColumnProps {
     streamingStatusSteps: string[]
     sessionTodos: TodoItem[]
     onPermissionReply: (permissionId: string, approved: boolean) => Promise<void>
+    onQuestionReply?: (questionId: string, response: string) => Promise<void>
+    onQuestionSkip?: (questionId: string) => Promise<void>
   }
   sessions: {
     localSessions: ChatSession[]
@@ -85,6 +87,8 @@ export function DashboardMainColumn({
     streamingStatusSteps: messagesCtx.streamingStatusSteps,
     sessionTodos: messagesCtx.sessionTodos,
     onPermissionReply: messagesCtx.onPermissionReply,
+    onQuestionReply: messagesCtx.onQuestionReply,
+    onQuestionSkip: messagesCtx.onQuestionSkip,
   }
 
   return (
