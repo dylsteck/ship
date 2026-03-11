@@ -1153,6 +1153,76 @@ app.post('/:sessionId/stop', async (c) => {
   return c.json({ success: true })
 })
 
+// GET /chat/:sessionId/subscribe - SSE stream to resume an active agent session (e.g. after page reload)
+app.get('/:sessionId/subscribe', async (c) => {
+  const sessionId = c.req.param('sessionId')
+
+  const id = c.env.SESSION_DO.idFromName(sessionId)
+  const stub = c.env.SESSION_DO.get(id)
+
+  const metaRes = await stub.fetch(new Request('https://do/meta'))
+  const meta = (await metaRes.json()) as Record<string, string>
+  const agentSessionId = meta.agent_session_id
+  const sandboxAgentUrl = meta.sandbox_agent_url
+
+  if (!agentSessionId || !sandboxAgentUrl) {
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: 'session.idle',
+        data: JSON.stringify({ type: 'session.idle' }),
+      })
+      await stream.close()
+    })
+  }
+
+  return streamSSE(c, async (stream) => {
+    try {
+      const client = await connectToSandboxAgent(sandboxAgentUrl)
+      const session = await resumeAgentSessionWithTimeout(client, agentSessionId)
+
+      if (!session) {
+        await stream.writeSSE({
+          event: 'session.idle',
+          data: JSON.stringify({ type: 'session.idle' }),
+        })
+        await stream.close()
+        return
+      }
+
+      const translator = new EventTranslatorState(sessionId)
+
+      const unsubscribe = subscribeToSessionEvents(session, async (event) => {
+        const sseEvents = translator.translateEvent(event)
+        for (const sseEvent of sseEvents) {
+          await stream.writeSSE({
+            event: sseEvent.type,
+            data: JSON.stringify(sseEvent),
+          })
+
+          if (sseEvent.type === 'session.idle' || sseEvent.type === 'session.error') {
+            unsubscribe()
+          }
+        }
+      })
+
+      // Keep stream open until session ends (timeout after 5 min)
+      await new Promise((resolve) => setTimeout(resolve, 300000))
+      unsubscribe()
+    } catch (error) {
+      console.error(`[chat:${sessionId}] Subscribe stream error:`, safeErrorForLog(error))
+      await stream.writeSSE({
+        event: 'session.error',
+        data: JSON.stringify({
+          type: 'session.error',
+          properties: { error: error instanceof Error ? error.message : 'Stream failed' },
+        }),
+      })
+    } finally {
+      await stream.close()
+    }
+  })
+})
+
 // GET /chat/:sessionId/subagent/:subagentSessionId/stream - SSE stream for sub-agent session
 app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
   const sessionId = c.req.param('sessionId')

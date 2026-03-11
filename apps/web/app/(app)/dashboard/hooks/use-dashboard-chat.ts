@@ -18,6 +18,23 @@ export interface UseDashboardChatOptions {
   onAgentEventRef?: React.MutableRefObject<
     ((sessionId: string, event: { type: string; [k: string]: unknown }) => void) | null
   >
+  /** Pre-loaded messages from server (e.g. session page). Skips client fetch when activeSessionId matches. */
+  initialMessages?: UIMessage[]
+  /** Called to resume an active stream (e.g. after page reload). */
+  onResumeStream?: (sessionId: string) => void
+}
+
+/** Normalize messages from server — createdAt may be serialized as string. */
+function normalizeInitialMessages(msgs: UIMessage[]): UIMessage[] {
+  return msgs.map((m) => ({
+    ...m,
+    createdAt:
+      m.createdAt instanceof Date
+        ? m.createdAt
+        : typeof m.createdAt === 'string'
+          ? new Date(m.createdAt)
+          : undefined,
+  }))
 }
 
 export function useDashboardChat(
@@ -25,10 +42,12 @@ export function useDashboardChat(
   initialActiveSessionId: string | null = null,
   options?: UseDashboardChatOptions,
 ) {
-  const { onAgentEventRef } = options ?? {}
+  const { onAgentEventRef, initialMessages: rawInitialMessages, onResumeStream } = options ?? {}
   const [localSessions, setLocalSessions] = useState<ChatSession[]>(initialSessions)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialActiveSessionId)
-  const [messages, setMessages] = useState<UIMessage[]>([])
+  const [messages, setMessages] = useState<UIMessage[]>(() =>
+    rawInitialMessages ? normalizeInitialMessages(rawInitialMessages) : [],
+  )
   const [internalIsStreaming, setInternalIsStreaming] = useState(false)
   const [wsStatus, setWsStatus] = useState<WebSocketStatus>('disconnected')
   const [messageQueue, setMessageQueue] = useState<string[]>([])
@@ -181,12 +200,20 @@ export function useDashboardChat(
     connectWebSocket(activeSessionId)
   }, [activeSessionId, connectWebSocket])
 
-  // Load chat history when session changes
+  // Load chat history when session changes (skip if server provided initialMessages for this session)
   const historyLoadedRef = useRef<string | null>(null)
   useEffect(() => {
     if (!activeSessionId) {
       setMessages([])
       historyLoadedRef.current = null
+      return
+    }
+    const hadInitialForThisSession =
+      rawInitialMessages !== undefined && activeSessionId === initialActiveSessionId
+    if (hadInitialForThisSession) {
+      historyLoadedRef.current = activeSessionId
+      setMessages(normalizeInitialMessages(rawInitialMessages!))
+      onResumeStream?.(activeSessionId)
       return
     }
     if (historyLoadedRef.current === activeSessionId) return
@@ -196,6 +223,7 @@ export function useDashboardChat(
       .then((apiMessages) => {
         const uiMessages = mapApiMessagesToUI(apiMessages)
         setMessages(uiMessages)
+        onResumeStream?.(activeSessionId)
       })
       .catch((err) => {
         console.error('Failed to load messages:', err)
@@ -204,7 +232,7 @@ export function useDashboardChat(
     return () => {
       historyLoadedRef.current = null
     }
-  }, [activeSessionId])
+  }, [activeSessionId, initialActiveSessionId, rawInitialMessages, onResumeStream])
 
   const handleStop = useCallback(async () => {
     if (!activeSessionId) return

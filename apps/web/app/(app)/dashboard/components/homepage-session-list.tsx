@@ -6,6 +6,34 @@ import type { ChatSession } from '@/lib/api/server'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
 import { useSessionStatusStore, type SessionLiveStatus } from '../hooks/use-session-status-store'
 
+function BranchBadge() {
+  return (
+    <div className="flex-1 min-h-0 flex items-center justify-center">
+      <div className="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-sm gap-1.5 bg-muted text-muted-foreground">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3 w-3 shrink-0"
+          aria-hidden
+        >
+          <line x1="6" x2="6" y1="3" y2="15" />
+          <circle cx="18" cy="6" r="3" />
+          <circle cx="6" cy="18" r="3" />
+          <path d="M18 9a9 9 0 0 1-9 9" />
+        </svg>
+        <span>Branch</span>
+      </div>
+    </div>
+  )
+}
+
 function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor(Date.now() / 1000 - timestamp)
   if (seconds < 60) return 'now'
@@ -194,44 +222,9 @@ function HomepageSessionCard({
             </span>
           </div>
         ) : isWaitingForUser ? (
-          <div className="flex-1 min-h-0 flex items-center justify-center">
-            <div className="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-sm gap-1.5 bg-muted text-muted-foreground">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3 w-3 shrink-0"
-                aria-hidden
-              >
-                <line x1="6" x2="6" y1="3" y2="15" />
-                <circle cx="18" cy="6" r="3" />
-                <circle cx="6" cy="18" r="3" />
-                <path d="M18 9a9 9 0 0 1-9 9" />
-              </svg>
-              <span>Branch</span>
-            </div>
-          </div>
+          <BranchBadge />
         ) : liveStatus?.status === 'Done' ? (
-          contentPreview ? (
-            <div className="w-full">
-              <p className="text-[10px] leading-tight text-foreground/50 line-clamp-5 whitespace-pre-wrap">
-                {contentPreview.slice(0, 200)}
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span className="text-[11px] font-medium text-emerald-500">Done</span>
-            </div>
-          )
+          <BranchBadge />
         ) : liveStatus?.status === 'Error' ? (
           <div className="flex items-center gap-1.5">
             <svg className="h-3.5 w-3.5 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -240,29 +233,7 @@ function HomepageSessionCard({
             <span className="text-[11px] font-medium text-destructive">Error</span>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 flex items-center justify-center">
-            <div className="inline-flex items-center rounded-full font-medium px-2 py-0.5 text-sm gap-1.5 bg-muted text-muted-foreground">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3 w-3 shrink-0"
-                aria-hidden
-              >
-                <line x1="6" x2="6" y1="3" y2="15" />
-                <circle cx="18" cy="6" r="3" />
-                <circle cx="6" cy="18" r="3" />
-                <path d="M18 9a9 9 0 0 1-9 9" />
-              </svg>
-              <span>Branch</span>
-            </div>
-          </div>
+          <BranchBadge />
         )}
       </div>
 

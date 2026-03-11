@@ -173,3 +173,15 @@ export async function stopChatStream(sessionId: string): Promise<void> {
     method: 'POST',
   })
 }
+
+/**
+ * Subscribe to an active chat stream (resume after page reload).
+ * Returns a streaming Response; if session is not running, returns ok with session.idle and empty body.
+ */
+export async function subscribeToChatStream(sessionId: string): Promise<Response> {
+  const response = await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/subscribe`, {
+    headers: { Accept: 'text/event-stream' },
+    cache: 'no-store',
+  })
+  return response
+}

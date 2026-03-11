@@ -7,7 +7,6 @@ import {
   Loader,
   ReasoningCollapsible,
   SessionSetup,
-  PhaseBlock,
 } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
@@ -15,7 +14,6 @@ import { PermissionPrompt } from '../permission-prompt'
 import { QuestionPrompt } from '../question-prompt'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import type { TodoItem } from '../../types'
-import { getPhaseLabel } from './helpers'
 import { MessageToolList } from './tool-list'
 
 export interface MessageItemProps {
@@ -134,15 +132,6 @@ export function MessageItem({
   const hasSteps =
     message.role === 'assistant' &&
     !!(message.toolInvocations && message.toolInvocations.length > 0)
-  const hasPhaseBlock = message.role === 'assistant' && (hasReasoning || hasSteps)
-  const phaseLabel = getPhaseLabel(message, hasReasoning, hasSteps)
-  const phaseDuration =
-    isCurrentlyStreaming && streamStartTime
-      ? `${Math.floor((Date.now() - streamStartTime) / 1000)}s`
-      : message.elapsed != null
-        ? `${Math.floor(message.elapsed / 1000)}s`
-        : undefined
-  const isPhaseComplete = hasPhaseBlock && !isCurrentlyStreaming
 
   const reasoningDuration =
     isCurrentlyStreaming && streamStartTime
@@ -167,29 +156,21 @@ export function MessageItem({
           <SessionSetup steps={message.startupSteps} defaultOpen={false} className="my-1" />
         )}
 
-      {hasPhaseBlock ? (
-        <PhaseBlock
-          label={phaseLabel}
-          duration={phaseDuration}
-          isComplete={!!isPhaseComplete}
-        >
-          {hasReasoning && (
-            <ReasoningCollapsible
-              reasoning={message.reasoning}
-              isStreaming={isCurrentlyStreaming}
-              duration={reasoningDuration}
-            />
-          )}
-          {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
-            <MessageToolList
-              tools={message.toolInvocations}
-              sessionTodos={sessionTodos}
-              todoRenderedRef={todoRenderedRef}
-              onSubagentNavigate={onSubagentNavigate}
-            />
-          )}
-        </PhaseBlock>
-      ) : null}
+      {hasReasoning && (
+        <ReasoningCollapsible
+          reasoning={message.reasoning}
+          isStreaming={isCurrentlyStreaming}
+          duration={reasoningDuration}
+        />
+      )}
+      {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
+        <MessageToolList
+          tools={message.toolInvocations}
+          sessionTodos={sessionTodos}
+          todoRenderedRef={todoRenderedRef}
+          onSubagentNavigate={onSubagentNavigate}
+        />
+      )}
 
       {message.planItems && message.planItems.length > 0 && (
         <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">

@@ -69,12 +69,7 @@ interface ReasoningCollapsibleProps {
 function ThoughtBrieflyBlock({ content }: { content: string }) {
   if (!content.trim()) return null
   return (
-    <div className="rounded border border-border/20 bg-muted/20 px-3 py-2">
-      <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-1.5">
-        Thought briefly
-      </p>
-      <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{content.trim()}</div>
-    </div>
+    <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{content.trim()}</div>
   )
 }
 

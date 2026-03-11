@@ -1,4 +1,4 @@
 export { MessagesEmptyState } from './empty-state'
 export { MessageItem, type MessageItemProps } from './message-item'
 export { MessageToolList } from './tool-list'
-export { formatAgentType, getPhaseLabel } from './helpers'
+export { formatAgentType } from './helpers'

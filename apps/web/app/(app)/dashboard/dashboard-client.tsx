@@ -13,6 +13,7 @@ import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks
 import { replyPermission } from '@/lib/api/hooks/use-chat'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
+import type { UIMessage } from '@/lib/ai-elements-adapter'
 import type { SessionPanelData } from './types'
 import { useDashboardChat } from './hooks/use-dashboard-chat'
 import { useDashboardSSE } from './hooks/use-dashboard-sse'
@@ -29,6 +30,7 @@ interface DashboardClientProps {
   userId: string
   user: User
   initialSessionId?: string | null
+  initialMessages?: UIMessage[]
 }
 
 export function DashboardClient({
@@ -36,6 +38,7 @@ export function DashboardClient({
   userId,
   user,
   initialSessionId = null,
+  initialMessages,
 }: DashboardClientProps) {
   const searchParams = useSearchParams()
   const isMobile = useIsMobile()
@@ -44,7 +47,13 @@ export function DashboardClient({
     null,
   )
 
-  const chat = useDashboardChat(initialSessions, initialSessionId, { onAgentEventRef })
+  const resumeStreamRef = useRef<((sessionId: string) => void) | null>(null)
+  const onResumeStream = useCallback((id: string) => resumeStreamRef.current?.(id), [])
+  const chat = useDashboardChat(initialSessions, initialSessionId, {
+    onAgentEventRef,
+    initialMessages,
+    onResumeStream,
+  })
 
   // Provision sandbox when opening a session that has none (error or never provisioned)
   useProvisionSandboxWhenNeeded(chat.activeSessionId)
@@ -57,7 +66,14 @@ export function DashboardClient({
     [chat.activeSessionId],
   )
 
-  const { handleSend, processStreamEventForSession } = useDashboardSSE({ chat, modeRef })
+  const { handleSend, processStreamEventForSession, resumeStream } = useDashboardSSE({ chat, modeRef })
+
+  useEffect(() => {
+    resumeStreamRef.current = resumeStream
+    return () => {
+      resumeStreamRef.current = null
+    }
+  }, [resumeStream])
 
   useEffect(() => {
     onAgentEventRef.current = processStreamEventForSession

@@ -1,5 +1,6 @@
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, getSession, type ChatSession } from '@/lib/api'
+import { fetchSessions, getSession, getChatMessages, type ChatSession } from '@/lib/api'
+import { mapApiMessagesToUI } from '@/lib/ai-elements-adapter'
 import { DashboardClient } from '../../dashboard/dashboard-client'
 import { SessionLoadingFallback } from '@/components/session/session-loading-fallback'
 
@@ -45,12 +46,21 @@ export default async function SessionPage({ params }: SessionPageProps) {
       )
     : [matchingSession, ...sessions]
 
+  let initialMessages: Awaited<ReturnType<typeof mapApiMessagesToUI>> = []
+  try {
+    const apiMessages = await getChatMessages(id, { limit: 100 })
+    initialMessages = mapApiMessagesToUI(apiMessages)
+  } catch (error) {
+    console.error('Failed to fetch messages:', error)
+  }
+
   return (
     <DashboardClient
       sessions={mergedSessions}
       userId={session.userId}
       user={user}
       initialSessionId={id}
+      initialMessages={initialMessages}
     />
   )
 }

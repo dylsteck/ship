@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import { sendChatMessage } from '@/lib/api/server'
+import { sendChatMessage, subscribeToChatStream } from '@/lib/api/server'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { sessionStatusStore } from './use-session-status-store'
 import {
@@ -487,5 +487,251 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
     ],
   )
 
-  return { handleSend, processStreamEventForSession }
+  /** Resume an active stream (e.g. after page reload). Tries subscribe endpoint; if session not running, returns early. */
+  const resumeStream = useCallback(
+    async (sessionId: string) => {
+      if (isStreamingRef.current) return
+
+      try {
+        const response = await subscribeToChatStream(sessionId)
+        if (!response.ok || !response.body) return
+
+        setIsStreaming(true)
+        clearStreamingStatusSteps()
+        assistantTextRef.current = ''
+        reasoningRef.current = ''
+        const now = Date.now()
+        streamStartTimeRef.current = now
+        setStreamStartTime(now)
+
+        const hasCompletedAssistant = messagesRef.current.some(
+          (m) => m.role === 'assistant' && (m.content || m.toolInvocations?.length),
+        )
+        const accumulateSetupStepsRef = { current: !hasCompletedAssistant }
+        sessionStatusStore.update(sessionId, {
+          isRunning: true,
+          status: 'Resuming...',
+          steps: [],
+          contentPreview: '',
+        })
+
+        let placeholderAdded = false
+        const ensurePlaceholder = () => {
+          if (placeholderAdded) return
+          placeholderAdded = true
+          const placeholder = createAssistantPlaceholder()
+          streamingMessageRef.current = placeholder.id
+          setMessages((prev) => [...prev, placeholder])
+        }
+
+        const ctx: SSEHandlerContext = {
+          setMessages,
+          setIsStreaming,
+          setTotalCost,
+          setLastStepCost,
+          setSessionTodos,
+          setFileDiffs,
+          setAgentUrl,
+          setSessionTitle,
+          setSessionInfo,
+          setAgentSessionId,
+          setStreamStartTime,
+          setStreamingStatus,
+          accumulateSetupStepsRef,
+          streamingStatusStepsRef,
+          clearStreamingStatusSteps,
+          streamingMessageRef,
+          assistantTextRef,
+          reasoningRef,
+          targetSessionId: sessionId,
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          let currentEventType = ''
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEventType = line.slice(7).trim()
+              continue
+            }
+            if (line.startsWith('data: ')) {
+              try {
+                const rawData = JSON.parse(line.slice(6))
+                if (!rawData.type && currentEventType) rawData.type = currentEventType
+                const event = parseSSEEvent(rawData)
+                if (!event) continue
+
+                switch (event.type) {
+                  case 'session.idle':
+                  case 'done':
+                    if (!placeholderAdded) {
+                      setIsStreaming(false)
+                      sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
+                      return
+                    }
+                    handleDoneOrIdle(ctx, streamStartTimeRef)
+                    sessionStatusStore.update(sessionId, {
+                      isRunning: false,
+                      status: 'Done',
+                      contentPreview: ctx.assistantTextRef.current || undefined,
+                    })
+                    return
+                  case 'message.part.updated': {
+                    ensurePlaceholder()
+                    handleMessagePartUpdated(event as any, ctx, scheduleFlush)
+                    const textDelta = extractTextDelta(event as any)
+                    if (textDelta) {
+                      sessionStatusStore.update(sessionId, {
+                        contentPreview: ctx.assistantTextRef.current,
+                      })
+                    }
+                    const eventStatus = getEventStatus(event as any)
+                    if (eventStatus) {
+                      sessionStatusStore.update(sessionId, { status: eventStatus.label })
+                      sessionStatusStore.addStep(sessionId, eventStatus.label)
+                    }
+                    break
+                  }
+                  case 'message.updated':
+                    break
+                  case 'todo.updated':
+                    ensurePlaceholder()
+                    setSessionTodos((event as any).properties.todos)
+                    break
+                  case 'session.diff':
+                    ensurePlaceholder()
+                    setFileDiffs((event as any).properties.diff)
+                    break
+                  case 'message.removed':
+                    setMessages((prev) => prev.filter((m) => m.id !== (event as any).properties.messageID))
+                    break
+                  case 'session.updated': {
+                    ensurePlaceholder()
+                    const info = (event as any).properties.info
+                    if (info) {
+                      if (info.title) {
+                        setSessionTitle(info.title)
+                        if (activeSessionId === sessionId) updateSessionTitle(sessionId, info.title)
+                      }
+                      setSessionInfo(info)
+                    }
+                    break
+                  }
+                  case 'agent-url':
+                  case 'opencode-url': {
+                    ensurePlaceholder()
+                    const url = (event as { url?: string }).url
+                    if (url) handleAgentUrl(url, ctx)
+                    break
+                  }
+                  case 'agent-session': {
+                    ensurePlaceholder()
+                    const id = (event as { agentSessionId?: string }).agentSessionId
+                    if (id) handleAgentSession(id, ctx)
+                    break
+                  }
+                  case 'permission.asked':
+                    ensurePlaceholder()
+                    handlePermissionAsked((event as any).properties, ctx)
+                    break
+                  case 'permission.granted':
+                    handlePermissionResolved((event as any).properties.id, 'granted', ctx)
+                    break
+                  case 'permission.denied':
+                    handlePermissionResolved((event as any).properties.id, 'denied', ctx)
+                    break
+                  case 'question.asked':
+                    ensurePlaceholder()
+                    handleQuestionAsked((event as any).properties, ctx)
+                    break
+                  case 'question.replied':
+                    handleQuestionResolved((event as any).properties.id, 'replied', ctx)
+                    break
+                  case 'question.rejected':
+                    handleQuestionResolved((event as any).properties.id, 'rejected', ctx)
+                    break
+                  case 'session.error':
+                    if (!placeholderAdded) setIsStreaming(false)
+                    handleSessionError((event as any).properties.error, ctx)
+                    sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+                    return
+                  case 'error':
+                    if (!placeholderAdded) setIsStreaming(false)
+                    handleGenericError((event as any).error, ctx)
+                    sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+                    return
+                  case 'status':
+                  case 'session.status': {
+                    ensurePlaceholder()
+                    const ev = event as { message?: string; status?: string }
+                    const msg = ev.message ?? ev.status
+                    if (typeof msg === 'string') {
+                      ctx.setStreamingStatus(msg, ctx.accumulateSetupStepsRef.current)
+                      sessionStatusStore.update(sessionId, { status: msg })
+                      sessionStatusStore.addStep(sessionId, msg)
+                    }
+                    break
+                  }
+                  default:
+                    ensurePlaceholder()
+                    handleRawDataFallbacks(rawData, ctx)
+                }
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+
+        const current = sessionStatusStore.get(sessionId)
+        if (current?.isRunning) {
+          sessionStatusStore.update(sessionId, {
+            isRunning: false,
+            status: 'Done',
+            contentPreview: ctx.assistantTextRef.current || undefined,
+          })
+        }
+      } catch (err) {
+        console.error('Resume stream error:', err)
+        sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+        setIsStreaming(false)
+        setStreamingStatus('')
+        streamingMessageRef.current = null
+      }
+    },
+    [
+      activeSessionId,
+      setMessages,
+      setIsStreaming,
+      setTotalCost,
+      setLastStepCost,
+      setSessionTodos,
+      setFileDiffs,
+      setAgentUrl,
+      setSessionTitle,
+      setSessionInfo,
+      setAgentSessionId,
+      setStreamStartTime,
+      setStreamingStatus,
+      updateSessionTitle,
+      streamingStatusStepsRef,
+      clearStreamingStatusSteps,
+      streamingMessageRef,
+      assistantTextRef,
+      reasoningRef,
+      scheduleFlush,
+    ],
+  )
+
+  return { handleSend, processStreamEventForSession, resumeStream }
 }
