@@ -68,6 +68,10 @@ interface AssistantRunBlockProps {
   sessionTodos: TodoItem[]
   todoRenderedRef: React.MutableRefObject<boolean>
   onSubagentNavigate: (tool: ToolInvocation) => void
+  /** Only show SessionSetup for the first assistant in the thread */
+  showSessionSetup: boolean
+  /** Only show persisted startupSteps on the first assistant block */
+  isFirstAssistantBlock: boolean
 }
 
 function AssistantRunBlock({
@@ -78,6 +82,8 @@ function AssistantRunBlock({
   sessionTodos,
   todoRenderedRef,
   onSubagentNavigate,
+  showSessionSetup,
+  isFirstAssistantBlock,
 }: AssistantRunBlockProps) {
   const isGroupStreaming = messages.some((m) => m.id === streamingMessageId)
 
@@ -85,9 +91,9 @@ function AssistantRunBlock({
   const isLastEmpty =
     !lastMsg.content && !lastMsg.toolInvocations?.length && !lastMsg.reasoning?.length
 
-  // Single empty streaming message → show loader or session setup
+  // Single empty streaming message → show loader or session setup (only on first message)
   if (messages.length === 1 && isLastEmpty && isGroupStreaming) {
-    if (streamingStatusSteps.length > 0) {
+    if (showSessionSetup && streamingStatusSteps.length > 0) {
       return (
         <Message role="assistant">
           <SessionSetup steps={streamingStatusSteps} isStreaming />
@@ -135,7 +141,7 @@ function AssistantRunBlock({
 
   return (
     <Message role="assistant" className={isGroupStreaming ? 'will-change-contents' : undefined}>
-      {startupStepsMsg?.startupSteps && (
+      {isFirstAssistantBlock && startupStepsMsg?.startupSteps && (
         <SessionSetup
           steps={startupStepsMsg.startupSteps}
           defaultOpen={false}
@@ -244,6 +250,26 @@ export function DashboardMessages({
 
   const messageGroups = React.useMemo(() => groupConsecutiveAssistants(messages), [messages])
 
+  const { showSessionSetup, firstAssistantBlockIndex } = React.useMemo(() => {
+    const hasCompletedAssistant = messages.some(
+      (m) =>
+        m.role === 'assistant' &&
+        m.id !== streamingMessageId &&
+        (m.content || (m.toolInvocations?.length ?? 0) > 0),
+    )
+    let firstIdx = -1
+    for (let i = 0; i < messageGroups.length; i++) {
+      if (messageGroups[i].type === 'assistant-run') {
+        firstIdx = i
+        break
+      }
+    }
+    return {
+      showSessionSetup: !hasCompletedAssistant,
+      firstAssistantBlockIndex: firstIdx,
+    }
+  }, [messages, streamingMessageId, messageGroups])
+
   if (!activeSessionId) return null
 
   todoRenderedRef.current = false
@@ -333,7 +359,7 @@ export function DashboardMessages({
         {!hasContent && !isStreaming && <MessagesEmptyState />}
 
         <div className="space-y-6">
-          {messageGroups.map((group) => {
+          {messageGroups.map((group, idx) => {
             if (group.type === 'single') {
               return (
                 <MessageItem
@@ -350,6 +376,7 @@ export function DashboardMessages({
                   onQuestionReply={onQuestionReply}
                   onQuestionSkip={onQuestionSkip}
                   onSubagentNavigate={handleSubagentNavigate}
+                  showSessionSetup={showSessionSetup}
                 />
               )
             }
@@ -364,6 +391,8 @@ export function DashboardMessages({
                 sessionTodos={sessionTodos}
                 todoRenderedRef={todoRenderedRef}
                 onSubagentNavigate={handleSubagentNavigate}
+                showSessionSetup={showSessionSetup}
+                isFirstAssistantBlock={idx === firstAssistantBlockIndex}
               />
             )
           })}

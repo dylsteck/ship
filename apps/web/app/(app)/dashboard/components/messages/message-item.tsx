@@ -29,6 +29,8 @@ export interface MessageItemProps {
   onQuestionReply?: (questionId: string, response: string) => Promise<void>
   onQuestionSkip?: (questionId: string) => Promise<void>
   onSubagentNavigate: (tool: import('@/lib/ai-elements-adapter').ToolInvocation) => void
+  /** Only show SessionSetup for the first assistant in the thread */
+  showSessionSetup?: boolean
 }
 
 export function MessageItem({
@@ -44,6 +46,7 @@ export function MessageItem({
   onQuestionReply,
   onQuestionSkip,
   onSubagentNavigate,
+  showSessionSetup = true,
 }: MessageItemProps) {
   if (message.type === 'permission' && message.promptData) {
     return (
@@ -123,7 +126,7 @@ export function MessageItem({
     !message.reasoning?.length &&
     isCurrentlyStreaming
   ) {
-    if (streamingStatusSteps.length > 0) {
+    if (showSessionSetup && streamingStatusSteps.length > 0) {
       return (
         <Message key={message.id} role="assistant">
           <SessionSetup steps={streamingStatusSteps} isStreaming />
