@@ -31,13 +31,32 @@ function BrainIcon() {
   )
 }
 
+function formatThoughtDuration(secs: number): string {
+  if (secs < 60) {
+    return secs === 1 ? 'Thought for 1 second' : `Thought for ${secs} seconds`
+  }
+  const mins = Math.floor(secs / 60)
+  const remainder = secs % 60
+  if (mins >= 60) {
+    const hours = Math.floor(mins / 60)
+    const minRem = mins % 60
+    if (minRem === 0) {
+      return hours === 1 ? 'Thought for 1 hour' : `Thought for ${hours} hours`
+    }
+    return `Thought for ${hours}h ${minRem}m`
+  }
+  if (remainder === 0) {
+    return mins === 1 ? 'Thought for 1 minute' : `Thought for ${mins} minutes`
+  }
+  return `Thought for ${mins}m ${remainder}s`
+}
+
 function getThinkingLabel(isStreaming: boolean, duration?: number): React.ReactNode {
   if (isStreaming) {
     return <Shimmer>Thinking</Shimmer>
   }
   if (duration !== undefined && duration > 0) {
-    const secs = Math.ceil(duration)
-    return secs === 1 ? 'Thought for 1 second' : `Thought for ${secs} seconds`
+    return formatThoughtDuration(Math.ceil(duration))
   }
   return 'Thought'
 }
@@ -97,7 +116,7 @@ export function ThinkingBlock({
           {getThinkingLabel(isStreaming, duration)}
         </span>
         <svg
-          className={cn('w-3.5 h-3.5 shrink-0 text-muted-foreground/40 transition-transform', open && 'rotate-180')}
+          className={cn('w-3.5 h-3.5 shrink-0 text-muted-foreground/40 transition-transform', !open && '-rotate-90')}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

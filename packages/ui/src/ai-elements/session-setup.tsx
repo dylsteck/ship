@@ -80,7 +80,7 @@ export function SessionSetup({
           {getSessionSetupLabel(isStreaming)}
         </span>
         <svg
-          className={cn('w-3.5 h-3.5 shrink-0 text-muted-foreground/40 transition-transform', open && 'rotate-180')}
+          className={cn('w-3.5 h-3.5 shrink-0 text-muted-foreground/40 transition-transform', !open && '-rotate-90')}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

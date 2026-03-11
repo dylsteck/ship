@@ -277,11 +277,46 @@ export function DashboardMessages({
     setSubagentStack((prev) => prev.slice(0, -1))
   }
 
-  if (subagentStack.length > 0) {
-    const currentSubagent = subagentStack[subagentStack.length - 1]
+  // When in subagent view, sync with latest tool data from parent messages.
+  // The tool may not have sessionId yet when user first clicks — it arrives via SSE later.
+  const resolvedSubagent = React.useMemo(() => {
+    if (subagentStack.length === 0) return null
+    const stackTop = subagentStack[subagentStack.length - 1]!
+    const toolCallId = stackTop.toolCallId
+
+    // Find the tool in messages (most up-to-date occurrence)
+    let latestTool: ToolInvocation | null = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      const tools = msg?.toolInvocations ?? []
+      const found = tools.find((t) => t.toolCallId === toolCallId)
+      if (found) {
+        latestTool = found
+        break
+      }
+    }
+
+    if (!latestTool) return stackTop
+
+    const sessionId = extractSubagentSessionId(latestTool) || stackTop.sessionId
+    const resultText = getSubagentResultText(latestTool) || stackTop.resultText
+    const childTools = extractChildToolsFromResult(latestTool)
+    const toolStatus = mapToolState(latestTool.state)
+
+    return {
+      ...stackTop,
+      sessionId: sessionId || stackTop.sessionId,
+      resultText: resultText || stackTop.resultText,
+      childTools: childTools.length > 0 ? childTools : stackTop.childTools,
+      toolStatus,
+      duration: latestTool.duration ?? stackTop.duration,
+    }
+  }, [subagentStack, messages])
+
+  if (resolvedSubagent) {
     return (
       <SubagentView
-        subagent={currentSubagent}
+        subagent={resolvedSubagent}
         onBack={handleSubagentBack}
         parentSessionId={activeSessionId}
       />

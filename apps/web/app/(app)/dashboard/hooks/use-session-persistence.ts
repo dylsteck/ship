@@ -46,8 +46,10 @@ export function useSessionPersistence(activeSessionId: string | null) {
       if (live?.isRunning && (live.status || live.steps.length > 0)) {
         if (live.status) setStreamingStatus(live.status)
         if (live.steps.length > 0) {
-          setStreamingStatusSteps(live.steps)
-          streamingStatusStepsRef.current = live.steps
+          // Filter out heartbeat "Waiting (Xs)" steps — they replace real progress
+          const steps = live.steps.filter((s) => !/^Waiting \(\d+s\)$/.test(s))
+          setStreamingStatusSteps(steps)
+          streamingStatusStepsRef.current = steps
         }
       }
     }

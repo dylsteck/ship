@@ -27,6 +27,8 @@ export interface ToolInvocation {
   state: ToolInvocationState
   args: Record<string, unknown>
   result?: unknown
+  /** Streaming output (partial) — used to extract session_id before tool completes */
+  rawOutput?: string
   duration?: number
   title?: string
   metadata?: Record<string, unknown>
@@ -93,6 +95,7 @@ export function createToolInvocation(toolPart: ToolPart): ToolInvocation {
     state: mapSSEToolState(toolPart.state?.status),
     args: toolPart.state?.input || {},
     result: toolPart.state?.output,
+    rawOutput: toolPart.state?.raw,
     duration,
     title: toolPart.state?.title,
     metadata: toolPart.state?.metadata,

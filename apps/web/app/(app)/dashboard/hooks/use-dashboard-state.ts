@@ -147,8 +147,10 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
               const eventStatus = getEventStatus(event as any)
               if (eventStatus) {
                 sessionStatusStore.update(sessionId, { status: eventStatus.label })
-                // Only add step if it's not a status event (those are handled separately below)
-                if (type !== 'status' && type !== 'session.status') {
+                // Don't add heartbeat "Waiting (Xs)" as steps — they accumulate and replace real progress
+                if (type === 'heartbeat') {
+                  // status updated above; skip addStep
+                } else if (type !== 'status' && type !== 'session.status') {
                   sessionStatusStore.addStep(sessionId, eventStatus.label)
                 }
               }

@@ -1,6 +1,19 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "streamdown/styles.css";
+
+/* Mermaid/diagram blocks: shrink wrapper to fit content, remove outline and excess whitespace */
+[data-streamdown="mermaid-block"] {
+  width: fit-content !important;
+  max-width: 100%;
+  border: none !important;
+  padding: 0.5rem !important;
+  background: transparent !important;
+}
+[data-streamdown="mermaid-block"] > div:last-child {
+  border: none !important;
+  background: transparent !important;
+}
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../node_modules/streamdown/dist/*.js";
 

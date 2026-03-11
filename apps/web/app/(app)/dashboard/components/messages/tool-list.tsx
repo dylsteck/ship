@@ -10,6 +10,7 @@ import {
   getSubagentDescription,
   getSubagentResultText,
   extractChildToolsFromResult,
+  isResultJsonBlob,
 } from '@/lib/subagent/utils'
 import type { TodoItem } from '../../types'
 
@@ -48,6 +49,8 @@ export function MessageToolList({
           const childTools = extractChildToolsFromResult(tool)
           const resultText = getSubagentResultText(tool)
           const toolStatus = mapToolState(tool.state)
+          // When completed, hide raw JSON blob — user clicks "View →" to see session
+          const showResult = resultText && !(toolStatus === 'completed' && isResultJsonBlob(tool))
           return (
             <SubagentTool
               key={tool.toolCallId}
@@ -57,7 +60,7 @@ export function MessageToolList({
               status={toolStatus}
               duration={tool.duration}
               childTools={childTools.length > 0 ? childTools : undefined}
-              result={resultText ? <Markdown content={resultText} /> : undefined}
+              result={showResult ? <Markdown content={resultText!} /> : undefined}
               onNavigate={() => onSubagentNavigate(tool)}
             />
           )

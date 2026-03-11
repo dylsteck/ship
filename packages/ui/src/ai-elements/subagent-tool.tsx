@@ -135,26 +135,36 @@ export function SubagentTool({
             {durationLabel && (
               <span className="text-xs text-muted-foreground/60">{durationLabel}</span>
             )}
-            {hasExpandContent ? (
+            {onNavigate && (
+              <span
+                role="button"
+                tabIndex={0}
+                className="text-xs text-muted-foreground/60 hover:text-foreground/80 transition-colors cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onNavigate(toolCallId)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    onNavigate(toolCallId)
+                  }
+                }}
+                title="View subagent session"
+              >
+                View →
+              </span>
+            )}
+            {hasExpandContent && (
               <svg
-                className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', isOpen && 'rotate-180')}
+                className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', !isOpen && '-rotate-90')}
                 fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
-            ) : onNavigate ? (
-              <button
-                type="button"
-                className="text-xs text-muted-foreground/60 hover:text-foreground/80 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onNavigate(toolCallId)
-                }}
-                title="View full session"
-              >
-                View →
-              </button>
-            ) : null}
+            )}
           </div>
         </CollapsiblePrimitive.Trigger>
 

@@ -86,7 +86,7 @@ export function Steps({ children, isStreaming = false, elapsed, toolCount, class
               </span>
             )}
             <svg
-              className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', isOpen && 'rotate-180')}
+              className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', !isOpen && '-rotate-90')}
               fill="none"
               stroke="currentColor"
               strokeWidth="2"

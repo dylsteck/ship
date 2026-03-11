@@ -370,7 +370,7 @@ export function Tool({
               </svg>
             ) : hasDetails ? (
               <svg
-                className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', isOpen && 'rotate-180')}
+                className={cn('w-3.5 h-3.5 text-muted-foreground/40 transition-transform', !isOpen && '-rotate-90')}
                 fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />

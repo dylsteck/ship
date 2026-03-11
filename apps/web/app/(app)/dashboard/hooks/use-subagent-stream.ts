@@ -52,6 +52,7 @@ export function useSubagentStream({
   const messageIdRef = useRef<string | null>(null)
   const textRef = useRef('')
   const reasoningRef = useRef('')
+  const streamStartRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -65,6 +66,7 @@ export function useSubagentStream({
 
     const placeholder = createAssistantPlaceholder()
     messageIdRef.current = placeholder.id
+    streamStartRef.current = Date.now()
     setMessages([placeholder])
     setIsStreaming(true)
     setStatus('Connecting...')
@@ -126,7 +128,7 @@ export function useSubagentStream({
                       ),
                     )
                   }
-                  const partStatus = getStatusFromPart(part) || 'Working...'
+                  const partStatus = getStatusFromPart(part) || 'Thinking...'
                   setStatus(partStatus)
                   setStatusSteps((prev) => {
                     if (prev.length > 0 && prev[prev.length - 1] === partStatus) return prev
@@ -144,6 +146,26 @@ export function useSubagentStream({
                 }
 
                 if (event.type === 'done' || event.type === 'session.idle') {
+                  const msgId = messageIdRef.current
+                  const elapsed = streamStartRef.current
+                    ? Date.now() - streamStartRef.current
+                    : 0
+                  if (msgId && elapsed > 0) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === msgId
+                          ? {
+                              ...m,
+                              content: textRef.current,
+                              reasoning: reasoningRef.current
+                                ? [reasoningRef.current]
+                                : undefined,
+                              elapsed,
+                            }
+                          : m,
+                      ),
+                    )
+                  }
                   setIsStreaming(false)
                   setStatus('Complete')
                 }
