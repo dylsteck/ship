@@ -133,7 +133,11 @@ export function handleSessionError(
 export function handleGenericError(error: unknown, ctx: SSEHandlerContext) {
   const errorMessage = parseErrorMessage(error)
   const { category, retryable } = classifyError(errorMessage)
-  ctx.setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
+  const msgId = ctx.streamingMessageRef.current
+  ctx.setMessages((prev) => {
+    const withoutPlaceholder = msgId ? prev.filter((m) => m.id !== msgId) : prev
+    return [...withoutPlaceholder, createErrorMessage(errorMessage, category, retryable)]
+  })
   ctx.setIsStreaming(false)
   ctx.setStreamingStatus('')
   ctx.streamingMessageRef.current = null

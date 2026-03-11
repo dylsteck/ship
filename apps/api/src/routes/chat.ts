@@ -867,16 +867,37 @@ app.post('/:sessionId', async (c) => {
               operationName: 'Send prompt to agent',
               onError: async (error, attempt) => {
                 console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, safeErrorForLog(error))
-                const details = classifyError(error)
+                const details = classifyError(sanitizeError(error))
+                const errorMsg = sanitizeError(error)
                 await stream.writeSSE({
                   event: 'error',
                   data: JSON.stringify({
-                    error: sanitizeError(error),
+                    error: errorMsg,
                     category: details.category,
                     retryable: details.retryable,
                     attempt,
                   }),
                 })
+                // Persist non-retryable errors so user sees them on refresh
+                if (!details.retryable) {
+                  try {
+                    await stub.fetch(
+                      new Request(`${doUrl}/messages`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          role: 'system',
+                          content: errorMsg,
+                          parts: JSON.stringify([
+                            { type: 'error', category: details.category, retryable: details.retryable },
+                          ]),
+                        }),
+                      }),
+                    )
+                  } catch (persistErr) {
+                    console.error(`[chat:${sessionId}] Failed to persist error:`, persistErr)
+                  }
+                }
               },
             },
           )

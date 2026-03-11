@@ -2,6 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 import { sendChatMessage, subscribeToChatStream } from '@/lib/api/server'
+import { postSessionSync } from '@/lib/session-sync-channel'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { sessionStatusStore } from './use-session-status-store'
 import {
@@ -36,6 +37,7 @@ export interface UseDashboardSSEParams {
 export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   const {
     activeSessionId,
+    activeSessionIdRef,
     isStreaming,
     setIsStreaming,
     setMessages,
@@ -121,6 +123,23 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
       const assistantMessage = createAssistantPlaceholder()
       streamingMessageRef.current = assistantMessage.id
       setMessages((prev) => [...prev, assistantMessage])
+
+      // Client-side watchdog: if server timeout (300s) passes without done/error, force-clear
+      const CLIENT_TIMEOUT_MS = 320_000 // 320s — slightly longer than server's 300s
+      let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        if (streamingMessageRef.current && targetSessionId === activeSessionIdRef?.current) {
+          const msgId = streamingMessageRef.current
+          setMessages((prev) => {
+            const withoutPlaceholder = prev.filter((m) => m.id !== msgId)
+            return [...withoutPlaceholder, createErrorMessage('Request timed out. The agent took too long to respond.', 'transient', true)]
+          })
+          setIsStreaming(false)
+          setStreamingStatus('')
+          streamingMessageRef.current = null
+          sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
+          postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
+        }
+      }, CLIENT_TIMEOUT_MS)
 
       const ctx: SSEHandlerContext = {
         setMessages,
@@ -232,7 +251,8 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                     if (info) {
                       if (info.title) {
                         setSessionTitle(info.title)
-                        if (activeSessionId) updateSessionTitle(activeSessionId, info.title)
+                        updateSessionTitle(targetSessionId, info.title)
+                        postSessionSync({ type: 'sessions-invalidate' })
                       }
                       setSessionInfo(info)
                     }
@@ -360,9 +380,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
         setIsStreaming(false)
         setStreamingStatus('')
         streamingMessageRef.current = null
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId)
       }
     },
-    [activeSessionId],
+    [activeSessionId, activeSessionIdRef],
   )
 
   /** Process SSE event for a session when streamSessionInBackground receives it and user is viewing that session */

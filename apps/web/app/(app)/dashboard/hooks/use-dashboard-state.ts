@@ -9,6 +9,7 @@ import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } f
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { CreateSessionParams } from '@/lib/api/types'
 import { sessionStatusStore } from './use-session-status-store'
+import { postSessionSync } from '@/lib/session-sync-channel'
 
 const DEFAULT_MODES: AgentMode[] = [
   { id: 'build', label: 'build' },
@@ -197,6 +198,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
                   chat.setLocalSessions((prev) =>
                     prev.map((s) => (s.id === sessionId ? { ...s, title: info.title } : s)),
                   )
+                  postSessionSync({ type: 'sessions-invalidate' })
                 }
               } else if (type === 'done' || type === 'session.idle') {
                 sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })

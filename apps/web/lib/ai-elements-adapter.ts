@@ -435,6 +435,14 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
         let planItems: Array<{ id: string; title: string; status: string }> | undefined
 
         for (const part of parts) {
+          const partType = (part as { type: string }).type
+          if (partType === 'error') {
+            const ep = part as unknown as { type: 'error'; category?: string; retryable?: boolean }
+            uiMsg.type = 'error'
+            uiMsg.errorCategory = (ep.category as UIMessage['errorCategory']) || 'persistent'
+            uiMsg.retryable = ep.retryable ?? false
+            continue
+          }
           switch (part.type) {
             case 'tool': {
               const tp = part as ToolPart

@@ -365,6 +365,7 @@ export function DashboardClient({
         onSessionDeleted: (id) => {
           chat.setLocalSessions((prev) => prev.filter((s) => s.id !== id))
           mutateSessions()
+          postSessionSync({ type: 'session-deleted' })
         },
         onSessionDeleteFailed: (session) => {
           chat.setLocalSessions((prev) => {
