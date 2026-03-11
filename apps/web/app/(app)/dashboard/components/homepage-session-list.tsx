@@ -34,8 +34,8 @@ function BranchBadge() {
   )
 }
 
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor(Date.now() / 1000 - timestamp)
+function formatRelativeTime(timestamp: number, now: number): string {
+  const seconds = Math.floor(now - timestamp)
   if (seconds < 60) return 'now'
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
@@ -45,8 +45,7 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(days / 30)}mo`
 }
 
-function groupSessionsByTime(sessions: ChatSession[]): { label: string; sessions: ChatSession[] }[] {
-  const now = Math.floor(Date.now() / 1000)
+function groupSessionsByTime(sessions: ChatSession[], now: number): { label: string; sessions: ChatSession[] }[] {
   const oneDay = 24 * 60 * 60
   const todayStart = now - oneDay
   const yesterdayStart = now - 2 * oneDay
@@ -87,6 +86,8 @@ export interface HomepageSessionListProps {
   agentLabel?: string
   onSessionClick: (session: ChatSession) => void
   onDeleteSession: (sessionId: string) => Promise<void>
+  /** Stable timestamp for SSR-safe grouping/formatting */
+  serverTimestamp?: number
 }
 
 export function HomepageSessionList({
@@ -98,14 +99,16 @@ export function HomepageSessionList({
   agentLabel = 'Ship',
   onSessionClick,
   onDeleteSession,
+  serverTimestamp = Math.floor(Date.now() / 1000),
 }: HomepageSessionListProps) {
+  const now = serverTimestamp
   const activeSessions = sessions.filter((s) => !s.archivedAt)
   if (activeSessions.length === 0) return null
 
   return (
     <div className="px-3 sm:px-6 pb-6 pt-2">
       <div className="max-w-2xl mx-auto">
-        {groupSessionsByTime(activeSessions).map((group) => (
+        {groupSessionsByTime(activeSessions, now).map((group) => (
           <div key={group.label} className="mb-6">
             <h3 className="text-xs font-medium text-muted-foreground mb-3 sticky top-0 bg-background py-1 z-10">
               {group.label}
@@ -122,6 +125,7 @@ export function HomepageSessionList({
                   agentLabel={agentLabel}
                   onSessionClick={onSessionClick}
                   onDeleteSession={onDeleteSession}
+                  now={now}
                 />
               ))}
             </div>
@@ -141,6 +145,7 @@ interface HomepageSessionCardProps {
   agentLabel: string
   onSessionClick: (session: ChatSession) => void
   onDeleteSession: (sessionId: string) => Promise<void>
+  now: number
 }
 
 function HomepageSessionCard({
@@ -151,6 +156,8 @@ function HomepageSessionCard({
   streamingStatusSteps,
   agentLabel,
   onSessionClick,
+  onDeleteSession,
+  now,
 }: HomepageSessionCardProps) {
   const handleClick = useCallback(() => onSessionClick(session), [onSessionClick, session])
   const { getStatus } = useSessionStatusStore()
@@ -169,7 +176,7 @@ function HomepageSessionCard({
   const steps = liveStatus?.steps || (isStreaming && isActive ? streamingStatusSteps : [])
   const contentPreview = liveStatus?.contentPreview || ''
 
-  const timeLabel = isLive ? 'now' : formatRelativeTime(session.lastActivity)
+  const timeLabel = isLive ? 'now' : formatRelativeTime(session.lastActivity, now)
 
   // Show branch when waiting for user input (not live, not done, not error)
   const isWaitingForUser = !isLive && !liveStatus?.status && !liveStatus?.contentPreview

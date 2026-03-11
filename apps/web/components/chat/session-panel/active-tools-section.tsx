@@ -6,8 +6,8 @@ export function ActiveToolsSection({ tools }: { tools: Array<{ toolCallId: strin
   return (
     <div className="px-3 py-2 border-b border-border/10">
       <div className="space-y-1">
-        {tools.map((tool) => (
-          <div key={tool.toolCallId} className="flex items-center gap-1.5">
+        {tools.map((tool, index) => (
+          <div key={`${tool.toolCallId}-${index}`} className="flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />

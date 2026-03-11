@@ -15,6 +15,8 @@ import { RightSidebar } from './right-sidebar'
 export interface DashboardMainColumnProps {
   isMobile: boolean
   user: import('@/lib/api/types').User
+  /** Stable timestamp from server for SSR-safe time formatting */
+  serverTimestamp?: number
   header: {
     activeSessionId: string | null
     displayTitle?: string
@@ -63,6 +65,7 @@ export interface DashboardMainColumnProps {
 export function DashboardMainColumn({
   isMobile,
   user,
+  serverTimestamp = Math.floor(Date.now() / 1000),
   header,
   messages: messagesCtx,
   sessions,
@@ -116,6 +119,7 @@ export function DashboardMainColumn({
                   isStreaming={messagesCtx.isStreaming}
                   onSessionClick={sessions.onSessionClick}
                   onDeleteSession={sessions.onDeleteSession}
+                  serverTimestamp={serverTimestamp}
                 />
               </>
             )}
@@ -153,6 +157,7 @@ export function DashboardMainColumn({
                   agentLabel={agentLabel}
                   onSessionClick={sessions.onSessionClick}
                   onDeleteSession={sessions.onDeleteSession}
+                  serverTimestamp={serverTimestamp}
                 />
               </div>
             )}

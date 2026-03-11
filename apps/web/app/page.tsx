@@ -13,12 +13,15 @@ export default async function HomePage() {
     console.error('Failed to fetch sessions:', error)
   }
 
+  const serverTimestamp = Math.floor(Date.now() / 1000)
+
   return (
     <DashboardClient
       sessions={sessions}
       userId={session.userId}
       user={user}
       initialSessionId={null}
+      serverTimestamp={serverTimestamp}
     />
   )
 }

@@ -54,6 +54,8 @@ export default async function SessionPage({ params }: SessionPageProps) {
     console.error('Failed to fetch messages:', error)
   }
 
+  const serverTimestamp = Math.floor(Date.now() / 1000)
+
   return (
     <DashboardClient
       sessions={mergedSessions}
@@ -61,6 +63,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
       user={user}
       initialSessionId={id}
       initialMessages={initialMessages}
+      serverTimestamp={serverTimestamp}
     />
   )
 }

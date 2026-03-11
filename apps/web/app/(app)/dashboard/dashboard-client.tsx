@@ -31,6 +31,8 @@ interface DashboardClientProps {
   user: User
   initialSessionId?: string | null
   initialMessages?: UIMessage[]
+  /** Stable timestamp from server for SSR-safe time formatting (avoids hydration mismatch) */
+  serverTimestamp?: number
 }
 
 export function DashboardClient({
@@ -39,6 +41,7 @@ export function DashboardClient({
   user,
   initialSessionId = null,
   initialMessages,
+  serverTimestamp = Math.floor(Date.now() / 1000),
 }: DashboardClientProps) {
   const searchParams = useSearchParams()
   const isMobile = useIsMobile()
@@ -312,6 +315,7 @@ export function DashboardClient({
       <DashboardMainColumn
         isMobile={isMobile ?? false}
         user={user}
+        serverTimestamp={serverTimestamp}
         header={{
           activeSessionId: chat.activeSessionId,
           displayTitle: derived.displayTitle,

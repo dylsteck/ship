@@ -13,8 +13,8 @@ import type { ChatSession } from '@/lib/api/server'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
 import { useSessionStatusStore } from '../hooks/use-session-status-store'
 
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor(Date.now() / 1000 - timestamp)
+function formatRelativeTime(timestamp: number, now: number): string {
+  const seconds = Math.floor(now - timestamp)
   if (seconds < 60) return 'now'
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
@@ -24,8 +24,7 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(days / 30)}mo`
 }
 
-function groupSessionsByTime(sessions: ChatSession[]): { label: string; sessions: ChatSession[] }[] {
-  const now = Math.floor(Date.now() / 1000)
+function groupSessionsByTime(sessions: ChatSession[], now: number): { label: string; sessions: ChatSession[] }[] {
   const oneDay = 24 * 60 * 60
   const todayStart = now - oneDay
   const yesterdayStart = now - 2 * oneDay
@@ -64,6 +63,8 @@ interface MobileSessionListProps {
   isStreaming?: boolean
   onSessionClick: (session: ChatSession) => void
   onDeleteSession: (sessionId: string) => void
+  /** Stable timestamp for SSR-safe grouping/formatting */
+  serverTimestamp?: number
 }
 
 export function MobileSessionList({
@@ -73,7 +74,9 @@ export function MobileSessionList({
   isStreaming = false,
   onSessionClick,
   onDeleteSession,
+  serverTimestamp = Math.floor(Date.now() / 1000),
 }: MobileSessionListProps) {
+  const now = serverTimestamp
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -99,7 +102,7 @@ export function MobileSessionList({
 
   return (
     <div className="flex-1 overflow-y-auto px-3 pb-3 pt-2 min-h-0">
-      {groupSessionsByTime(activeSessions).map((group) => (
+      {groupSessionsByTime(activeSessions, now).map((group) => (
         <div key={group.label} className="mb-6">
           <h3 className="text-xs font-medium text-muted-foreground mb-2 sticky top-0 bg-background py-1">
             {group.label}
@@ -117,6 +120,7 @@ export function MobileSessionList({
                 onSessionClick={onSessionClick}
                 onDelete={handleDelete}
                 onCancelDelete={() => setConfirmDeleteId(null)}
+                now={now}
               />
             ))}
           </div>
@@ -136,6 +140,7 @@ interface SessionRowProps {
   onSessionClick: (session: ChatSession) => void
   onDelete: (session: ChatSession, confirmed?: boolean) => void
   onCancelDelete: () => void
+  now: number
 }
 
 function SessionRow({
@@ -148,6 +153,7 @@ function SessionRow({
   onSessionClick,
   onDelete,
   onCancelDelete,
+  now,
 }: SessionRowProps) {
   const { getStatus } = useSessionStatusStore()
   const liveStatus = getStatus(session.id)
@@ -176,7 +182,7 @@ function SessionRow({
         <div className="flex items-center gap-2 mt-1">
           <span className="text-[11px] text-muted-foreground/80 truncate">{repoPath}</span>
           <span className="text-[11px] text-muted-foreground/50 shrink-0">
-            {isLive ? 'now' : formatRelativeTime(session.lastActivity)}
+            {isLive ? 'now' : formatRelativeTime(session.lastActivity, now)}
           </span>
         </div>
       </button>
