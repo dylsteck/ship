@@ -162,16 +162,21 @@ export async function startSandboxAgentServer(
     `sandbox-agent list-agents 2>/dev/null | grep -q ${agentConfig.sandboxAgentName}`,
   )
   if (agentCheck.exitCode !== 0) {
-    // Install the requested agent (fallback)
     console.log(`[sandbox-agent:${sandboxId}] Installing agent: ${agentConfig.sandboxAgentName}...`)
-    const agentInstallResult = await sandbox.commands.run(
-      `sandbox-agent install-agent ${agentConfig.sandboxAgentName}`,
-      { timeoutMs: 120000 },
-    )
-    if (agentInstallResult.exitCode !== 0) {
-      console.warn(
-        `[sandbox-agent:${sandboxId}] Agent install warning: ${agentInstallResult.stderr}`,
+    try {
+      const agentInstallResult = await sandbox.commands.run(
+        `sandbox-agent install-agent ${agentConfig.sandboxAgentName}`,
+        { timeoutMs: 30000 },
       )
+      if (agentInstallResult.exitCode !== 0) {
+        console.warn(
+          `[sandbox-agent:${sandboxId}] Agent install warning: ${agentInstallResult.stderr}`,
+        )
+      }
+    } catch (installError) {
+      // Timeout or other error — kill lingering npm and continue
+      console.warn(`[sandbox-agent:${sandboxId}] Agent install timed out/failed, continuing server start`)
+      await sandbox.commands.run('pkill -f npm || true', { timeoutMs: 5000 }).catch(() => {})
     }
   } else {
     console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} already installed`)
