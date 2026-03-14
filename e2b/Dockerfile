@@ -10,10 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install sandbox-agent binary
-RUN curl -fsSL https://releases.rivet.dev/sandbox-agent/0.3.x/install.sh | sh
+# Install Node.js 20 (needed by sandbox-agent ACP agent processes)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
-# Pre-install agent binaries (claude, opencode, codex)
-RUN sandbox-agent install-agent claude \
-    && sandbox-agent install-agent opencode \
-    && sandbox-agent install-agent codex
+# Install sandbox-agent binary
+# Agent installs (claude, opencode, codex) happen at runtime via sandbox-agent install-agent
+RUN curl -fsSL https://releases.rivet.dev/sandbox-agent/0.3.x/install.sh | sh

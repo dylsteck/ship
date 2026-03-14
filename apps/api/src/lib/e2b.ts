@@ -13,7 +13,7 @@ import { Sandbox } from '@e2b/code-interpreter'
 
 // Custom E2B template with sandbox-agent + desktop pre-baked
 // Set after running `e2b template build` — falls back to default if empty
-export const E2B_TEMPLATE_ID = ''
+export const E2B_TEMPLATE_ID = 'n1exdf9kj7gpwk6810c9'
 
 // E2B API error types
 export class E2BError extends Error {
