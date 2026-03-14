@@ -133,6 +133,36 @@ Ship uses **sandbox-agent** (by Rivet) as its agent runtime, which supports mult
 5. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
 6. Users can open an interactive desktop stream via the Desktop tab (noVNC via `@e2b/desktop` SDK)
 
+### Building the custom E2B template
+
+The custom template pre-bakes sandbox-agent + agent binaries for faster sandbox startup (~10s vs ~60s).
+
+```bash
+# Install E2B CLI
+npm i -g @e2b/cli
+
+# Login to E2B
+e2b auth login
+
+# Build the template (from repo root — uses e2b.toml + e2b/Dockerfile)
+e2b template build
+```
+
+After the build completes, copy the template ID from the output and set it:
+
+1. **Local dev**: Set `E2B_TEMPLATE_ID` in `apps/api/src/lib/e2b.ts`:
+   ```typescript
+   export const E2B_TEMPLATE_ID = '<your-template-id>'
+   ```
+
+2. **Production**: Set as a Cloudflare Workers env var or secret:
+   ```bash
+   cd apps/api
+   npx wrangler secret put E2B_TEMPLATE_ID --env production
+   ```
+
+Without a template ID, sandboxes use E2B's default image and install everything at runtime (backwards compatible).
+
 ### Supported Agents
 
 | Agent | sandbox-agent name | Required Env Var | Modes |
@@ -383,7 +413,22 @@ Shared MCP (Model Context Protocol) servers are registered per repo directory th
 
 ## Browser Testing with agent-browser + Brave CDP
 
-### Setup
+### Setup (auto-connect — preferred)
+
+Auto-discover and connect to your running Brave/Chrome:
+
+```bash
+agent-browser --auto-connect open http://localhost:3000
+```
+
+Or set the env var to always auto-connect:
+
+```bash
+export AGENT_BROWSER_AUTO_CONNECT=1
+agent-browser open http://localhost:3000
+```
+
+### Setup (manual CDP)
 
 1. Quit Brave Browser completely
 2. Relaunch with remote debugging:
