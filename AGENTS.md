@@ -101,13 +101,15 @@ ship/
 │           │   ├── chat.ts             # SSE streaming chat endpoint
 │           │   ├── sessions.ts         # Session CRUD
 │           │   ├── sandbox.ts          # Sandbox management
+│           │   ├── desktop.ts          # Desktop stream start/stop/status
 │           │   ├── models.ts           # Model listing
 │           │   └── git.ts              # Git operations
 │           ├── lib/
-│           │   ├── sandbox-agent.ts    # sandbox-agent SDK wrapper
+│           │   ├── sandbox-agent.ts    # sandbox-agent SDK wrapper (with pre-install detection)
+│           │   ├── desktop.ts          # E2B desktop stream helpers (@e2b/desktop)
 │           │   ├── agent-registry.ts   # Agent config registry
 │           │   ├── event-translator.ts # UniversalEvent → Ship SSE translator
-│           │   └── e2b.ts              # E2B sandbox management
+│           │   └── e2b.ts              # E2B sandbox management (custom template support)
 │           ├── durable-objects/
 │           │   └── session.ts          # Session Durable Object
 │           └── env.d.ts                # Environment type definitions
@@ -124,11 +126,12 @@ Ship uses **sandbox-agent** (by Rivet) as its agent runtime, which supports mult
 
 ### How it works
 
-1. An E2B sandbox is provisioned for each session
-2. `sandbox-agent` binary is installed inside the sandbox
-3. The requested agent (Claude Code, OpenCode, Codex) is installed via `sandbox-agent install-agent <name>`
+1. An E2B sandbox is provisioned for each session using a custom template (`e2b/Dockerfile`) that extends `e2bdev/desktop:latest`
+2. The custom template has `sandbox-agent` binary and all agent binaries (claude, opencode, codex) pre-installed for fast startup
+3. If binaries are missing (non-custom template fallback), they are installed at runtime
 4. `sandbox-agent server` exposes an HTTP/SSE API inside the sandbox on port 3000
 5. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
+6. Users can open an interactive desktop stream via the Desktop tab (noVNC via `@e2b/desktop` SDK)
 
 ### Supported Agents
 
@@ -142,7 +145,9 @@ Agent configs are defined in `apps/api/src/lib/agent-registry.ts`. Default agent
 
 ### Key API Files
 
-- **`sandbox-agent.ts`** — SDK wrapper. Functions: `startSandboxAgentServer`, `connectToSandboxAgent`, `createAgentSession`, `promptAgent`, `cancelAgent`, `subscribeToSessionEvents`. Caches client instances per sandbox URL.
+- **`sandbox-agent.ts`** — SDK wrapper. Functions: `startSandboxAgentServer`, `connectToSandboxAgent`, `createAgentSession`, `promptAgent`, `cancelAgent`, `subscribeToSessionEvents`. Caches client instances per sandbox URL. Checks for pre-installed binaries before installing (custom template fast path).
+- **`desktop.ts`** — Desktop stream helpers using `@e2b/desktop` SDK. Functions: `startDesktopStream`, `stopDesktopStream`.
+- **`e2b.ts`** — E2B sandbox provisioning. Supports custom template via `E2B_TEMPLATE_ID` constant.
 - **`event-translator.ts`** — Stateful translator class (`EventTranslatorState`) that maps sandbox-agent's `UniversalEvent` schema to Ship's SSE events. Tracks text/reasoning accumulators, tool call state, and file changes across a session stream.
 - **`agent-registry.ts`** — Registry of `AgentConfig` objects with `getAgent()`, `listAgents()`, and `getDefaultAgentId()` helpers.
 

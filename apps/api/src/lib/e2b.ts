@@ -11,6 +11,10 @@
 
 import { Sandbox } from '@e2b/code-interpreter'
 
+// Custom E2B template with sandbox-agent + desktop pre-baked
+// Set after running `e2b template build` — falls back to default if empty
+export const E2B_TEMPLATE_ID = ''
+
 // E2B API error types
 export class E2BError extends Error {
   constructor(
@@ -56,6 +60,7 @@ export async function createSessionSandbox(apiKey: string, config: SandboxConfig
     const hasEnvs = config.envs && Object.keys(config.envs).length > 0
     const sandbox = await Sandbox.betaCreate({
       apiKey,
+      ...(E2B_TEMPLATE_ID ? { template: E2B_TEMPLATE_ID } : {}),
       autoPause: true, // Enable auto-pause for cost control
       timeoutMs,
       metadata: {

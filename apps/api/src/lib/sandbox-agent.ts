@@ -141,27 +141,40 @@ export async function startSandboxAgentServer(
     // Server not running, continue with setup
   }
 
-  // Install sandbox-agent binary
-  console.log(`[sandbox-agent:${sandboxId}] Installing sandbox-agent...`)
-  const installResult = await sandbox.commands.run(
-    'curl -fsSL https://releases.rivet.dev/sandbox-agent/0.3.x/install.sh | sh',
-    { timeoutMs: 120000 },
-  )
-  if (installResult.exitCode !== 0) {
-    throw new Error(`Failed to install sandbox-agent: ${installResult.stderr}`)
+  // Check if sandbox-agent binary is pre-installed (custom template)
+  const checkBinary = await sandbox.commands.run('which sandbox-agent')
+  if (checkBinary.exitCode !== 0) {
+    // Install sandbox-agent binary (fallback for non-custom templates)
+    console.log(`[sandbox-agent:${sandboxId}] Installing sandbox-agent...`)
+    const installResult = await sandbox.commands.run(
+      'curl -fsSL https://releases.rivet.dev/sandbox-agent/0.3.x/install.sh | sh',
+      { timeoutMs: 120000 },
+    )
+    if (installResult.exitCode !== 0) {
+      throw new Error(`Failed to install sandbox-agent: ${installResult.stderr}`)
+    }
+  } else {
+    console.log(`[sandbox-agent:${sandboxId}] sandbox-agent binary already installed (custom template)`)
   }
 
-  // Install the requested agent
-  console.log(`[sandbox-agent:${sandboxId}] Installing agent: ${agentConfig.sandboxAgentName}...`)
-  const agentInstallResult = await sandbox.commands.run(
-    `sandbox-agent install-agent ${agentConfig.sandboxAgentName}`,
-    { timeoutMs: 120000 },
+  // Check if the requested agent is already installed
+  const agentCheck = await sandbox.commands.run(
+    `sandbox-agent list-agents 2>/dev/null | grep -q ${agentConfig.sandboxAgentName}`,
   )
-  if (agentInstallResult.exitCode !== 0) {
-    console.warn(
-      `[sandbox-agent:${sandboxId}] Agent install warning: ${agentInstallResult.stderr}`,
+  if (agentCheck.exitCode !== 0) {
+    // Install the requested agent (fallback)
+    console.log(`[sandbox-agent:${sandboxId}] Installing agent: ${agentConfig.sandboxAgentName}...`)
+    const agentInstallResult = await sandbox.commands.run(
+      `sandbox-agent install-agent ${agentConfig.sandboxAgentName}`,
+      { timeoutMs: 120000 },
     )
-    // Don't throw — some agents may already be installed
+    if (agentInstallResult.exitCode !== 0) {
+      console.warn(
+        `[sandbox-agent:${sandboxId}] Agent install warning: ${agentInstallResult.stderr}`,
+      )
+    }
+  } else {
+    console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} already installed`)
   }
 
   // Start sandbox-agent server — pass env vars via E2B's envs param (no temp files)

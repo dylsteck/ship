@@ -1,0 +1,10 @@
+# E2B Custom Template Configuration
+# Extends desktop template with sandbox-agent + agent binaries pre-installed
+
+# Template ID will be set after `e2b template build`
+# id = "YOUR_TEMPLATE_ID"
+
+[template]
+name = "ship-sandbox"
+dockerfile = "e2b/Dockerfile"
+start_cmd = "/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"
