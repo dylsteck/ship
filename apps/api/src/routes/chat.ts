@@ -319,14 +319,19 @@ app.post('/:sessionId', async (c) => {
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
 
-            const cloneResult = await sandbox.commands.run(
+            // NOTE: E2B SDK throws CommandExitError on non-zero exit codes
+            await sandbox.commands.run(
               `git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone ${repoUrl} ${repoPath}`,
+              { timeoutMs: 120000 },
             )
-            if (cloneResult.exitCode !== 0) throw new Error(`Git clone failed: ${cloneResult.stderr}`)
 
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
             await sandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
-            await sandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
+            try {
+              await sandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
+            } catch {
+              // baseBranch may already be checked out after clone
+            }
             await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
 
             await stub.fetch(
@@ -352,7 +357,12 @@ app.post('/:sessionId', async (c) => {
               }),
             })
           } catch (cloneError) {
-            console.error(`[chat:${sessionId}] Clone failed:`, safeErrorForLog(cloneError))
+            const cloneErrMsg = safeErrorForLog(cloneError)
+            // E2B CommandExitError has stdout/stderr properties
+            const cmdErr = cloneError as { stderr?: string; stdout?: string }
+            console.error(`[chat:${sessionId}] Clone failed: ${cloneErrMsg}`)
+            if (cmdErr.stderr) console.error(`[chat:${sessionId}] Clone stderr: ${cmdErr.stderr}`)
+            if (cmdErr.stdout) console.error(`[chat:${sessionId}] Clone stdout: ${cmdErr.stdout}`)
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify({
