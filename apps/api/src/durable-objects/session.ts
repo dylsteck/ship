@@ -88,6 +88,7 @@ export class SessionDO extends DurableObject<Env> {
   private sql: SqlStorage
   private sandboxManager: SandboxManager | null = null
   private agentExecutor: AgentExecutor | null = null
+  private sessionId: string | null = null
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -98,6 +99,19 @@ export class SessionDO extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       this.initSchema()
     })
+  }
+
+  /**
+   * Get or lazily resolve the session ID from session_meta.
+   * The session ID is the chat_sessions.id, stored in meta by the chat route.
+   */
+  private async getSessionIdForD1(): Promise<string | null> {
+    if (this.sessionId) return this.sessionId
+    // Try to resolve from session_meta (set by chat route when creating session)
+    const meta = await this.getSessionMeta()
+    const id = meta['session_id'] || null
+    if (id) this.sessionId = id
+    return id
   }
 
   /**
@@ -179,8 +193,44 @@ export class SessionDO extends DurableObject<Env> {
        LIMIT ?`,
       limit,
     )
-    // Return in chronological order for display
-    return cursor.toArray().reverse()
+    const rows = cursor.toArray()
+
+    if (rows.length > 0) {
+      return rows.reverse()
+    }
+
+    // Cold start fallback to D1
+    const sessionId = await this.getSessionIdForD1()
+    if (!sessionId) return []
+
+    try {
+      const result = await this.env.DB.prepare(
+        `SELECT id, role, content, parts, created_at
+         FROM chat_messages WHERE session_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+        .bind(sessionId, limit)
+        .all()
+
+      if (result.results?.length) {
+        // Backfill DO SQLite
+        for (const row of result.results) {
+          this.sql.exec(
+            `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
+            row.id,
+            row.role,
+            row.content,
+            row.parts,
+            row.created_at,
+          )
+        }
+        return (result.results as unknown as MessageRow[]).reverse()
+      }
+    } catch (e) {
+      console.warn(`[SessionDO] Failed to load recent messages from D1: ${e}`)
+    }
+
+    return []
   }
 
   /**
@@ -207,6 +257,21 @@ export class SessionDO extends DurableObject<Env> {
       content: message.content,
       parts: message.parts,
       createdAt,
+    }
+
+    // Write-through to D1 for persistence beyond DO lifetime
+    const sessionId = await this.getSessionIdForD1()
+    if (sessionId) {
+      try {
+        await this.env.DB.prepare(
+          `INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, parts, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+          .bind(saved.id, sessionId, saved.role, saved.content, saved.parts || null, saved.createdAt)
+          .run()
+      } catch (e) {
+        console.warn(`[SessionDO] Failed to write message to D1: ${e}`)
+      }
     }
 
     // Broadcast to WebSocket clients
@@ -241,14 +306,55 @@ export class SessionDO extends DurableObject<Env> {
 
     const rows = this.sql.exec(query, ...params).toArray()
 
-    // Return in chronological order (oldest first)
-    return rows.reverse().map((row) => ({
-      id: row.id as string,
-      role: row.role as Message['role'],
-      content: row.content as string,
-      parts: row.parts as string | undefined,
-      createdAt: row.createdAt as number,
-    }))
+    if (rows.length > 0) {
+      // Return in chronological order (oldest first)
+      return rows.reverse().map((row) => ({
+        id: row.id as string,
+        role: row.role as Message['role'],
+        content: row.content as string,
+        parts: row.parts as string | undefined,
+        createdAt: row.createdAt as number,
+      }))
+    }
+
+    // Cold start: DO SQLite is empty, fall back to D1
+    const sessionId = await this.getSessionIdForD1()
+    if (!sessionId) return []
+
+    try {
+      const result = await this.env.DB.prepare(
+        `SELECT id, role, content, parts, created_at as createdAt
+         FROM chat_messages WHERE session_id = ?
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+        .bind(sessionId, limit)
+        .all()
+
+      if (result.results?.length) {
+        // Backfill DO SQLite for subsequent reads
+        for (const row of result.results) {
+          this.sql.exec(
+            `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
+            row.id,
+            row.role,
+            row.content,
+            row.parts,
+            row.createdAt,
+          )
+        }
+        return result.results.reverse().map((row) => ({
+          id: row.id as string,
+          role: row.role as Message['role'],
+          content: row.content as string,
+          parts: row.parts as string | undefined,
+          createdAt: row.createdAt as number,
+        }))
+      }
+    } catch (e) {
+      console.warn(`[SessionDO] Failed to load messages from D1: ${e}`)
+    }
+
+    return []
   }
 
   /**
@@ -256,6 +362,13 @@ export class SessionDO extends DurableObject<Env> {
    */
   async updateMessageParts(messageId: string, parts: string): Promise<void> {
     this.sql.exec(`UPDATE messages SET parts = ? WHERE id = ?`, parts, messageId)
+
+    // Sync parts update to D1
+    try {
+      await this.env.DB.prepare(`UPDATE chat_messages SET parts = ? WHERE id = ?`).bind(parts, messageId).run()
+    } catch (e) {
+      console.warn(`[SessionDO] Failed to update message parts in D1: ${e}`)
+    }
 
     // Broadcast part update
     this.broadcast({ type: 'message-parts', messageId, parts })
@@ -266,7 +379,26 @@ export class SessionDO extends DurableObject<Env> {
    */
   async getMessageCount(): Promise<number> {
     const result = this.sql.exec(`SELECT COUNT(*) as count FROM messages`).one()
-    return (result?.count as number) || 0
+    const localCount = (result?.count as number) || 0
+
+    if (localCount > 0) return localCount
+
+    // Cold start fallback to D1
+    const sessionId = await this.getSessionIdForD1()
+    if (!sessionId) return 0
+
+    try {
+      const d1Result = await this.env.DB.prepare(
+        `SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ?`,
+      )
+        .bind(sessionId)
+        .first<{ count: number }>()
+      return d1Result?.count || 0
+    } catch (e) {
+      console.warn(`[SessionDO] Failed to get message count from D1: ${e}`)
+    }
+
+    return 0
   }
 
   /**

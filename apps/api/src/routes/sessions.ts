@@ -119,6 +119,7 @@ sessions.post('/', async (c) => {
         const doStub = c.env.SESSION_DO.get(doId)
 
         // Initialize session metadata in DO
+        await doStub.setSessionMeta('session_id', sessionId)
         await doStub.setSessionMeta('userId', input.userId)
         await doStub.setSessionMeta('repoOwner', input.repoOwner)
         await doStub.setSessionMeta('repoName', input.repoName)
