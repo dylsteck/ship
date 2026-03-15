@@ -408,3 +408,34 @@ Shared MCP (Model Context Protocol) servers are registered per repo directory th
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `chore:`, etc.
 - Keep PRs focused on a single concern
 - Include description of changes and testing done
+
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | Port | Start command |
+|---------|------|---------------|
+| Web (Next.js) | 3000 | `pnpm dev` (from repo root, runs both via Turbo) |
+| API (Cloudflare Worker) | 8787 | Same `pnpm dev` starts both |
+
+### Environment files
+
+- `apps/web/.env.local` — GitHub OAuth credentials, `SESSION_SECRET`, `API_SECRET`, `API_BASE_URL`. Copy from `apps/web/.env.example`.
+- `apps/api/.dev.vars` — `API_SECRET`, `SESSION_SECRET`, `ANTHROPIC_API_KEY`, `E2B_API_KEY`. Copy from `apps/api/.dev.vars.example`.
+- `SESSION_SECRET` and `API_SECRET` must match between web and API.
+
+### D1 database (local)
+
+Before running the API for the first time, apply the schema migration:
+```bash
+cd apps/api && npx wrangler d1 execute ship-db --local --file=src/db/schema.sql
+```
+The local D1 state persists in `apps/api/.wrangler/state/`. Re-running the migration is safe (`CREATE TABLE IF NOT EXISTS`).
+
+### Gotchas
+
+- **ESLint is not declared as a dependency** — `pnpm lint` will fail because `eslint` is not in any `package.json`. The lint script in `apps/web` calls `eslint . --max-warnings 0` directly. This is a known gap in the repo.
+- **`pnpm type-check`** works and is the best static analysis check available.
+- **`pnpm build`** builds only the web app (Next.js); the API is a Cloudflare Worker and has no separate build step for local dev.
+- **GitHub OAuth** requires a real GitHub OAuth App for the full login flow. Without valid `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`, the login page renders but authentication will fail at GitHub's end.
+- The API health endpoint at port 8787 path `/health` is useful for verifying the worker is running.
