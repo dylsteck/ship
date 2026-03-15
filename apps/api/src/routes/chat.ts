@@ -321,10 +321,21 @@ app.post('/:sessionId', async (c) => {
 
             // NOTE: E2B SDK throws CommandExitError on non-zero exit codes
             // GIT_TERMINAL_PROMPT=0 prevents git from hanging waiting for credentials
-            await sandbox.commands.run(
-              `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-              { timeoutMs: 60000 },
-            )
+            // Try with auth first, fall back to unauthenticated (works for public repos)
+            try {
+              await sandbox.commands.run(
+                `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                { timeoutMs: 60000 },
+              )
+            } catch (authCloneErr) {
+              console.warn(`[chat:${sessionId}] Auth clone failed, retrying without auth (public repo fallback)`)
+              // Clean up failed clone attempt
+              await sandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
+              await sandbox.commands.run(
+                `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                { timeoutMs: 60000 },
+              )
+            }
 
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
             await sandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
@@ -548,11 +559,25 @@ app.post('/:sessionId', async (c) => {
                       const baseBranch = repoMetaJson.base_branch || 'main'
                       const branchName = repoMetaJson.current_branch || generateBranchName('agent-task', sessionId)
 
-                      const cloneResult = await newSandbox.commands.run(
-                        `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                        { timeoutMs: 60000 },
-                      )
-                      if (cloneResult.exitCode === 0) {
+                      let cloneOk = false
+                      try {
+                        await newSandbox.commands.run(
+                          `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                          { timeoutMs: 60000 },
+                        )
+                        cloneOk = true
+                      } catch {
+                        // Auth clone failed — retry without auth (public repo fallback)
+                        await newSandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
+                        try {
+                          await newSandbox.commands.run(
+                            `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                            { timeoutMs: 60000 },
+                          )
+                          cloneOk = true
+                        } catch { /* both failed */ }
+                      }
+                      if (cloneOk) {
                         await newSandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
                         await newSandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
                         await newSandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
