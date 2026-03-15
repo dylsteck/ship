@@ -95,6 +95,13 @@ export function DashboardClient({
 
   const { handleSend, processStreamEventForSession, resumeStream } = useDashboardSSE({ chat, modeRef })
 
+  const handleRetryLastMessage = useCallback(() => {
+    const lastUserMsg = [...chat.messages].reverse().find((m) => m.role === 'user')
+    if (lastUserMsg?.content) {
+      handleSend(lastUserMsg.content)
+    }
+  }, [chat.messages, handleSend])
+
   useEffect(() => {
     resumeStreamRef.current = resumeStream
     return () => {
@@ -409,6 +416,7 @@ export function DashboardClient({
           onPermissionReply: handlePermissionReply,
           onQuestionReply: handleQuestionReply,
           onQuestionSkip: handleQuestionSkip,
+          onRetry: handleRetryLastMessage,
         }}
         sessions={{
           localSessions: chat.localSessions,

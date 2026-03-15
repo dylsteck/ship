@@ -44,11 +44,11 @@ function formatErrorMessage(message: string): string {
   }
 
   if (lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('too many api requests') || lower.includes('worker invocation')) {
-    return 'Rate limited. The agent will retry automatically.'
+    return 'Rate limited. Please try sending your message again.'
   }
 
   if (lower.includes('overloaded') || lower.includes('529')) {
-    return 'The API is temporarily overloaded. It will retry shortly.'
+    return 'The API is temporarily overloaded. Please try again shortly.'
   }
 
   if (lower.includes('network') || lower.includes('connection') || lower.includes('timeout')) {
