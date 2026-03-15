@@ -45,6 +45,8 @@ export interface UIMessage {
   type?: 'error' | 'pr-notification' | 'permission' | 'question'
   errorCategory?: 'transient' | 'persistent' | 'user-action' | 'fatal'
   retryable?: boolean
+  /** Raw error message before formatting (shown in Details when formatted would mask it) */
+  rawErrorMessage?: string
   // Wall-clock elapsed time in ms (set when streaming completes)
   elapsed?: number
   // Plan items from PlanPart events
@@ -253,6 +255,7 @@ export function createErrorMessage(
   content: string,
   category: UIMessage['errorCategory'] = 'persistent',
   retryable = false,
+  rawErrorMessage?: string,
 ): UIMessage {
   return {
     id: `error-${Date.now()}`,
@@ -261,6 +264,7 @@ export function createErrorMessage(
     type: 'error',
     errorCategory: category,
     retryable,
+    rawErrorMessage,
     createdAt: new Date(),
   }
 }

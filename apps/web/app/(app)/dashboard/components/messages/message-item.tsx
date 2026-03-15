@@ -104,6 +104,7 @@ export function MessageItem({
           category={message.errorCategory || 'persistent'}
           retryable={message.retryable || false}
           onRetry={message.retryable ? onRetry : undefined}
+          rawMessage={message.rawErrorMessage}
         />
       </div>
     )

@@ -187,26 +187,32 @@ app.post('/:sessionId', async (c) => {
             }
 
             if (currentStatus === 'error') {
+              const payload = {
+                error: 'Sandbox provisioning failed',
+                details: (meta as Record<string, string>).sandbox_error || (meta as Record<string, string>).error || undefined,
+                category: 'persistent' as const,
+                retryable: true,
+              }
+              console.error(`[chat:${sessionId}] ERROR:`, payload)
               await stream.writeSSE({
                 event: 'error',
-                data: JSON.stringify({
-                  error: 'Sandbox provisioning failed',
-                  category: 'persistent',
-                  retryable: true,
-                }),
+                data: JSON.stringify(payload),
               })
               return
             }
           }
 
           if (!currentSandboxId) {
+            const payload = {
+              error: 'Sandbox provisioning timed out',
+              details: 'Waited 30s for sandbox; provisioning may have failed',
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, payload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Sandbox provisioning timed out',
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(payload),
             })
             return
           }
@@ -214,13 +220,16 @@ app.post('/:sessionId', async (c) => {
 
         // Ensure we have a sandbox
         if (!currentSandboxId) {
+          const payload = {
+            error: 'No sandbox available. Please refresh and try again.',
+            details: 'Sandbox provisioning failed or timed out',
+            category: 'persistent' as const,
+            retryable: false,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, payload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'No sandbox available. Please refresh and try again.',
-              category: 'persistent',
-              retryable: false,
-            }),
+            data: JSON.stringify(payload),
           })
           return
         }
@@ -269,14 +278,16 @@ app.post('/:sessionId', async (c) => {
             const stack = error instanceof Error ? error.stack : undefined
             console.error(`[chat:${sessionId}] Failed to start sandbox-agent server: ${errMsg}`)
             if (stack) console.error(`[chat:${sessionId}] Stack: ${stack}`)
+            const payload = {
+              error: 'Failed to start agent server',
+              details: error instanceof Error ? error.message : 'Unknown error',
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, payload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Failed to start agent server',
-                details: error instanceof Error ? error.message : 'Unknown error',
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(payload),
             })
             return
           }
@@ -381,14 +392,16 @@ app.post('/:sessionId', async (c) => {
             console.error(`[chat:${sessionId}] Clone failed: ${cloneErrMsg}`)
             if (cmdErr.stderr) console.error(`[chat:${sessionId}] Clone stderr: ${cmdErr.stderr}`)
             if (cmdErr.stdout) console.error(`[chat:${sessionId}] Clone stdout: ${cmdErr.stdout}`)
+            const clonePayload = {
+              error: 'Failed to clone repository',
+              details: cloneError instanceof Error ? cloneError.message : String(cloneError),
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, clonePayload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Failed to clone repository',
-                details: cloneError instanceof Error ? cloneError.message : String(cloneError),
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(clonePayload),
             })
             return
           }
@@ -611,14 +624,16 @@ app.post('/:sessionId', async (c) => {
                 })
               } catch (reprovisionError) {
                 console.error(`[chat:${sessionId}] Re-provisioning failed:`, reprovisionError)
+                const reprovisionPayload = {
+                  error: 'Failed to re-provision sandbox',
+                  details: reprovisionError instanceof Error ? reprovisionError.message : 'Unknown error',
+                  category: 'persistent' as const,
+                  retryable: true,
+                }
+                console.error(`[chat:${sessionId}] ERROR:`, reprovisionPayload)
                 await stream.writeSSE({
                   event: 'error',
-                  data: JSON.stringify({
-                    error: 'Failed to re-provision sandbox',
-                    details: reprovisionError instanceof Error ? reprovisionError.message : 'Unknown error',
-                    category: 'persistent',
-                    retryable: true,
-                  }),
+                  data: JSON.stringify(reprovisionPayload),
                 })
                 return
               }
@@ -641,13 +656,16 @@ app.post('/:sessionId', async (c) => {
         // Ensure we have sandbox-agent URL
         if (!currentSandboxAgentUrl) {
           console.error(`[chat:${sessionId}] No sandbox-agent URL available`)
+          const noAgentPayload = {
+            error: 'Agent server not started',
+            details: 'Sandbox-agent server failed to start or was not provisioned',
+            category: 'persistent' as const,
+            retryable: true,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, noAgentPayload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'Agent server not started',
-              category: 'persistent',
-              retryable: true,
-            }),
+            data: JSON.stringify(noAgentPayload),
           })
           return
         }
@@ -726,14 +744,16 @@ app.post('/:sessionId', async (c) => {
             )
           } catch (sessionError) {
             console.error(`[chat:${sessionId}] Failed to create agent session:`, sessionError)
+            const sessionPayload = {
+              error: 'Failed to create agent session',
+              details: sessionError instanceof Error ? sessionError.message : 'Unknown error',
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, sessionPayload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Failed to create agent session',
-                details: sessionError instanceof Error ? sessionError.message : 'Unknown error',
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(sessionPayload),
             })
             return
           }
@@ -757,13 +777,16 @@ app.post('/:sessionId', async (c) => {
         }
 
         if (!session) {
+          const establishPayload = {
+            error: 'Failed to establish agent session',
+            details: 'createAgentSession returned null or invalid session',
+            category: 'persistent' as const,
+            retryable: true,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, establishPayload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'Failed to establish agent session',
-              category: 'persistent',
-              retryable: true,
-            }),
+            data: JSON.stringify(establishPayload),
           })
           return
         }
@@ -877,14 +900,16 @@ app.post('/:sessionId', async (c) => {
           if (eventCount === 0) {
             console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s (no events received)`)
             try {
+              const timeoutPayload = {
+                error: 'Agent did not respond in time',
+                details: `No events after ${EVENT_TIMEOUT_MS / 1000}s`,
+                category: 'persistent' as const,
+                retryable: true,
+              }
+              console.error(`[chat:${sessionId}] ERROR:`, timeoutPayload)
               await stream.writeSSE({
                 event: 'error',
-                data: JSON.stringify({
-                  error: 'Agent did not respond in time',
-                  details: `No events after ${EVENT_TIMEOUT_MS / 1000}s`,
-                  category: 'persistent',
-                  retryable: true,
-                }),
+                data: JSON.stringify(timeoutPayload),
               })
             } catch {
               // Stream might be closed
@@ -935,13 +960,16 @@ app.post('/:sessionId', async (c) => {
                   })
                 } else {
                   // Non-retryable: send error event immediately
+                  const nonRetryPayload = {
+                    error: errorMsg,
+                    details: errorMsg,
+                    category: details.category,
+                    retryable: false,
+                  }
+                  console.error(`[chat:${sessionId}] ERROR:`, nonRetryPayload)
                   await stream.writeSSE({
                     event: 'error',
-                    data: JSON.stringify({
-                      error: errorMsg,
-                      category: details.category,
-                      retryable: false,
-                    }),
+                    data: JSON.stringify(nonRetryPayload),
                   })
                   // Persist non-retryable errors so user sees them on refresh
                   try {
@@ -971,13 +999,16 @@ app.post('/:sessionId', async (c) => {
           console.error(`[chat:${sessionId}] Failed to send prompt after retries:`, safeErrorForLog(promptError))
           const finalDetails = classifyError(sanitizeError(promptError))
           const finalMsg = sanitizeError(promptError)
+          const exhaustedPayload = {
+            error: finalMsg,
+            details: finalMsg,
+            category: finalDetails.category,
+            retryable: true,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, exhaustedPayload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: finalMsg,
-              category: finalDetails.category,
-              retryable: true,
-            }),
+            data: JSON.stringify(exhaustedPayload),
           })
         } finally {
           clearTimeout(eventTimeout)
@@ -1120,13 +1151,18 @@ app.post('/:sessionId', async (c) => {
         }
 
         try {
+          const outerPayload = {
+            error: sanitized,
+            details: error instanceof Error ? error.message : String(error),
+            category: details.category,
+            retryable: details.retryable,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, outerPayload)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
-              error: sanitized,
-              message: error instanceof Error ? error.message : String(error),
-              category: details.category,
-              retryable: details.retryable,
+              ...outerPayload,
+              message: outerPayload.details,
             }),
           })
         } catch {
@@ -1233,12 +1269,16 @@ app.get('/:sessionId/subscribe', async (c) => {
       await new Promise((resolve) => setTimeout(resolve, 300000))
       unsubscribe()
     } catch (error) {
-      console.error(`[chat:${sessionId}] Subscribe stream error:`, safeErrorForLog(error))
+      const subscribePayload = {
+        error: error instanceof Error ? error.message : 'Stream failed',
+        details: error instanceof Error ? error.message : String(error),
+      }
+      console.error(`[chat:${sessionId}] ERROR (subscribe):`, subscribePayload)
       await stream.writeSSE({
         event: 'session.error',
         data: JSON.stringify({
           type: 'session.error',
-          properties: { error: error instanceof Error ? error.message : 'Stream failed' },
+          properties: { error: subscribePayload.error },
         }),
       })
     } finally {
@@ -1270,9 +1310,14 @@ app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
       const session = await resumeAgentSessionWithTimeout(client, subagentSessionId)
 
       if (!session) {
+        const subagentPayload = {
+          error: 'Sub-agent session not found',
+          details: 'The sub-agent session may have expired or been terminated',
+        }
+        console.error(`[chat:${sessionId}] ERROR:`, subagentPayload)
         await stream.writeSSE({
           event: 'error',
-          data: JSON.stringify({ error: 'Sub-agent session not found' }),
+          data: JSON.stringify(subagentPayload),
         })
         return
       }
@@ -1298,9 +1343,14 @@ app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
       unsubscribe()
     } catch (error) {
       console.error(`[chat:${sessionId}] Subagent stream error:`, safeErrorForLog(error))
+      const streamFailPayload = {
+        error: error instanceof Error ? error.message : 'Stream failed',
+        details: error instanceof Error ? error.message : String(error),
+      }
+      console.error(`[chat:${sessionId}] ERROR:`, streamFailPayload)
       await stream.writeSSE({
         event: 'error',
-        data: JSON.stringify({ error: error instanceof Error ? error.message : 'Stream failed' }),
+        data: JSON.stringify(streamFailPayload),
       })
     } finally {
       await stream.close()

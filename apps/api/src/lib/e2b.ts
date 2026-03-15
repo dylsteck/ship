@@ -45,9 +45,19 @@ export interface SandboxInfo {
   metadata?: Record<string, string>
 }
 
+function isE2BRateLimitError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase()
+  return msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests')
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
 /**
  * Create a new sandbox for a session
  * Uses Sandbox.betaCreate() with autoPause enabled per RESEARCH.md Pattern 1
+ * Retries with backoff on E2B 429 (sandbox creation rate: 1/sec on Hobby plan)
  *
  * @param apiKey - E2B API key
  * @param config - Sandbox configuration including sessionId for metadata
@@ -55,34 +65,45 @@ export interface SandboxInfo {
  */
 export async function createSessionSandbox(apiKey: string, config: SandboxConfig): Promise<SandboxInfo> {
   const timeoutMs = config.timeoutMs ?? 5 * 60 * 1000 // 5-minute default timeout
+  const maxRetries = 3
+  const baseDelayMs = 2000
 
-  try {
-    const hasEnvs = config.envs && Object.keys(config.envs).length > 0
-    const sandbox = await Sandbox.betaCreate({
-      apiKey,
-      ...(E2B_TEMPLATE_ID ? { template: E2B_TEMPLATE_ID } : {}),
-      autoPause: true, // Enable auto-pause for cost control
-      timeoutMs,
-      metadata: {
-        sessionId: config.sessionId,
-        ...config.metadata,
-      },
-      ...(hasEnvs && { envs: config.envs }),
-    })
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const hasEnvs = config.envs && Object.keys(config.envs).length > 0
+      const sandbox = await Sandbox.betaCreate({
+        apiKey,
+        ...(E2B_TEMPLATE_ID ? { template: E2B_TEMPLATE_ID } : {}),
+        autoPause: true, // Enable auto-pause for cost control
+        timeoutMs,
+        metadata: {
+          sessionId: config.sessionId,
+          ...config.metadata,
+        },
+        ...(hasEnvs && { envs: config.envs }),
+      })
 
-    return {
-      id: sandbox.sandboxId,
-      status: 'active',
-      createdAt: Date.now(),
-      metadata: {
-        sessionId: config.sessionId,
-        ...config.metadata,
-      },
+      return {
+        id: sandbox.sandboxId,
+        status: 'active',
+        createdAt: Date.now(),
+        metadata: {
+          sessionId: config.sessionId,
+          ...config.metadata,
+        },
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown E2B error'
+      if (attempt < maxRetries && isE2BRateLimitError(error)) {
+        const delay = baseDelayMs * Math.pow(2, attempt)
+        await sleep(delay)
+        continue
+      }
+      throw new E2BError(`Failed to create sandbox: ${message}`, 'CREATE_FAILED')
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown E2B error'
-    throw new E2BError(`Failed to create sandbox: ${message}`, 'CREATE_FAILED')
   }
+
+  throw new E2BError('Failed to create sandbox after retries', 'CREATE_FAILED')
 }
 
 /**
@@ -91,28 +112,41 @@ export async function createSessionSandbox(apiKey: string, config: SandboxConfig
  *
  * E2B Pattern: Use Sandbox.connect() to reconnect to existing sandbox
  * The connect() method automatically resumes paused sandboxes
+ * Retries with backoff on E2B 429
  *
  * @param apiKey - E2B API key
  * @param sandboxId - The sandbox ID to resume
  * @returns SandboxInfo with current status
  */
 export async function resumeSandbox(apiKey: string, sandboxId: string): Promise<SandboxInfo> {
-  try {
-    // Connect to the existing sandbox (auto-resumes if paused)
-    const sandbox = await Sandbox.connect(sandboxId, {
-      apiKey,
-      timeoutMs: 5 * 60 * 1000,
-    })
+  const maxRetries = 2
+  const baseDelayMs = 1500
 
-    return {
-      id: sandbox.sandboxId,
-      status: 'active',
-      createdAt: Date.now(), // We don't track original creation time
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Connect to the existing sandbox (auto-resumes if paused)
+      const sandbox = await Sandbox.connect(sandboxId, {
+        apiKey,
+        timeoutMs: 5 * 60 * 1000,
+      })
+
+      return {
+        id: sandbox.sandboxId,
+        status: 'active',
+        createdAt: Date.now(), // We don't track original creation time
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown E2B error'
+      if (attempt < maxRetries && isE2BRateLimitError(error)) {
+        const delay = baseDelayMs * Math.pow(2, attempt)
+        await sleep(delay)
+        continue
+      }
+      throw new E2BError(`Failed to resume sandbox: ${message}`, 'RESUME_FAILED', sandboxId)
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown E2B error'
-    throw new E2BError(`Failed to resume sandbox: ${message}`, 'RESUME_FAILED', sandboxId)
   }
+
+  throw new E2BError('Failed to resume sandbox after retries', 'RESUME_FAILED', sandboxId)
 }
 
 /**

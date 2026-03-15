@@ -18,6 +18,7 @@ import {
   handleDoneOrIdle,
   handleSessionError,
   handleGenericError,
+  isGenericError,
   handlePermissionAsked,
   handlePermissionResolved,
   handleQuestionAsked,
@@ -177,12 +178,19 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          const errorContent = errorData.error || errorData.details || 'Failed to start agent'
+          const mainError = errorData.error || errorData.details || 'Failed to start agent'
+          const errorContent =
+            errorData.details && isGenericError(errorData.error || '')
+              ? errorData.details
+              : mainError
           const { category, retryable } = classifyError(errorContent)
 
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
-            return [...filtered, createErrorMessage(errorContent, category, retryable)]
+            return [
+              ...filtered,
+              createErrorMessage(errorContent, category, retryable, errorContent),
+            ]
           })
 
           sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
@@ -323,14 +331,23 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                     break
 
                   case 'error': {
-                    const errEvt = event as { error?: string; retryable?: boolean; attempt?: number }
+                    const errEvt = event as {
+                      error?: string
+                      details?: string
+                      retryable?: boolean
+                      attempt?: number
+                    }
                     if (errEvt.retryable && typeof errEvt.attempt === 'number') {
                       // Intermediate retry — show as status, don't kill the stream
                       const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
                       ctx.setStreamingStatus(retryMsg, ctx.accumulateSetupStepsRef.current)
                       sessionStatusStore.update(targetSessionId, { status: retryMsg })
                     } else {
-                      handleGenericError((event as any).error, ctx)
+                      handleGenericError(
+                        (event as any).error,
+                        ctx,
+                        (event as any).details,
+                      )
                       sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
                     }
                     break
@@ -466,12 +483,17 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
           handleSessionError((event as any).properties?.error, ctx)
           break
         case 'error': {
-          const errEvt = event as { error?: string; retryable?: boolean; attempt?: number }
+          const errEvt = event as {
+            error?: string
+            details?: string
+            retryable?: boolean
+            attempt?: number
+          }
           if (errEvt.retryable && typeof errEvt.attempt === 'number') {
             const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
             ctx.setStreamingStatus(retryMsg, accumulateSetupStepsRef.current)
           } else {
-            handleGenericError((event as any).error, ctx)
+            handleGenericError((event as any).error, ctx, (event as any).details)
           }
           break
         }
