@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { Button, Badge, cn } from '@ship/ui'
-import { API_URL } from '@/lib/config'
+import { fetcher, post, API_URL } from '@/lib/api/client'
 
 interface ConnectorStatus {
   name: 'github'
@@ -20,12 +20,14 @@ export function ConnectorSettings({ userId }: { userId: string }) {
     async function loadConnectors() {
       try {
         setLoading(true)
-        const res = await fetch(`${API_URL}/connectors?userId=${userId}`)
-        if (!res.ok) throw new Error('Failed to fetch connectors')
-        const data = await res.json()
+        const data = await fetcher<{ connectors: ConnectorStatus[] }>(
+          `${API_URL}/connectors?userId=${userId}`,
+        )
         setConnectors(data.connectors || [])
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load')
+        console.warn('Failed to fetch connectors:', err)
+        // Show GitHub as disconnected so user can still connect
+        setConnectors([{ name: 'github', connected: false, enabled: false }])
       } finally {
         setLoading(false)
       }
@@ -37,12 +39,10 @@ export function ConnectorSettings({ userId }: { userId: string }) {
     startTransition(async () => {
       try {
         setError(null)
-        const res = await fetch(`${API_URL}/connectors/${name}/${enabled ? 'enable' : 'disable'}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId }),
-        })
-        if (!res.ok) throw new Error('Failed')
+        await post<{ userId: string }, { success: boolean }>(
+          `${API_URL}/connectors/${name}/${enabled ? 'enable' : 'disable'}`,
+          { userId },
+        )
         setConnectors((prev) => prev.map((c) => (c.name === name ? { ...c, enabled: !c.enabled } : c)))
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed')
