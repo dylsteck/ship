@@ -125,7 +125,8 @@ export async function startSandboxAgentServer(
   const agentConfig = getAgent(agentType) || getAgent(getDefaultAgentId())!
   const sandboxToken = generateToken()
 
-  // Check if sandbox-agent server is already running (no token — existing server may have its own)
+  // Step 1: Check if sandbox-agent server is already running
+  console.log(`[sandbox-agent:${sandboxId}] Step 1: Checking if server already running...`)
   try {
     const healthResult = await sandbox.commands.run(
       `curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health --connect-timeout 2 --max-time 3`,
@@ -134,63 +135,75 @@ export async function startSandboxAgentServer(
       const host = sandbox.getHost(SANDBOX_AGENT_PORT)
       const url = `https://${host}`
       console.log(`[sandbox-agent:${sandboxId}] Server already running at ${url}`)
-      // Return empty token — existing server may have its own token stored in DO metadata
       return { url, token: '' }
     }
-  } catch {
-    // Server not running, continue with setup
+  } catch (e) {
+    console.log(`[sandbox-agent:${sandboxId}] No existing server (${e instanceof Error ? e.message : String(e)})`)
   }
 
-  // Check if sandbox-agent binary is pre-installed (custom template)
-  const checkBinary = await sandbox.commands.run('which sandbox-agent')
-  if (checkBinary.exitCode !== 0) {
-    // Install sandbox-agent binary (fallback for non-custom templates)
-    console.log(`[sandbox-agent:${sandboxId}] Installing sandbox-agent...`)
+  // Step 2: Check if sandbox-agent binary is pre-installed (custom template)
+  // NOTE: E2B SDK throws CommandExitError on non-zero exit codes, so we must try/catch
+  console.log(`[sandbox-agent:${sandboxId}] Step 2: Checking sandbox-agent binary...`)
+  let hasBinary = false
+  try {
+    const checkBinary = await sandbox.commands.run('which sandbox-agent')
+    console.log(`[sandbox-agent:${sandboxId}] which sandbox-agent: stdout=${checkBinary.stdout.trim()}`)
+    hasBinary = true
+  } catch {
+    console.log(`[sandbox-agent:${sandboxId}] sandbox-agent binary not found, will install`)
+  }
+
+  if (!hasBinary) {
+    console.log(`[sandbox-agent:${sandboxId}] Installing sandbox-agent binary...`)
     const installResult = await sandbox.commands.run(
       'curl -fsSL https://releases.rivet.dev/sandbox-agent/0.3.x/install.sh | sh',
       { timeoutMs: 120000 },
     )
-    if (installResult.exitCode !== 0) {
-      throw new Error(`Failed to install sandbox-agent: ${installResult.stderr}`)
-    }
+    console.log(`[sandbox-agent:${sandboxId}] Binary install result: stdout=${installResult.stdout.slice(-200)}`)
   } else {
     console.log(`[sandbox-agent:${sandboxId}] sandbox-agent binary already installed (custom template)`)
   }
 
-  // Check if the requested agent is already installed
-  const agentCheck = await sandbox.commands.run(
-    `sandbox-agent list-agents 2>/dev/null | grep -q ${agentConfig.sandboxAgentName}`,
-  )
-  if (agentCheck.exitCode !== 0) {
+  // Step 3: Check if the requested agent is already installed
+  // NOTE: grep -q returns non-zero when not found, which E2B SDK throws as CommandExitError
+  console.log(`[sandbox-agent:${sandboxId}] Step 3: Checking agent ${agentConfig.sandboxAgentName}...`)
+  let hasAgent = false
+  try {
+    await sandbox.commands.run(
+      `sandbox-agent list-agents 2>/dev/null | grep -q ${agentConfig.sandboxAgentName}`,
+    )
+    hasAgent = true
+  } catch {
+    console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} not found`)
+  }
+
+  if (!hasAgent) {
     console.log(`[sandbox-agent:${sandboxId}] Installing agent: ${agentConfig.sandboxAgentName}...`)
     try {
       const agentInstallResult = await sandbox.commands.run(
         `sandbox-agent install-agent ${agentConfig.sandboxAgentName}`,
         { timeoutMs: 30000 },
       )
-      if (agentInstallResult.exitCode !== 0) {
-        console.warn(
-          `[sandbox-agent:${sandboxId}] Agent install warning: ${agentInstallResult.stderr}`,
-        )
-      }
+      console.log(`[sandbox-agent:${sandboxId}] Agent installed: stdout=${agentInstallResult.stdout.slice(-200)}`)
     } catch (installError) {
-      // Timeout or other error — kill lingering npm and continue
-      console.warn(`[sandbox-agent:${sandboxId}] Agent install timed out/failed, continuing server start`)
+      console.warn(`[sandbox-agent:${sandboxId}] Agent install timed out/failed: ${installError instanceof Error ? installError.message : String(installError)}`)
       await sandbox.commands.run('pkill -f npm || true', { timeoutMs: 5000 }).catch(() => {})
     }
   } else {
     console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} already installed`)
   }
 
-  // Start sandbox-agent server — pass env vars via E2B's envs param (no temp files)
-  console.log(`[sandbox-agent:${sandboxId}] Starting server on port ${SANDBOX_AGENT_PORT}...`)
+  // Step 4: Start sandbox-agent server
+  console.log(`[sandbox-agent:${sandboxId}] Step 4: Starting server on port ${SANDBOX_AGENT_PORT}...`)
   const serverCmd = `sandbox-agent server --token ${sandboxToken} --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`
+  console.log(`[sandbox-agent:${sandboxId}] Server command: ${serverCmd.replace(sandboxToken, '***')}`)
 
   await sandbox.commands.run(serverCmd, {
     background: true,
     timeoutMs: 0,
     ...(Object.keys(envVars).length > 0 && { envs: envVars }),
   })
+  console.log(`[sandbox-agent:${sandboxId}] Server process launched`)
 
   // Wait for server to be ready (exponential backoff: 200ms, 400ms, 800ms... cap 5s)
   console.log(`[sandbox-agent:${sandboxId}] Waiting for server health...`)

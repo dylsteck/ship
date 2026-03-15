@@ -262,7 +262,10 @@ app.post('/:sessionId', async (c) => {
               data: JSON.stringify({ type: 'agent-url', url }),
             })
           } catch (error) {
-            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server:`, safeErrorForLog(error))
+            const errMsg = safeErrorForLog(error)
+            const stack = error instanceof Error ? error.stack : undefined
+            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server: ${errMsg}`)
+            if (stack) console.error(`[chat:${sessionId}] Stack: ${stack}`)
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify({
