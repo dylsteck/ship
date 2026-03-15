@@ -320,9 +320,10 @@ app.post('/:sessionId', async (c) => {
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
 
             // NOTE: E2B SDK throws CommandExitError on non-zero exit codes
+            // GIT_TERMINAL_PROMPT=0 prevents git from hanging waiting for credentials
             await sandbox.commands.run(
-              `git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone ${repoUrl} ${repoPath}`,
-              { timeoutMs: 120000 },
+              `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+              { timeoutMs: 60000 },
             )
 
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
@@ -548,7 +549,8 @@ app.post('/:sessionId', async (c) => {
                       const branchName = repoMetaJson.current_branch || generateBranchName('agent-task', sessionId)
 
                       const cloneResult = await newSandbox.commands.run(
-                        `git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone ${repoUrl} ${repoPath}`,
+                        `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                        { timeoutMs: 60000 },
                       )
                       if (cloneResult.exitCode === 0) {
                         await newSandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)

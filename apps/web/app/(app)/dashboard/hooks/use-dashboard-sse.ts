@@ -124,9 +124,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
       streamingMessageRef.current = assistantMessage.id
       setMessages((prev) => [...prev, assistantMessage])
 
-      // Client-side watchdog: if server timeout (300s) passes without done/error, force-clear
-      const CLIENT_TIMEOUT_MS = 320_000 // 320s — slightly longer than server's 300s
-      let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      // Client-side watchdog: if no done/error event received, force-clear with error
+      const CLIENT_TIMEOUT_MS = 300_000 // 5 min overall timeout
+      const STALL_TIMEOUT_MS = 90_000 // 90s stall detector — resets on each SSE event
+      let lastEventTime = Date.now()
+      const onStall = () => {
         if (streamingMessageRef.current && targetSessionId === activeSessionIdRef?.current) {
           const msgId = streamingMessageRef.current
           setMessages((prev) => {
@@ -139,7 +141,14 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
           sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
           postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
         }
-      }, CLIENT_TIMEOUT_MS)
+      }
+      let stallTimerId: ReturnType<typeof setTimeout> | null = setTimeout(onStall, STALL_TIMEOUT_MS)
+      const resetStallTimer = () => {
+        lastEventTime = Date.now()
+        if (stallTimerId) clearTimeout(stallTimerId)
+        stallTimerId = setTimeout(onStall, STALL_TIMEOUT_MS)
+      }
+      let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(onStall, CLIENT_TIMEOUT_MS)
 
       const ctx: SSEHandlerContext = {
         setMessages,
@@ -207,6 +216,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             }
             if (line.startsWith('data: ')) {
               try {
+                resetStallTimer()
                 const rawData = JSON.parse(line.slice(6))
                 if (!rawData.type && currentEventType) {
                   rawData.type = currentEventType
@@ -382,6 +392,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
         streamingMessageRef.current = null
       } finally {
         if (timeoutId) clearTimeout(timeoutId)
+        if (stallTimerId) clearTimeout(stallTimerId)
       }
     },
     [activeSessionId, activeSessionIdRef],
