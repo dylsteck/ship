@@ -2,12 +2,13 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { Button, Badge, cn } from '@ship/ui'
-import { API_URL } from '@/lib/config'
+import { fetcher, post, API_URL } from '@/lib/api/client'
 
 interface ConnectorStatus {
   name: 'github'
   connected: boolean
   enabled: boolean
+  tokenExpired?: boolean
 }
 
 export function ConnectorSettings({ userId }: { userId: string }) {
@@ -20,12 +21,13 @@ export function ConnectorSettings({ userId }: { userId: string }) {
     async function loadConnectors() {
       try {
         setLoading(true)
-        const res = await fetch(`${API_URL}/connectors?userId=${userId}`)
-        if (!res.ok) throw new Error('Failed to fetch connectors')
-        const data = await res.json()
+        const data = await fetcher<{ connectors: ConnectorStatus[] }>(
+          `${API_URL}/connectors?userId=${userId}`,
+        )
         setConnectors(data.connectors || [])
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load')
+        console.warn('Failed to fetch connectors:', err)
+        setConnectors([{ name: 'github', connected: false, enabled: false }])
       } finally {
         setLoading(false)
       }
@@ -37,12 +39,10 @@ export function ConnectorSettings({ userId }: { userId: string }) {
     startTransition(async () => {
       try {
         setError(null)
-        const res = await fetch(`${API_URL}/connectors/${name}/${enabled ? 'enable' : 'disable'}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId }),
-        })
-        if (!res.ok) throw new Error('Failed')
+        await post<{ userId: string }, { success: boolean }>(
+          `${API_URL}/connectors/${name}/${enabled ? 'enable' : 'disable'}`,
+          { userId },
+        )
         setConnectors((prev) => prev.map((c) => (c.name === name ? { ...c, enabled: !c.enabled } : c)))
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed')
@@ -80,14 +80,28 @@ export function ConnectorSettings({ userId }: { userId: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-[12px] font-medium text-foreground">{names[connector.name]}</span>
-              <Badge variant={connector.connected ? 'default' : 'secondary'} className="text-[9px] px-1.5 py-0">
-                {connector.connected ? 'Connected' : 'Not Connected'}
-              </Badge>
+              {connector.tokenExpired ? (
+                <Badge variant="destructive" className="text-[9px] px-1.5 py-0">
+                  Token Expired
+                </Badge>
+              ) : (
+                <Badge variant={connector.connected ? 'default' : 'secondary'} className="text-[9px] px-1.5 py-0">
+                  {connector.connected ? 'Connected' : 'Not Connected'}
+                </Badge>
+              )}
             </div>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{descriptions[connector.name]}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {connector.tokenExpired
+                ? 'Your token has expired. Re-connect to restore access.'
+                : descriptions[connector.name]}
+            </p>
           </div>
           <div className="ml-3">
-            {connector.connected ? (
+            {connector.tokenExpired ? (
+              <Button size="sm" variant="outline" onClick={() => handleConnect(connector.name)} disabled={isPending}>
+                Re-connect
+              </Button>
+            ) : connector.connected ? (
               <button
                 onClick={() => handleToggle(connector.name, !connector.enabled)}
                 disabled={isPending}

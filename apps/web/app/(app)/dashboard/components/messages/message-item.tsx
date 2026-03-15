@@ -31,6 +31,7 @@ export interface MessageItemProps {
   onSubagentNavigate: (tool: import('@/lib/ai-elements-adapter').ToolInvocation) => void
   /** Only show SessionSetup for the first assistant in the thread */
   showSessionSetup?: boolean
+  onRetry?: () => void
 }
 
 export function MessageItem({
@@ -47,6 +48,7 @@ export function MessageItem({
   onQuestionSkip,
   onSubagentNavigate,
   showSessionSetup = true,
+  onRetry,
 }: MessageItemProps) {
   if (message.type === 'permission' && message.promptData) {
     return (
@@ -101,6 +103,8 @@ export function MessageItem({
           message={message.content}
           category={message.errorCategory || 'persistent'}
           retryable={message.retryable || false}
+          onRetry={message.retryable ? onRetry : undefined}
+          rawMessage={message.rawErrorMessage}
         />
       </div>
     )

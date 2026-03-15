@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@ship/ui'
 
 /**
@@ -15,10 +16,13 @@ export interface ErrorMessageProps {
   category: ErrorCategory
   retryable: boolean
   onRetry?: () => void
+  /** Raw error before formatting; shown in Details when formatted would mask it */
+  rawMessage?: string
 }
 
 /**
- * Format raw error messages for better readability
+ * Format raw error messages for better readability.
+ * Narrow rate-limit mapping to avoid false positives (e.g. E2B "too many sandboxes").
  */
 function formatErrorMessage(message: string): string {
   // Check if it's a JSON error from API
@@ -43,12 +47,23 @@ function formatErrorMessage(message: string): string {
     return 'Your Anthropic API credit balance is too low. Please add credits to continue.'
   }
 
-  if (lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('too many api requests') || lower.includes('worker invocation')) {
-    return 'Rate limited. The agent will retry automatically.'
+  // Narrow rate-limit: only map when clearly a rate limit (avoid E2B "too many sandboxes", etc.)
+  if (
+    lower.includes('429') ||
+    lower.includes('rate limit exceeded') ||
+    (lower.includes('rate limit') && !lower.includes('rate limit headers'))
+  ) {
+    return 'Rate limited. Please try sending your message again.'
+  }
+  if (lower.includes('too many requests') && (lower.includes('api') || lower.includes('429'))) {
+    return 'Rate limited. Please try sending your message again.'
+  }
+  if (lower.includes('worker invocation')) {
+    return 'Service limit reached. Please try again shortly.'
   }
 
   if (lower.includes('overloaded') || lower.includes('529')) {
-    return 'The API is temporarily overloaded. It will retry shortly.'
+    return 'The API is temporarily overloaded. Please try again shortly.'
   }
 
   if (lower.includes('network') || lower.includes('connection') || lower.includes('timeout')) {
@@ -73,23 +88,28 @@ export function ErrorMessage({
   category,
   retryable,
   onRetry,
+  rawMessage,
 }: ErrorMessageProps) {
   const formattedMessage = formatErrorMessage(message)
+  const wouldMask = rawMessage && formattedMessage !== rawMessage && formattedMessage.length < 100
 
   // Transient errors: compact, subtle inline notice
   if (category === 'transient') {
     return (
-      <div className="flex items-center gap-2 py-1.5 px-3 rounded-md bg-muted/40 border border-border/20 text-xs text-muted-foreground">
-        <svg className="w-3.5 h-3.5 shrink-0 text-yellow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-        <span>{formattedMessage}</span>
-        {retryable && onRetry && (
-          <button onClick={onRetry} className="text-primary hover:text-primary/80 font-medium ml-1">
-            Retry
-          </button>
-        )}
+      <div className="flex flex-col gap-1.5 py-1.5 px-3 rounded-md bg-muted/40 border border-border/20 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 shrink-0 text-yellow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span>{formattedMessage}</span>
+          {retryable && onRetry && (
+            <button onClick={onRetry} className="text-primary hover:text-primary/80 font-medium ml-1">
+              Retry
+            </button>
+          )}
+        </div>
+        {wouldMask && rawMessage && <ErrorDetails rawMessage={rawMessage} />}
       </div>
     )
   }
@@ -105,6 +125,7 @@ export function ErrorMessage({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-blue-900 dark:text-blue-200">Action Required</p>
             <p className="text-sm text-foreground mt-1">{formattedMessage}</p>
+            {wouldMask && rawMessage && <ErrorDetails rawMessage={rawMessage} />}
           </div>
         </div>
       </div>
@@ -123,6 +144,7 @@ export function ErrorMessage({
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-medium ${isFatal ? 'text-red-900 dark:text-red-100' : 'text-red-900 dark:text-red-200'}`}>Error</p>
           <p className="text-sm text-foreground mt-1">{formattedMessage}</p>
+          {wouldMask && rawMessage && <ErrorDetails rawMessage={rawMessage} />}
           {retryable && onRetry && (
             <div className="mt-2">
               <Button variant="outline" size="sm" onClick={onRetry}>
@@ -132,6 +154,26 @@ export function ErrorMessage({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function ErrorDetails({ rawMessage }: { rawMessage: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-muted-foreground hover:text-foreground underline"
+      >
+        {open ? 'Hide details' : 'Show details'}
+      </button>
+      {open && (
+        <pre className="mt-1.5 p-2 rounded bg-muted/50 text-[11px] overflow-x-auto whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+          {rawMessage}
+        </pre>
+      )}
     </div>
   )
 }

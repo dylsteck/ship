@@ -112,7 +112,6 @@ export function SettingsClient({ userId, user, sessions, apiToken }: SettingsCli
       {/* Desktop header */}
       {!isMobile && (
         <div className="flex items-center gap-2 mb-6">
-          <SidebarTrigger className="size-5 cursor-pointer text-muted-foreground hover:text-foreground" />
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         </div>
       )}

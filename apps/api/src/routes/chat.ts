@@ -187,26 +187,32 @@ app.post('/:sessionId', async (c) => {
             }
 
             if (currentStatus === 'error') {
+              const payload = {
+                error: 'Sandbox provisioning failed',
+                details: (meta as Record<string, string>).sandbox_error || (meta as Record<string, string>).error || undefined,
+                category: 'persistent' as const,
+                retryable: true,
+              }
+              console.error(`[chat:${sessionId}] ERROR:`, payload)
               await stream.writeSSE({
                 event: 'error',
-                data: JSON.stringify({
-                  error: 'Sandbox provisioning failed',
-                  category: 'persistent',
-                  retryable: true,
-                }),
+                data: JSON.stringify(payload),
               })
               return
             }
           }
 
           if (!currentSandboxId) {
+            const payload = {
+              error: 'Sandbox provisioning timed out',
+              details: 'Waited 30s for sandbox; provisioning may have failed',
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, payload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Sandbox provisioning timed out',
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(payload),
             })
             return
           }
@@ -214,13 +220,16 @@ app.post('/:sessionId', async (c) => {
 
         // Ensure we have a sandbox
         if (!currentSandboxId) {
+          const payload = {
+            error: 'No sandbox available. Please refresh and try again.',
+            details: 'Sandbox provisioning failed or timed out',
+            category: 'persistent' as const,
+            retryable: false,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, payload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'No sandbox available. Please refresh and try again.',
-              category: 'persistent',
-              retryable: false,
-            }),
+            data: JSON.stringify(payload),
           })
           return
         }
@@ -240,6 +249,9 @@ app.post('/:sessionId', async (c) => {
           try {
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+
+            // Extend timeout to prevent auto-pause during agent server startup
+            await sandbox.setTimeout(10 * 60 * 1000)
 
             const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
             currentSandboxAgentUrl = url
@@ -262,15 +274,20 @@ app.post('/:sessionId', async (c) => {
               data: JSON.stringify({ type: 'agent-url', url }),
             })
           } catch (error) {
-            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server:`, safeErrorForLog(error))
+            const errMsg = safeErrorForLog(error)
+            const stack = error instanceof Error ? error.stack : undefined
+            console.error(`[chat:${sessionId}] Failed to start sandbox-agent server: ${errMsg}`)
+            if (stack) console.error(`[chat:${sessionId}] Stack: ${stack}`)
+            const payload = {
+              error: 'Failed to start agent server',
+              details: error instanceof Error ? error.message : 'Unknown error',
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, payload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Failed to start agent server',
-                details: error instanceof Error ? error.message : 'Unknown error',
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(payload),
             })
             return
           }
@@ -316,14 +333,34 @@ app.post('/:sessionId', async (c) => {
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
 
-            const cloneResult = await sandbox.commands.run(
-              `git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone ${repoUrl} ${repoPath}`,
-            )
-            if (cloneResult.exitCode !== 0) throw new Error(`Git clone failed: ${cloneResult.stderr}`)
+            // Extend timeout to prevent auto-pause during clone
+            await sandbox.setTimeout(10 * 60 * 1000)
+
+            // NOTE: E2B SDK throws CommandExitError on non-zero exit codes
+            // GIT_TERMINAL_PROMPT=0 prevents git from hanging waiting for credentials
+            // Try with auth first, fall back to unauthenticated (works for public repos)
+            try {
+              await sandbox.commands.run(
+                `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                { timeoutMs: 60000 },
+              )
+            } catch (authCloneErr) {
+              console.warn(`[chat:${sessionId}] Auth clone failed, retrying without auth (public repo fallback)`)
+              // Clean up failed clone attempt
+              await sandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
+              await sandbox.commands.run(
+                `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                { timeoutMs: 60000 },
+              )
+            }
 
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
             await sandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
-            await sandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
+            try {
+              await sandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
+            } catch {
+              // baseBranch may already be checked out after clone
+            }
             await sandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
 
             await stub.fetch(
@@ -349,15 +386,22 @@ app.post('/:sessionId', async (c) => {
               }),
             })
           } catch (cloneError) {
-            console.error(`[chat:${sessionId}] Clone failed:`, safeErrorForLog(cloneError))
+            const cloneErrMsg = safeErrorForLog(cloneError)
+            // E2B CommandExitError has stdout/stderr properties
+            const cmdErr = cloneError as { stderr?: string; stdout?: string }
+            console.error(`[chat:${sessionId}] Clone failed: ${cloneErrMsg}`)
+            if (cmdErr.stderr) console.error(`[chat:${sessionId}] Clone stderr: ${cmdErr.stderr}`)
+            if (cmdErr.stdout) console.error(`[chat:${sessionId}] Clone stdout: ${cmdErr.stdout}`)
+            const clonePayload = {
+              error: 'Failed to clone repository',
+              details: cloneError instanceof Error ? cloneError.message : String(cloneError),
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, clonePayload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Failed to clone repository',
-                details: cloneError instanceof Error ? cloneError.message : String(cloneError),
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(clonePayload),
             })
             return
           }
@@ -406,6 +450,8 @@ app.post('/:sessionId', async (c) => {
 
                   const { Sandbox: E2BSandbox } = await import('../lib/e2b')
                   const resumedSandbox = await E2BSandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+                  // Extend timeout to prevent re-pause during agent server restart
+                  await resumedSandbox.setTimeout(10 * 60 * 1000)
 
                   const { url, token: restartToken } = await startSandboxAgentServer(resumedSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
                   currentSandboxAgentUrl = url
@@ -475,6 +521,8 @@ app.post('/:sessionId', async (c) => {
                 })
                 currentSandboxId = sandboxInfo.id
                 const newSandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+                // Extend timeout to prevent auto-pause during re-provisioning setup
+                await newSandbox.setTimeout(10 * 60 * 1000)
                 console.log(`[chat:${sessionId}] New sandbox provisioned: ${currentSandboxId}`)
 
                 // Save new sandbox ID
@@ -534,10 +582,25 @@ app.post('/:sessionId', async (c) => {
                       const baseBranch = repoMetaJson.base_branch || 'main'
                       const branchName = repoMetaJson.current_branch || generateBranchName('agent-task', sessionId)
 
-                      const cloneResult = await newSandbox.commands.run(
-                        `git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone ${repoUrl} ${repoPath}`,
-                      )
-                      if (cloneResult.exitCode === 0) {
+                      let cloneOk = false
+                      try {
+                        await newSandbox.commands.run(
+                          `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                          { timeoutMs: 60000 },
+                        )
+                        cloneOk = true
+                      } catch {
+                        // Auth clone failed — retry without auth (public repo fallback)
+                        await newSandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
+                        try {
+                          await newSandbox.commands.run(
+                            `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                            { timeoutMs: 60000 },
+                          )
+                          cloneOk = true
+                        } catch { /* both failed */ }
+                      }
+                      if (cloneOk) {
                         await newSandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
                         await newSandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
                         await newSandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
@@ -561,14 +624,16 @@ app.post('/:sessionId', async (c) => {
                 })
               } catch (reprovisionError) {
                 console.error(`[chat:${sessionId}] Re-provisioning failed:`, reprovisionError)
+                const reprovisionPayload = {
+                  error: 'Failed to re-provision sandbox',
+                  details: reprovisionError instanceof Error ? reprovisionError.message : 'Unknown error',
+                  category: 'persistent' as const,
+                  retryable: true,
+                }
+                console.error(`[chat:${sessionId}] ERROR:`, reprovisionPayload)
                 await stream.writeSSE({
                   event: 'error',
-                  data: JSON.stringify({
-                    error: 'Failed to re-provision sandbox',
-                    details: reprovisionError instanceof Error ? reprovisionError.message : 'Unknown error',
-                    category: 'persistent',
-                    retryable: true,
-                  }),
+                  data: JSON.stringify(reprovisionPayload),
                 })
                 return
               }
@@ -591,13 +656,16 @@ app.post('/:sessionId', async (c) => {
         // Ensure we have sandbox-agent URL
         if (!currentSandboxAgentUrl) {
           console.error(`[chat:${sessionId}] No sandbox-agent URL available`)
+          const noAgentPayload = {
+            error: 'Agent server not started',
+            details: 'Sandbox-agent server failed to start or was not provisioned',
+            category: 'persistent' as const,
+            retryable: true,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, noAgentPayload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'Agent server not started',
-              category: 'persistent',
-              retryable: true,
-            }),
+            data: JSON.stringify(noAgentPayload),
           })
           return
         }
@@ -676,14 +744,16 @@ app.post('/:sessionId', async (c) => {
             )
           } catch (sessionError) {
             console.error(`[chat:${sessionId}] Failed to create agent session:`, sessionError)
+            const sessionPayload = {
+              error: 'Failed to create agent session',
+              details: sessionError instanceof Error ? sessionError.message : 'Unknown error',
+              category: 'persistent' as const,
+              retryable: true,
+            }
+            console.error(`[chat:${sessionId}] ERROR:`, sessionPayload)
             await stream.writeSSE({
               event: 'error',
-              data: JSON.stringify({
-                error: 'Failed to create agent session',
-                details: sessionError instanceof Error ? sessionError.message : 'Unknown error',
-                category: 'persistent',
-                retryable: true,
-              }),
+              data: JSON.stringify(sessionPayload),
             })
             return
           }
@@ -707,13 +777,16 @@ app.post('/:sessionId', async (c) => {
         }
 
         if (!session) {
+          const establishPayload = {
+            error: 'Failed to establish agent session',
+            details: 'createAgentSession returned null or invalid session',
+            category: 'persistent' as const,
+            retryable: true,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, establishPayload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'Failed to establish agent session',
-              category: 'persistent',
-              retryable: true,
-            }),
+            data: JSON.stringify(establishPayload),
           })
           return
         }
@@ -827,14 +900,16 @@ app.post('/:sessionId', async (c) => {
           if (eventCount === 0) {
             console.error(`[chat:${sessionId}] Event timeout after ${EVENT_TIMEOUT_MS / 1000}s (no events received)`)
             try {
+              const timeoutPayload = {
+                error: 'Agent did not respond in time',
+                details: `No events after ${EVENT_TIMEOUT_MS / 1000}s`,
+                category: 'persistent' as const,
+                retryable: true,
+              }
+              console.error(`[chat:${sessionId}] ERROR:`, timeoutPayload)
               await stream.writeSSE({
                 event: 'error',
-                data: JSON.stringify({
-                  error: 'Agent did not respond in time',
-                  details: `No events after ${EVENT_TIMEOUT_MS / 1000}s`,
-                  category: 'persistent',
-                  retryable: true,
-                }),
+                data: JSON.stringify(timeoutPayload),
               })
             } catch {
               // Stream might be closed
@@ -866,17 +941,37 @@ app.post('/:sessionId', async (c) => {
                 console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, safeErrorForLog(error))
                 const details = classifyError(sanitizeError(error))
                 const errorMsg = sanitizeError(error)
-                await stream.writeSSE({
-                  event: 'error',
-                  data: JSON.stringify({
+
+                if (details.retryable) {
+                  // Send status event during retries so the frontend stays in streaming mode.
+                  // Sending error events would kill the frontend stream prematurely.
+                  const retryMsg = errorMsg.toLowerCase().includes('rate limit') || errorMsg.toLowerCase().includes('429') || errorMsg.toLowerCase().includes('too many requests')
+                    ? `Rate limited — retrying (attempt ${attempt + 1})...`
+                    : errorMsg.toLowerCase().includes('overloaded') || errorMsg.toLowerCase().includes('529')
+                      ? `API overloaded — retrying (attempt ${attempt + 1})...`
+                      : `Transient error — retrying (attempt ${attempt + 1})...`
+                  await stream.writeSSE({
+                    event: 'status',
+                    data: JSON.stringify({
+                      type: 'status',
+                      status: 'retrying',
+                      message: retryMsg,
+                    }),
+                  })
+                } else {
+                  // Non-retryable: send error event immediately
+                  const nonRetryPayload = {
                     error: errorMsg,
+                    details: errorMsg,
                     category: details.category,
-                    retryable: details.retryable,
-                    attempt,
-                  }),
-                })
-                // Persist non-retryable errors so user sees them on refresh
-                if (!details.retryable) {
+                    retryable: false,
+                  }
+                  console.error(`[chat:${sessionId}] ERROR:`, nonRetryPayload)
+                  await stream.writeSSE({
+                    event: 'error',
+                    data: JSON.stringify(nonRetryPayload),
+                  })
+                  // Persist non-retryable errors so user sees them on refresh
                   try {
                     await stub.fetch(
                       new Request(`${doUrl}/messages`, {
@@ -900,15 +995,20 @@ app.post('/:sessionId', async (c) => {
           )
           console.log(`[chat:${sessionId}] Prompt completed`)
         } catch (promptError) {
-          console.error(`[chat:${sessionId}] Failed to send prompt:`, safeErrorForLog(promptError))
+          // All retries exhausted or non-retryable error
+          console.error(`[chat:${sessionId}] Failed to send prompt after retries:`, safeErrorForLog(promptError))
+          const finalDetails = classifyError(sanitizeError(promptError))
+          const finalMsg = sanitizeError(promptError)
+          const exhaustedPayload = {
+            error: finalMsg,
+            details: finalMsg,
+            category: finalDetails.category,
+            retryable: true,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, exhaustedPayload)
           await stream.writeSSE({
             event: 'error',
-            data: JSON.stringify({
-              error: 'Failed to send prompt to agent',
-              details: promptError instanceof Error ? promptError.message : 'Unknown error',
-              category: 'persistent',
-              retryable: true,
-            }),
+            data: JSON.stringify(exhaustedPayload),
           })
         } finally {
           clearTimeout(eventTimeout)
@@ -1051,13 +1151,18 @@ app.post('/:sessionId', async (c) => {
         }
 
         try {
+          const outerPayload = {
+            error: sanitized,
+            details: error instanceof Error ? error.message : String(error),
+            category: details.category,
+            retryable: details.retryable,
+          }
+          console.error(`[chat:${sessionId}] ERROR:`, outerPayload)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
-              error: sanitized,
-              message: error instanceof Error ? error.message : String(error),
-              category: details.category,
-              retryable: details.retryable,
+              ...outerPayload,
+              message: outerPayload.details,
             }),
           })
         } catch {
@@ -1164,12 +1269,16 @@ app.get('/:sessionId/subscribe', async (c) => {
       await new Promise((resolve) => setTimeout(resolve, 300000))
       unsubscribe()
     } catch (error) {
-      console.error(`[chat:${sessionId}] Subscribe stream error:`, safeErrorForLog(error))
+      const subscribePayload = {
+        error: error instanceof Error ? error.message : 'Stream failed',
+        details: error instanceof Error ? error.message : String(error),
+      }
+      console.error(`[chat:${sessionId}] ERROR (subscribe):`, subscribePayload)
       await stream.writeSSE({
         event: 'session.error',
         data: JSON.stringify({
           type: 'session.error',
-          properties: { error: error instanceof Error ? error.message : 'Stream failed' },
+          properties: { error: subscribePayload.error },
         }),
       })
     } finally {
@@ -1201,9 +1310,14 @@ app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
       const session = await resumeAgentSessionWithTimeout(client, subagentSessionId)
 
       if (!session) {
+        const subagentPayload = {
+          error: 'Sub-agent session not found',
+          details: 'The sub-agent session may have expired or been terminated',
+        }
+        console.error(`[chat:${sessionId}] ERROR:`, subagentPayload)
         await stream.writeSSE({
           event: 'error',
-          data: JSON.stringify({ error: 'Sub-agent session not found' }),
+          data: JSON.stringify(subagentPayload),
         })
         return
       }
@@ -1229,9 +1343,14 @@ app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
       unsubscribe()
     } catch (error) {
       console.error(`[chat:${sessionId}] Subagent stream error:`, safeErrorForLog(error))
+      const streamFailPayload = {
+        error: error instanceof Error ? error.message : 'Stream failed',
+        details: error instanceof Error ? error.message : String(error),
+      }
+      console.error(`[chat:${sessionId}] ERROR:`, streamFailPayload)
       await stream.writeSSE({
         event: 'error',
-        data: JSON.stringify({ error: error instanceof Error ? error.message : 'Stream failed' }),
+        data: JSON.stringify(streamFailPayload),
       })
     } finally {
       await stream.close()

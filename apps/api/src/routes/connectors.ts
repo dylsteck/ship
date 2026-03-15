@@ -15,6 +15,25 @@ interface ConnectorStatus {
   name: ConnectorName
   connected: boolean
   enabled: boolean
+  tokenExpired?: boolean
+}
+
+/**
+ * Validate a GitHub access token by calling the GitHub API
+ */
+async function isGitHubTokenValid(accessToken: string): Promise<boolean> {
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'User-Agent': 'Ship',
+      },
+      signal: AbortSignal.timeout(5000),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -30,30 +49,49 @@ connectors.get('/', async (c) => {
       return c.json({ error: 'userId query parameter is required' }, 400)
     }
 
-    const connectors: ConnectorName[] = ['github']
+    const connectorNames: ConnectorName[] = ['github']
     const statuses: ConnectorStatus[] = []
 
-    for (const name of connectors) {
-      // Check if account is connected
-      const account = await c.env.DB.prepare(
-        'SELECT id FROM accounts WHERE user_id = ? AND provider = ?',
-      )
-        .bind(userId, name)
-        .first<{ id: string }>()
+    for (const name of connectorNames) {
+      let connected = false
+      let enabled = false
 
-      const connected = !!account
+      let tokenExpired = false
 
-      // Check if connector is enabled
-      const preference = await c.env.DB.prepare(
-        'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?',
-      )
-        .bind(userId, `connector.${name}.enabled`)
-        .first<{ value: string }>()
+      try {
+        // Check if account is connected and get token
+        const account = await c.env.DB.prepare(
+          'SELECT id, access_token FROM accounts WHERE user_id = ? AND provider = ?',
+        )
+          .bind(userId, name)
+          .first<{ id: string; access_token: string | null }>()
 
-      // Default to enabled if connected, disabled if not connected
-      const enabled = preference?.value === 'true' || (connected && preference === null)
+        connected = !!account
 
-      statuses.push({ name, connected, enabled })
+        // Validate token if connected
+        if (connected && account?.access_token) {
+          const valid = await isGitHubTokenValid(account.access_token)
+          if (!valid) {
+            tokenExpired = true
+          }
+        } else if (connected && !account?.access_token) {
+          tokenExpired = true
+        }
+
+        // Check if connector is enabled
+        const preference = await c.env.DB.prepare(
+          'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?',
+        )
+          .bind(userId, `connector.${name}.enabled`)
+          .first<{ value: string }>()
+
+        // Default to enabled if connected, disabled if not connected
+        enabled = preference?.value === 'true' || (connected && preference === null)
+      } catch (err) {
+        console.warn(`Error checking connector ${name} for user ${userId}:`, err)
+      }
+
+      statuses.push({ name, connected, enabled, tokenExpired })
     }
 
     return c.json({ connectors: statuses })

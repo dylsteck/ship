@@ -130,13 +130,41 @@ export function handleSessionError(
   ctx.streamingMessageRef.current = null
 }
 
-export function handleGenericError(error: unknown, ctx: SSEHandlerContext) {
+/** Generic error strings where we prefer showing details (the real cause) over the wrapper */
+const GENERIC_ERROR_PREFIXES = [
+  'Failed to start agent server',
+  'Failed to re-provision sandbox',
+  'Failed to clone repository',
+  'Failed to create agent session',
+  'Agent server not started',
+  'Sandbox provisioning failed',
+  'Sandbox provisioning timed out',
+  'No sandbox available',
+  'Failed to establish agent session',
+]
+
+export function isGenericError(errorStr: string): boolean {
+  return GENERIC_ERROR_PREFIXES.some((p) => errorStr.startsWith(p))
+}
+
+export function handleGenericError(
+  error: unknown,
+  ctx: SSEHandlerContext,
+  details?: string,
+) {
   const errorMessage = parseErrorMessage(error)
-  const { category, retryable } = classifyError(errorMessage)
+  const messageToShow =
+    details && typeof errorMessage === 'string' && isGenericError(errorMessage)
+      ? details
+      : errorMessage
+  const { category, retryable } = classifyError(messageToShow)
   const msgId = ctx.streamingMessageRef.current
   ctx.setMessages((prev) => {
     const withoutPlaceholder = msgId ? prev.filter((m) => m.id !== msgId) : prev
-    return [...withoutPlaceholder, createErrorMessage(errorMessage, category, retryable)]
+    return [
+      ...withoutPlaceholder,
+      createErrorMessage(messageToShow, category, retryable, messageToShow),
+    ]
   })
   ctx.setIsStreaming(false)
   ctx.setStreamingStatus('')

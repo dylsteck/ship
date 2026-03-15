@@ -63,3 +63,10 @@ export {
 
 // User
 export { useUser } from './use-user'
+
+// Desktop
+export {
+  useDesktopStream,
+  useStartDesktopStream,
+  useStopDesktopStream,
+} from './use-desktop'

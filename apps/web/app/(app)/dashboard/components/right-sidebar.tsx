@@ -193,14 +193,12 @@ function TabContent({
   activeTab,
   data,
   panelProps,
-  desktopAgentUrl,
   desktopSandboxStatus,
   sandbox,
 }: {
   activeTab: RightSidebarTab
   data: SessionPanelData
   panelProps: ReturnType<typeof useSessionPanelProps>
-  desktopAgentUrl: string | undefined
   desktopSandboxStatus: string | undefined
   sandbox: { sandboxId?: string | null; status?: string | null } | undefined
 }) {
@@ -210,7 +208,7 @@ function TabContent({
     case 'desktop':
       return (
         <DesktopTab
-          agentUrl={desktopAgentUrl}
+          sessionId={data.sessionId}
           sandboxStatus={desktopSandboxStatus}
         />
       )
@@ -246,8 +244,6 @@ export function RightSidebar({
   const panelProps = useSessionPanelProps(data)
   const { sandbox } = useSandboxStatus(data.sessionId)
 
-  // Desktop tab: use agentUrl from chat/SSE, fallback to sandbox API when empty
-  const desktopAgentUrl = data.agentUrl || sandbox?.sandboxAgentUrl || undefined
   const desktopSandboxStatus = data.sandboxStatus ?? sandbox?.status ?? undefined
 
   const content = (
@@ -263,7 +259,6 @@ export function RightSidebar({
           activeTab={activeTab}
           data={data}
           panelProps={panelProps}
-          desktopAgentUrl={desktopAgentUrl}
           desktopSandboxStatus={desktopSandboxStatus}
           sandbox={sandbox}
         />
