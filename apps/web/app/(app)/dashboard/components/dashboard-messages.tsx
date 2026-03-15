@@ -230,6 +230,7 @@ interface DashboardMessagesProps {
   onPermissionReply?: (permissionId: string, approved: boolean) => Promise<void>
   onQuestionReply?: (questionId: string, response: string) => Promise<void>
   onQuestionSkip?: (questionId: string) => Promise<void>
+  onRetry?: () => void
 }
 
 export function DashboardMessages({
@@ -244,6 +245,7 @@ export function DashboardMessages({
   onPermissionReply,
   onQuestionReply,
   onQuestionSkip,
+  onRetry,
 }: DashboardMessagesProps) {
   const [subagentStack, setSubagentStack] = React.useState<SubagentViewState[]>([])
   const todoRenderedRef = React.useRef(false)
@@ -377,6 +379,7 @@ export function DashboardMessages({
                   onQuestionSkip={onQuestionSkip}
                   onSubagentNavigate={handleSubagentNavigate}
                   showSessionSetup={showSessionSetup}
+                  onRetry={onRetry}
                 />
               )
             }

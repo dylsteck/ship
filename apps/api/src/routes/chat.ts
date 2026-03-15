@@ -916,17 +916,34 @@ app.post('/:sessionId', async (c) => {
                 console.error(`[chat:${sessionId}] Prompt error (attempt ${attempt}):`, safeErrorForLog(error))
                 const details = classifyError(sanitizeError(error))
                 const errorMsg = sanitizeError(error)
-                await stream.writeSSE({
-                  event: 'error',
-                  data: JSON.stringify({
-                    error: errorMsg,
-                    category: details.category,
-                    retryable: details.retryable,
-                    attempt,
-                  }),
-                })
-                // Persist non-retryable errors so user sees them on refresh
-                if (!details.retryable) {
+
+                if (details.retryable) {
+                  // Send status event during retries so the frontend stays in streaming mode.
+                  // Sending error events would kill the frontend stream prematurely.
+                  const retryMsg = errorMsg.toLowerCase().includes('rate limit') || errorMsg.toLowerCase().includes('429') || errorMsg.toLowerCase().includes('too many requests')
+                    ? `Rate limited — retrying (attempt ${attempt + 1})...`
+                    : errorMsg.toLowerCase().includes('overloaded') || errorMsg.toLowerCase().includes('529')
+                      ? `API overloaded — retrying (attempt ${attempt + 1})...`
+                      : `Transient error — retrying (attempt ${attempt + 1})...`
+                  await stream.writeSSE({
+                    event: 'status',
+                    data: JSON.stringify({
+                      type: 'status',
+                      status: 'retrying',
+                      message: retryMsg,
+                    }),
+                  })
+                } else {
+                  // Non-retryable: send error event immediately
+                  await stream.writeSSE({
+                    event: 'error',
+                    data: JSON.stringify({
+                      error: errorMsg,
+                      category: details.category,
+                      retryable: false,
+                    }),
+                  })
+                  // Persist non-retryable errors so user sees them on refresh
                   try {
                     await stub.fetch(
                       new Request(`${doUrl}/messages`, {
@@ -950,13 +967,15 @@ app.post('/:sessionId', async (c) => {
           )
           console.log(`[chat:${sessionId}] Prompt completed`)
         } catch (promptError) {
-          console.error(`[chat:${sessionId}] Failed to send prompt:`, safeErrorForLog(promptError))
+          // All retries exhausted or non-retryable error
+          console.error(`[chat:${sessionId}] Failed to send prompt after retries:`, safeErrorForLog(promptError))
+          const finalDetails = classifyError(sanitizeError(promptError))
+          const finalMsg = sanitizeError(promptError)
           await stream.writeSSE({
             event: 'error',
             data: JSON.stringify({
-              error: 'Failed to send prompt to agent',
-              details: promptError instanceof Error ? promptError.message : 'Unknown error',
-              category: 'persistent',
+              error: finalMsg,
+              category: finalDetails.category,
               retryable: true,
             }),
           })

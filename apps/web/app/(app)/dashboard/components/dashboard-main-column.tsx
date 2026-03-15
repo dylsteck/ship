@@ -35,6 +35,7 @@ export interface DashboardMainColumnProps {
     onPermissionReply: (permissionId: string, approved: boolean) => Promise<void>
     onQuestionReply?: (questionId: string, response: string) => Promise<void>
     onQuestionSkip?: (questionId: string) => Promise<void>
+    onRetry?: () => void
   }
   sessions: {
     localSessions: ChatSession[]
@@ -89,6 +90,7 @@ export function DashboardMainColumn({
     onPermissionReply: messagesCtx.onPermissionReply,
     onQuestionReply: messagesCtx.onQuestionReply,
     onQuestionSkip: messagesCtx.onQuestionSkip,
+    onRetry: messagesCtx.onRetry,
   }
 
   return (
