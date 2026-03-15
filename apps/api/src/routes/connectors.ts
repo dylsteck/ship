@@ -30,28 +30,36 @@ connectors.get('/', async (c) => {
       return c.json({ error: 'userId query parameter is required' }, 400)
     }
 
-    const connectors: ConnectorName[] = ['github']
+    const connectorNames: ConnectorName[] = ['github']
     const statuses: ConnectorStatus[] = []
 
-    for (const name of connectors) {
-      // Check if account is connected
-      const account = await c.env.DB.prepare(
-        'SELECT id FROM accounts WHERE user_id = ? AND provider = ?',
-      )
-        .bind(userId, name)
-        .first<{ id: string }>()
+    for (const name of connectorNames) {
+      let connected = false
+      let enabled = false
 
-      const connected = !!account
+      try {
+        // Check if account is connected
+        const account = await c.env.DB.prepare(
+          'SELECT id FROM accounts WHERE user_id = ? AND provider = ?',
+        )
+          .bind(userId, name)
+          .first<{ id: string }>()
 
-      // Check if connector is enabled
-      const preference = await c.env.DB.prepare(
-        'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?',
-      )
-        .bind(userId, `connector.${name}.enabled`)
-        .first<{ value: string }>()
+        connected = !!account
 
-      // Default to enabled if connected, disabled if not connected
-      const enabled = preference?.value === 'true' || (connected && preference === null)
+        // Check if connector is enabled
+        const preference = await c.env.DB.prepare(
+          'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?',
+        )
+          .bind(userId, `connector.${name}.enabled`)
+          .first<{ value: string }>()
+
+        // Default to enabled if connected, disabled if not connected
+        enabled = preference?.value === 'true' || (connected && preference === null)
+      } catch (err) {
+        console.warn(`Error checking connector ${name} for user ${userId}:`, err)
+        // Default to disconnected/disabled on error
+      }
 
       statuses.push({ name, connected, enabled })
     }

@@ -451,7 +451,47 @@ agent-browser open http://localhost:3000
 
 ## Testing
 
-(To be added)
+### Real-time API log monitoring
+
+Use `wrangler tail` to stream production logs in real time:
+
+```bash
+cd apps/api
+npx wrangler tail ship-api-production
+```
+
+This shows all `console.log`/`console.warn`/`console.error` output from the Worker, including:
+- Sandbox provisioning steps (`[sandbox-agent:...]`)
+- Chat route events (`[chat:...]`)
+- D1 write-through warnings
+- SSE streaming lifecycle
+
+### Testing CUJs (Critical User Journeys)
+
+**New session flow:**
+1. Navigate to `localhost:3000` (or production URL)
+2. Select a repo from the dropdown
+3. Type a prompt and click the send button (arrow icon, bottom-right of composer)
+4. Watch SSE stream in network tab (filter by `EventStream`)
+5. Verify sandbox provisions, agent starts, and messages stream
+
+**Returning to an old session:**
+1. Click an existing session in the left sidebar
+2. Messages should load from D1 if the DO was evicted
+3. Sending a new prompt should re-provision sandbox if needed
+
+**Settings page:**
+1. Navigate to `/settings`
+2. Connectors section should load without errors
+3. GitHub connector shows connected/disconnected status
+
+### Verifying D1 message persistence
+
+```bash
+cd apps/api
+npx wrangler d1 execute ship-db --remote --command "SELECT count(*) FROM chat_messages"
+npx wrangler d1 execute ship-db --remote --command "SELECT * FROM chat_messages ORDER BY created_at DESC LIMIT 5"
+```
 
 ## PR Guidelines
 
