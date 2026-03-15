@@ -241,6 +241,9 @@ app.post('/:sessionId', async (c) => {
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
 
+            // Extend timeout to prevent auto-pause during agent server startup
+            await sandbox.setTimeout(10 * 60 * 1000)
+
             const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
             currentSandboxAgentUrl = url
             currentSandboxAgentToken = newToken
@@ -318,6 +321,9 @@ app.post('/:sessionId', async (c) => {
 
             const { Sandbox } = await import('../lib/e2b')
             const sandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+
+            // Extend timeout to prevent auto-pause during clone
+            await sandbox.setTimeout(10 * 60 * 1000)
 
             // NOTE: E2B SDK throws CommandExitError on non-zero exit codes
             // GIT_TERMINAL_PROMPT=0 prevents git from hanging waiting for credentials
@@ -431,6 +437,8 @@ app.post('/:sessionId', async (c) => {
 
                   const { Sandbox: E2BSandbox } = await import('../lib/e2b')
                   const resumedSandbox = await E2BSandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+                  // Extend timeout to prevent re-pause during agent server restart
+                  await resumedSandbox.setTimeout(10 * 60 * 1000)
 
                   const { url, token: restartToken } = await startSandboxAgentServer(resumedSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
                   currentSandboxAgentUrl = url
@@ -500,6 +508,8 @@ app.post('/:sessionId', async (c) => {
                 })
                 currentSandboxId = sandboxInfo.id
                 const newSandbox = await Sandbox.connect(currentSandboxId, { apiKey: c.env.E2B_API_KEY })
+                // Extend timeout to prevent auto-pause during re-provisioning setup
+                await newSandbox.setTimeout(10 * 60 * 1000)
                 console.log(`[chat:${sessionId}] New sandbox provisioned: ${currentSandboxId}`)
 
                 // Save new sandbox ID

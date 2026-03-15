@@ -207,7 +207,7 @@ export async function startSandboxAgentServer(
 
   // Wait for server to be ready (exponential backoff: 200ms, 400ms, 800ms... cap 5s)
   console.log(`[sandbox-agent:${sandboxId}] Waiting for server health...`)
-  const MAX_HEALTH_WAIT_MS = 60_000
+  const MAX_HEALTH_WAIT_MS = 30_000
   let healthElapsed = 0
   let healthDelay = 200
   let healthAttempts = 0
