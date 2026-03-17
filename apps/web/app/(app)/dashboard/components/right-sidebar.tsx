@@ -275,7 +275,7 @@ export function RightSidebar({
         <div
           className={cn(
             'border-l border-border/40 bg-sidebar/50 backdrop-blur-sm hidden md:flex flex-col transition-[width] duration-200',
-            expanded ? 'w-[420px]' : 'w-64',
+            expanded ? 'w-[520px]' : 'w-[340px]',
           )}
         >
           {content}
