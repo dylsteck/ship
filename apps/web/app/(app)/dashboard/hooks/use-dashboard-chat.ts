@@ -9,6 +9,7 @@ import {
   createErrorMessage,
   createAssistantPlaceholder,
   mapApiMessagesToUI,
+  replayEventsToMessages,
 } from '@/lib/ai-elements-adapter'
 import type { ChatSession } from '@/lib/api/server'
 import { API_URL } from '@/lib/config'
@@ -22,8 +23,8 @@ export interface UseDashboardChatOptions {
   >
   /** Pre-loaded messages from server (e.g. session page). Skips client fetch when activeSessionId matches. */
   initialMessages?: UIMessage[]
-  /** Raw API messages with parts, for hydrating events store on reload */
-  initialApiMessages?: Array<{ parts?: string }>
+  /** Raw API messages with parts, for hydrating events store and event replay on reload */
+  initialApiMessages?: Array<{ id: string; role: string; content: string; createdAt: number; parts?: string }>
   /** Called to resume an active stream (e.g. after page reload). */
   onResumeStream?: (sessionId: string) => void
 }
@@ -221,6 +222,10 @@ export function useDashboardChat(
       getChatEvents(activeSessionId).then((events) => {
         if (events.length > 0) {
           eventsStore.replaceEvents(activeSessionId, events)
+          // Replay events to ensure identical tool-call state across tabs/reloads
+          if (initialApiMessages?.length) {
+            setMessages(replayEventsToMessages(initialApiMessages, events))
+          }
         } else if (initialApiMessages?.length) {
           hydrateEventsFromMessages(activeSessionId, initialApiMessages)
         }
@@ -236,7 +241,9 @@ export function useDashboardChat(
       getChatEvents(activeSessionId),
     ])
       .then(([apiMessages, events]) => {
-        const uiMessages = mapApiMessagesToUI(apiMessages)
+        // When events exist, replay them to derive messages — ensures identical state across tabs/reloads
+        const uiMessages =
+          events.length > 0 ? replayEventsToMessages(apiMessages, events) : mapApiMessagesToUI(apiMessages)
         setMessages(uiMessages)
         if (events.length > 0) {
           eventsStore.replaceEvents(activeSessionId, events)

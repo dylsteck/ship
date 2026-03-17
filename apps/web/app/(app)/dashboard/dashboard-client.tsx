@@ -34,8 +34,8 @@ interface DashboardClientProps {
   user: User
   initialSessionId?: string | null
   initialMessages?: UIMessage[]
-  /** Raw API messages with parts, for hydrating events store on reload */
-  initialApiMessages?: Array<{ parts?: string }>
+  /** Raw API messages with parts, for hydrating events store and event replay on reload */
+  initialApiMessages?: Array<{ id: string; role: string; content: string; createdAt: number; parts?: string }>
   /** Stable timestamp from server for SSR-safe time formatting (avoids hydration mismatch) */
   serverTimestamp?: number
   /** Session JWT for API authentication */
