@@ -4,7 +4,7 @@ import { useCallback, useRef, useEffect, useState, useMemo } from 'react'
 import { postSessionSync, subscribeSessionSync } from '@/lib/session-sync-channel'
 import { useSyncExternalStore } from 'react'
 import { sessionStatusStore } from './hooks/use-session-status-store'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
@@ -131,13 +131,26 @@ export function DashboardClient({
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
   const { sessionModelId } = useSessionModel(chat.activeSessionId ?? undefined)
+  const router = useRouter()
   const {
     sessions: swrSessions,
+    isLoading: sessionsLoading,
     mutate: mutateSessions,
   } = useSessions(userId, {
-    refreshInterval: 8000,
+    refreshInterval: 3000, // Poll every 3s for cross-device sync (e.g. create on phone, see on Mac)
     revalidateOnFocus: true,
   })
+
+  // When active session is deleted elsewhere (other tab or device), auto-route to homepage
+  useEffect(() => {
+    if (sessionsLoading || !chat.activeSessionId) return
+    const stillExists = swrSessions.some((s) => s.id === chat.activeSessionId)
+    if (!stillExists) {
+      chat.setActiveSessionId(null)
+      chat.setMessages([])
+      router.push('/')
+    }
+  }, [swrSessions, chat.activeSessionId, sessionsLoading, router, chat.setActiveSessionId, chat.setMessages])
 
   // Sync SWR sessions into local state so list/sidebar stay fresh across tabs.
   // Merge to preserve optimistic session creates and titles (in localSessions but not yet in swrSessions).
