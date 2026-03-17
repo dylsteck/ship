@@ -62,11 +62,13 @@ terminal.get('/:sessionId', async (c) => {
     let ptyPid: number | null = null
 
     try {
+      console.log('[terminal] Connecting to sandbox', { sessionId, sandboxId })
       sandbox = await Sandbox.connect(sandboxId!, {
         apiKey,
         timeoutMs: 5 * 60 * 1000,
       })
 
+      console.log('[terminal] Creating PTY', { sandboxId })
       const pty = await sandbox.pty.create({
         cols: 80,
         rows: 24,
@@ -80,7 +82,7 @@ terminal.get('/:sessionId', async (c) => {
           }
         },
         timeoutMs: 0,
-        cwd: '/home/user/repo',
+        cwd: '/home/user',
       })
 
       ptyPid = pty.pid
@@ -108,6 +110,7 @@ terminal.get('/:sessionId', async (c) => {
       })
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Terminal connection failed'
+      console.error('[terminal] Connection failed', { sessionId, sandboxId, error })
       try {
         server.send(JSON.stringify({ type: 'error', message: msg }))
         server.close(1011, msg)

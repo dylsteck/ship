@@ -1,9 +1,17 @@
-# E2B Custom Template Configuration
-# Extends desktop template with sandbox-agent + agent binaries pre-installed
+# This is a config for E2B sandbox template.
+# You can use template ID (n1exdf9kj7gpwk6810c9) or template name (ship-sandbox) to create a sandbox:
 
-# Template ID will be set after `e2b template build`
-# id = "YOUR_TEMPLATE_ID"
+# Python SDK
+# from e2b import Sandbox, AsyncSandbox
+# sandbox = Sandbox.create("ship-sandbox") # Sync sandbox
+# sandbox = await AsyncSandbox.create("ship-sandbox") # Async sandbox
 
-name = "ship-sandbox"
+# JS SDK
+# import { Sandbox } from 'e2b'
+# const sandbox = await Sandbox.create('ship-sandbox')
+
+team_id = "05e6869d-2ceb-4b4a-be23-65c4710ee690"
+start_cmd = "/start_command.sh"
 dockerfile = "e2b/Dockerfile"
-start_cmd = "/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"
+template_name = "ship-sandbox"
+template_id = "n1exdf9kj7gpwk6810c9"
