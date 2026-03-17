@@ -133,6 +133,7 @@ app.post('/:sessionId', async (c) => {
       let currentSandboxAgentUrl: string | undefined = sandboxAgentUrl
       let currentSandboxAgentToken: string = sandboxAgentToken
       let currentAgentSessionId: string | undefined = agentSessionId
+      let agentJustStarted = false
 
       const isFirstMessage = !currentAgentSessionId
 
@@ -256,6 +257,7 @@ app.post('/:sessionId', async (c) => {
             const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
             currentSandboxAgentUrl = url
             currentSandboxAgentToken = newToken
+            agentJustStarted = true
             console.log(`[chat:${sessionId}] sandbox-agent server started at ${url}`)
 
             await stub.fetch(
@@ -407,9 +409,9 @@ app.post('/:sessionId', async (c) => {
           }
         }
 
-        // Health-check existing sandbox-agent URL before use
-        if (currentSandboxAgentUrl) {
-          const healthy = await checkSandboxAgentHealth(currentSandboxAgentUrl, sandboxAgentToken)
+        // Health-check existing sandbox-agent URL before use (skip if we just started it)
+        if (currentSandboxAgentUrl && !agentJustStarted) {
+          const healthy = await checkSandboxAgentHealth(currentSandboxAgentUrl, currentSandboxAgentToken)
           if (!healthy) {
             console.warn(`[chat:${sessionId}] Sandbox agent unhealthy at ${currentSandboxAgentUrl}`)
 
@@ -432,7 +434,7 @@ app.post('/:sessionId', async (c) => {
                 console.log(`[chat:${sessionId}] Sandbox resumed successfully: ${currentSandboxId}`)
 
                 // Re-check sandbox-agent health after resume
-                const healthyAfterResume = await checkSandboxAgentHealth(currentSandboxAgentUrl, sandboxAgentToken)
+                const healthyAfterResume = await checkSandboxAgentHealth(currentSandboxAgentUrl, currentSandboxAgentToken)
                 if (healthyAfterResume) {
                   console.log(`[chat:${sessionId}] Sandbox-agent healthy after resume`)
                   resumed = true

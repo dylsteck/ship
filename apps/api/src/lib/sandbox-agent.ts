@@ -125,17 +125,17 @@ export async function startSandboxAgentServer(
   const agentConfig = getAgent(agentType) || getAgent(getDefaultAgentId())!
   const sandboxToken = generateToken()
 
-  // Step 1: Check if sandbox-agent server is already running
+  // Step 1: Check if sandbox-agent server is already running — if so, kill it and restart with new token
   console.log(`[sandbox-agent:${sandboxId}] Step 1: Checking if server already running...`)
   try {
     const healthResult = await sandbox.commands.run(
       `curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health --connect-timeout 2 --max-time 3`,
     )
     if (healthResult.exitCode === 0) {
-      const host = sandbox.getHost(SANDBOX_AGENT_PORT)
-      const url = `https://${host}`
-      console.log(`[sandbox-agent:${sandboxId}] Server already running at ${url}`)
-      return { url, token: '' }
+      console.log(`[sandbox-agent:${sandboxId}] Server already running but we don't have its token — killing and restarting`)
+      await sandbox.commands.run(`pkill -f 'sandbox-agent server' || true`, { timeoutMs: 5000 })
+      await new Promise(r => setTimeout(r, 1000)) // Wait for port to free
+      // Fall through to Step 2+ to start fresh
     }
   } catch (e) {
     console.log(`[sandbox-agent:${sandboxId}] No existing server (${e instanceof Error ? e.message : String(e)})`)

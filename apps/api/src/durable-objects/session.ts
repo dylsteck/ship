@@ -623,6 +623,11 @@ export class SessionDO extends DurableObject<Env> {
 
     await this.setSessionMeta('sandbox_status', 'terminated')
     await this.setSessionMeta('sandbox_id', '')
+
+    // Clear DO SQLite tables
+    this.sql.exec('DELETE FROM messages')
+    this.sql.exec('DELETE FROM tasks')
+    this.sql.exec('DELETE FROM session_meta')
   }
 
   /**

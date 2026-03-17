@@ -275,12 +275,15 @@ sessions.delete('/', async (c) => {
       return c.json({ success: true, deletedCount: 0 })
     }
 
-    // Bulk soft-delete in D1
-    const now = Math.floor(Date.now() / 1000)
+    // Hard-delete messages and sessions from D1
+    // D1 doesn't support IN with bindings for variable-length lists, so batch delete
+    for (const sid of sessionIds) {
+      await c.env.DB.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).bind(sid).run()
+    }
     await c.env.DB.prepare(
-      `UPDATE chat_sessions SET status = 'deleted', archived_at = ? WHERE user_id = ? AND status != 'deleted'`,
+      `DELETE FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`,
     )
-      .bind(now, userId)
+      .bind(userId)
       .run()
 
     // Best-effort sandbox termination in background
@@ -322,7 +325,7 @@ sessions.delete('/:id', async (c) => {
       return c.json({ error: 'Session not found' }, 404)
     }
 
-    // Best-effort sandbox termination
+    // Sandbox termination (synchronous, best-effort)
     try {
       const doId = c.env.SESSION_DO.idFromName(id)
       const doStub = c.env.SESSION_DO.get(doId)
@@ -331,14 +334,9 @@ sessions.delete('/:id', async (c) => {
       console.warn('Failed to terminate sandbox for session:', id, error)
     }
 
-    // Soft delete in D1 (mark as deleted)
-    const now = Math.floor(Date.now() / 1000)
-    await c.env.DB.prepare(`UPDATE chat_sessions SET status = 'deleted', archived_at = ? WHERE id = ?`)
-      .bind(now, id)
-      .run()
-
-    // Note: DO will be cleaned up automatically by Cloudflare when not accessed
-    // The DO's SQLite data persists until the DO is garbage collected
+    // Hard-delete messages then session from D1
+    await c.env.DB.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).bind(id).run()
+    await c.env.DB.prepare(`DELETE FROM chat_sessions WHERE id = ?`).bind(id).run()
 
     return c.json({ success: true })
   } catch (error) {
