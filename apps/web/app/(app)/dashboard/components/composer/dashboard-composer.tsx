@@ -5,7 +5,6 @@ import { ClientOnly } from '@/components/client-only'
 import { ComposerProvider, type ComposerContextValue } from './composer-context'
 import { ComposerTextarea } from './composer-textarea'
 import { ComposerRepoSelector } from './repo-selector'
-import { BranchSelector } from './branch-selector'
 import { SubmitButton } from './submit-button'
 import { AgentModelSelector } from './agent-model-selector'
 import { ModeToggle } from './mode-toggle'
@@ -43,9 +42,6 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
             <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 min-h-[28px] px-1.5 pb-1.5">
               <ClientOnly>
                 <ComposerRepoSelector />
-              </ClientOnly>
-              <ClientOnly>
-                <BranchSelector />
               </ClientOnly>
             </div>
           )}

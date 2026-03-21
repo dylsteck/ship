@@ -8,7 +8,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
-import { useGitHubBranches } from '@/lib/api/hooks/use-branches'
 import { useModels, useDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
 import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
@@ -260,12 +259,6 @@ export function DashboardClient({
     },
   })
 
-  const { branches, isLoading: branchesLoading } = useGitHubBranches(
-    userId,
-    state.selectedRepo?.owner,
-    state.selectedRepo?.name,
-  )
-
   const derived = useDashboardDerived({
     chat,
     state,
@@ -278,8 +271,6 @@ export function DashboardClient({
       agents,
       agentsLoading,
       modelsLoading: modelsLoading ?? false,
-      branches,
-      branchesLoading: branchesLoading ?? false,
     },
     isCreating,
   })

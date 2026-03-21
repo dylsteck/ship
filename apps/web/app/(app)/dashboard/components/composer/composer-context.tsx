@@ -15,10 +15,6 @@ export interface ComposerContextValue {
   reposLoadMore: () => void
   reposHasMore: boolean
   reposLoadingMore: boolean
-  selectedBranch: string
-  onBranchSelect: (branch: string) => void
-  branches: string[]
-  branchesLoading: boolean
   selectedAgent: AgentInfo | null
   onAgentSelect: (agent: AgentInfo) => void
   agents: AgentInfo[]

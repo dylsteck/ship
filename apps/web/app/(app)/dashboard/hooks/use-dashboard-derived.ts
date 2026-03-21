@@ -19,8 +19,6 @@ export interface UseDashboardDerivedParams {
     agents: AgentInfo[]
     agentsLoading: boolean
     modelsLoading: boolean
-    branches: string[]
-    branchesLoading: boolean
   }
   isCreating: boolean
 }
@@ -36,8 +34,6 @@ export function useDashboardDerived({
     setPrompt,
     selectedRepo,
     setSelectedRepo,
-    selectedBranch,
-    setSelectedBranch,
     selectedAgent,
     selectedModel,
     setSelectedModel,
@@ -100,10 +96,6 @@ export function useDashboardDerived({
       reposLoadMore: data.reposLoadMore,
       reposHasMore: data.reposHasMore ?? false,
       reposLoadingMore: data.reposLoadingMore ?? false,
-      selectedBranch,
-      onBranchSelect: setSelectedBranch,
-      branches: data.branches,
-      branchesLoading: data.branchesLoading,
       selectedAgent,
       onAgentSelect: handleAgentSelect,
       agents: data.agents,
@@ -132,9 +124,6 @@ export function useDashboardDerived({
       data.reposLoadMore,
       data.reposHasMore,
       data.reposLoadingMore,
-      selectedBranch,
-      data.branches,
-      data.branchesLoading,
       selectedAgent,
       handleAgentSelect,
       data.agents,
