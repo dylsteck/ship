@@ -312,4 +312,73 @@ models.post('/default-agent', async (c) => {
   }
 })
 
+/**
+ * GET /models/default-agent-model
+ * Get user's default model for a specific agent
+ * Query params: userId (required), agentId (required)
+ */
+models.get('/default-agent-model', async (c) => {
+  try {
+    const userId = c.req.query('userId')
+    const agentId = c.req.query('agentId')
+
+    if (!userId || !agentId) {
+      return c.json({ error: 'userId and agentId query parameters are required' }, 400)
+    }
+
+    const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
+      .bind(userId, `default_model:${agentId}`)
+      .first<{ value: string }>()
+
+    if (!result?.value) {
+      return c.json({ model: null })
+    }
+
+    return c.json({ model: result.value })
+  } catch (error) {
+    console.error('Error fetching default agent model:', error)
+    return c.json({ error: 'Failed to fetch default agent model' }, 500)
+  }
+})
+
+/**
+ * POST /models/default-agent-model
+ * Set user's default model for a specific agent
+ * Body: { userId: string, agentId: string, model: string }
+ */
+models.post('/default-agent-model', async (c) => {
+  try {
+    const { userId, agentId, model } = await c.req.json<{ userId: string; agentId: string; model: string }>()
+
+    if (!userId || !agentId || !model) {
+      return c.json({ error: 'userId, agentId, and model are required' }, 400)
+    }
+
+    // Validate agent exists
+    const agents = listAgents()
+    if (!agents.some((a) => a.id === agentId)) {
+      return c.json({ error: 'Invalid agent ID' }, 400)
+    }
+
+    // Validate model exists
+    const isValid = validateModelWithFallback(model)
+    if (!isValid) {
+      return c.json({ error: 'Invalid model ID' }, 400)
+    }
+
+    await c.env.DB.prepare(
+      `INSERT INTO user_preferences (user_id, key, value)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+    )
+      .bind(userId, `default_model:${agentId}`, model)
+      .run()
+
+    return c.json({ success: true, model })
+  } catch (error) {
+    console.error('Error setting default agent model:', error)
+    return c.json({ error: 'Failed to set default agent model' }, 500)
+  }
+})
+
 export default models

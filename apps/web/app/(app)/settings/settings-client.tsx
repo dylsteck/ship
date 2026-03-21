@@ -1,17 +1,16 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { setApiToken } from '@/lib/api/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
+import { useIsMobile, SidebarTrigger, useSidebar, Tabs, TabsList, TabsTrigger, TabsContent } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import {
   useModels,
-  useDefaultModel,
   useAgents,
   useDefaultAgent,
   useFilteredGitHubRepos,
@@ -22,9 +21,9 @@ import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
 import { DashboardLayout } from '../dashboard/components/dashboard-layout'
 import { DefaultAgentCard } from './default-agent-card'
-import { DefaultModelCard } from './default-model-card'
 import { DefaultRepoCard } from './default-repo-card'
 import { DeleteAllSessionsCard } from './delete-all-sessions-card'
+import { AgentModelRow } from './agent-model-row'
 
 interface SettingsClientProps {
   userId: string
@@ -72,7 +71,6 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
   const { agents, isLoading: agentsLoading } = useAgents()
   const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
   const { models: availableModels, isLoading: modelsLoading } = useModels()
-  const { defaultModelId, isLoading: defaultModelLoading } = useDefaultModel(userId)
   const {
     repos,
     isLoading: reposLoading,
@@ -90,12 +88,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
     }
   }, [defaultAgentId, selectedAgentId])
 
-  const agentModels = useMemo(() => {
-    const agent = agents.find((a) => a.id === selectedAgentId)
-    return agent?.models || availableModels
-  }, [agents, selectedAgentId, availableModels])
-
-  const loading = agentsLoading || defaultAgentLoading || modelsLoading || defaultModelLoading || reposLoading || defaultRepoLoading
+  const loading = agentsLoading || defaultAgentLoading || modelsLoading || reposLoading || defaultRepoLoading
 
   const handleNewChat = useCallback(() => {
     router.push('/')
@@ -113,14 +106,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
     <div className="mx-auto max-w-2xl px-4 py-8">
       {/* Mobile header */}
       {isMobile && (
-        <div className="flex items-center justify-between px-3 pt-3 pb-1.5 -mx-4 -mt-8 mb-6">
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <span className="text-base leading-none">&lsaquo;</span>
-            Back to Agents
-          </Link>
+        <div className="flex items-center justify-end px-3 pt-3 pb-1.5 -mx-4 -mt-8 mb-6">
           <UserDropdown user={user} />
         </div>
       )}
@@ -129,31 +115,43 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
 
       {/* Preferences */}
       <section className="mb-8">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">Preferences</h2>
-        <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
-          <DefaultAgentCard
-            userId={userId}
-            agents={agents}
-            defaultAgentId={defaultAgentId}
-            onAgentChange={setSelectedAgentId}
-          />
-          {agentModels.length > 1 && (
-            <DefaultModelCard
-              userId={userId}
-              models={agentModels}
-              defaultModelId={defaultModelId}
-            />
-          )}
-          <DefaultRepoCard
-            userId={userId}
-            repos={repos}
-            reposLoading={reposLoading}
-            reposLoadMore={reposLoadMore}
-            reposHasMore={reposHasMore ?? false}
-            reposLoadingMore={reposLoadingMore ?? false}
-            defaultRepoFullName={defaultRepoFullName}
-          />
-        </div>
+        <Tabs defaultValue="defaults">
+          <TabsList>
+            <TabsTrigger value="defaults">Defaults</TabsTrigger>
+            <TabsTrigger value="agents">Agents</TabsTrigger>
+          </TabsList>
+          <TabsContent value="defaults">
+            <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
+              <DefaultAgentCard
+                userId={userId}
+                agents={agents}
+                defaultAgentId={defaultAgentId}
+                onAgentChange={setSelectedAgentId}
+              />
+              <DefaultRepoCard
+                userId={userId}
+                repos={repos}
+                reposLoading={reposLoading}
+                reposLoadMore={reposLoadMore}
+                reposHasMore={reposHasMore ?? false}
+                reposLoadingMore={reposLoadingMore ?? false}
+                defaultRepoFullName={defaultRepoFullName}
+              />
+            </div>
+          </TabsContent>
+          <TabsContent value="agents">
+            <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
+              {agents.map((agent) => (
+                <AgentModelRow
+                  key={agent.id}
+                  userId={userId}
+                  agent={agent}
+                  allModels={availableModels}
+                />
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
       </section>
 
       {/* Integrations */}

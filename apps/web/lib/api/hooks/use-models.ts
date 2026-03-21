@@ -105,6 +105,56 @@ export function useSessionModel(sessionId: string | undefined) {
 }
 
 /**
+ * Hook to fetch user's default model for a specific agent
+ */
+export function useAgentDefaultModel(userId: string | undefined, agentId: string | undefined) {
+  const { data, error, isLoading, mutate } = useSWR<{ model: string | null }>(
+    userId && agentId ? apiUrl('/models/default-agent-model', { userId, agentId }) : null,
+    async (url: string) => {
+      try {
+        return await fetcher<{ model: string | null }>(url)
+      } catch (err: unknown) {
+        if ((err as { status?: number })?.status === 404) return { model: null }
+        throw err
+      }
+    },
+  )
+
+  return {
+    defaultModelId: data?.model ?? null,
+    isLoading,
+    isError: !!error,
+    error,
+    mutate,
+  }
+}
+
+/**
+ * Mutation hook to set user's default model for a specific agent
+ */
+export function useSetAgentDefaultModel() {
+  const { trigger, isMutating, error } = useSWRMutation(
+    'set-agent-default-model',
+    async (_key: string, { arg }: { arg: { userId: string; agentId: string; modelId: string } }) => {
+      return post<{ userId: string; agentId: string; model: string }, { success: boolean; model: string }>(
+        apiUrl('/models/default-agent-model'),
+        {
+          userId: arg.userId,
+          agentId: arg.agentId,
+          model: arg.modelId,
+        },
+      )
+    },
+  )
+
+  return {
+    setAgentDefaultModel: trigger,
+    isSetting: isMutating,
+    error,
+  }
+}
+
+/**
  * Mutation hook to set user's default model
  */
 export function useSetDefaultModel() {
