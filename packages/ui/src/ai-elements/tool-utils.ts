@@ -158,60 +158,54 @@ export function extractReadContent(output: unknown): string | null {
 function cleanReadContent(raw: string): string {
   let text = raw
 
-  // Extract inner content from known XML wrapper tags
-  // Priority: <content>...</content>, then <entries>...</entries>
-  const contentMatch = text.match(/<content>([\s\S]*?)<\/content>/)
-  if (contentMatch) {
-    text = contentMatch[1]
-  } else {
-    const openContentMatch = text.match(/<content>([\s\S]*)$/)
-    if (openContentMatch) {
-      text = openContentMatch[1]
-    } else {
-      const entriesMatch = text.match(/<entries>([\s\S]*?)<\/entries>/)
-      if (entriesMatch) {
-        text = entriesMatch[1]
-      } else {
-        const openEntriesMatch = text.match(/<entries>([\s\S]*)$/)
-        if (openEntriesMatch) {
-          text = openEntriesMatch[1]
-        }
-      }
-    }
+  // Try to extract inner content from XML wrapper tags
+  // Use greedy match for closing-tag variants to capture all content
+  const extracted = extractTagContent(text, 'content') ?? extractTagContent(text, 'entries')
+  if (extracted !== null) {
+    text = extracted
   }
 
-  // Strip XML frontmatter tags: <path>...</path>, <type>...</type>
-  text = text.replace(/<path>[^<]*<\/path>\n?/g, '')
-  text = text.replace(/<type>[^<]*<\/type>\n?/g, '')
-  // Strip any remaining <entries> or </entries> tags
-  text = text.replace(/<\/?entries>\n?/g, '')
+  // Strip any remaining XML wrapper tags
+  text = text.replace(/<\/?(?:path|type|content|entries)(?:>|[^>]*>)/g, '')
   // Strip trailing metadata lines
-  text = text.replace(/\n\(End of file[^\n]*\)\s*$/, '')
-  text = text.replace(/\n\(truncated[^\n]*\)\s*$/, '')
-  text = text.replace(/\n\(\d+ entries?\)\s*$/, '')
+  text = text.replace(/\n\(End of file[^\n]*\)\s*$/g, '')
+  text = text.replace(/\n\(truncated[^\n]*\)\s*$/g, '')
+  text = text.replace(/\n\(\d+ entries?\)\s*$/g, '')
   // Trim leading/trailing whitespace
   text = text.replace(/^\n+/, '').replace(/\s+$/, '')
   return stripLineNumbers(text)
 }
 
+/** Extract text between <tag>...</tag> or after an unclosed <tag> */
+function extractTagContent(text: string, tag: string): string | null {
+  // Try with closing tag first (greedy to capture everything between)
+  const closedRe = new RegExp(`<${tag}>([\\s\\S]+)<\\/${tag}>`)
+  const closedMatch = text.match(closedRe)
+  if (closedMatch && closedMatch[1].trim()) return closedMatch[1]
+  // Try open-ended (no closing tag)
+  const openRe = new RegExp(`<${tag}>([\\s\\S]+)$`)
+  const openMatch = text.match(openRe)
+  if (openMatch && openMatch[1].trim()) return openMatch[1]
+  return null
+}
+
 function stripLineNumbers(text: string): string {
   const lines = text.split('\n')
-  // Match "cat -n" style: "     1\tcode" or Claude-style: "1: code", " 12: code"
-  // Only strip if the majority of non-empty lines match the pattern
   const nonEmpty = lines.filter((l) => l.trim() !== '')
   if (nonEmpty.length < 2) return text
 
-  const catNPattern = /^\s+\d+\t/
-  const colonPattern = /^\s*\d+: /
+  // Patterns: "     1\tcode", "     1→code", "1: code", " 12: code"
+  const patterns: [RegExp, RegExp][] = [
+    [/^\s+\d+\t/, /^\s+\d+\t/],
+    [/^\s+\d+→/, /^\s+\d+→/],
+    [/^\s*\d+: /, /^\s*\d+: /],
+  ]
 
-  const catNMatches = nonEmpty.filter((l) => catNPattern.test(l)).length
-  const colonMatches = nonEmpty.filter((l) => colonPattern.test(l)).length
-
-  if (catNMatches / nonEmpty.length > 0.8) {
-    return lines.map((l) => l.replace(/^\s+\d+\t/, '')).join('\n')
-  }
-  if (colonMatches / nonEmpty.length > 0.8) {
-    return lines.map((l) => l.replace(/^\s*\d+: /, '')).join('\n')
+  for (const [testPattern, stripPattern] of patterns) {
+    const matches = nonEmpty.filter((l) => testPattern.test(l)).length
+    if (matches / nonEmpty.length > 0.8) {
+      return lines.map((l) => l.replace(stripPattern, '')).join('\n')
+    }
   }
   return text
 }
