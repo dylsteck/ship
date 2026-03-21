@@ -45,39 +45,52 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
               </ClientOnly>
             </div>
           )}
-          <div
-            className={cn(
-              'rounded-2xl border overflow-hidden transition-all',
-              activeSessionId
-                ? 'bg-card/95 backdrop-blur-sm border-border/40 shadow-md focus-within:border-border/60 focus-within:shadow-lg'
-                : 'rounded-3xl bg-card border-border/50 focus-within:ring-2 focus-within:ring-foreground/10',
-            )}
-          >
-            {/* Textarea */}
-            <div className="px-3 pt-3">
-              <ComposerTextarea />
-            </div>
 
-            {/* Bottom bar inside the card: + mode button, model selector, spacer, submit */}
-            <div className="flex items-center gap-2.5 px-3 pb-1 h-[40px]">
-              <div className="flex items-center gap-2">
+          {activeSessionId ? (
+            /* Session follow-up: slim single-line pill */
+            <div className="flex items-center gap-2 rounded-[20px] border border-border/40 bg-card/95 backdrop-blur-sm shadow-md focus-within:border-border/60 focus-within:shadow-lg px-2 min-h-[40px] py-[10px]">
+              <div className="shrink-0">
                 <ClientOnly>
                   <ModeToggle />
                 </ClientOnly>
-                {!activeSessionId && (
+              </div>
+              <div className="flex-1 min-w-0 flex items-center">
+                <ComposerTextarea />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <ClientOnly>
+                  <AgentModelSelector />
+                </ClientOnly>
+                <SubmitButton size="small" />
+              </div>
+            </div>
+          ) : (
+            /* Home: full multi-line composer card */
+            <div className="rounded-3xl border overflow-hidden transition-all bg-card border-border/50 focus-within:ring-2 focus-within:ring-foreground/10">
+              {/* Textarea */}
+              <div className="px-3 pt-3">
+                <ComposerTextarea />
+              </div>
+
+              {/* Bottom bar inside the card: + mode button, model selector, spacer, submit */}
+              <div className="flex items-center gap-2.5 px-3 pb-1 h-[40px]">
+                <div className="flex items-center gap-2">
+                  <ClientOnly>
+                    <ModeToggle />
+                  </ClientOnly>
                   <div className="shrink min-w-0 overflow-hidden">
                     <ClientOnly>
                       <AgentModelSelector />
                     </ClientOnly>
                   </div>
-                )}
-              </div>
-              <div className="flex-1" />
-              <div className="flex items-center gap-2 shrink-0">
-                <SubmitButton />
+                </div>
+                <div className="flex-1" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <SubmitButton />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </ComposerProvider>

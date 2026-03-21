@@ -9,24 +9,25 @@ export function ComposerTextarea() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (!textareaRef.current || !activeSessionId) return
+    if (!textareaRef.current) return
     const el = textareaRef.current
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+    el.style.height = `${Math.min(el.scrollHeight, activeSessionId ? 120 : 200)}px`
   }, [prompt, activeSessionId])
 
   return (
     <textarea
       ref={textareaRef}
-      placeholder={activeSessionId ? 'Send a message...' : 'Ask Ship to build, review, fix bugs'}
+      placeholder={activeSessionId ? 'Send follow-up' : 'Ask Ship to build, review, fix bugs'}
       value={prompt}
       onChange={(e) => onPromptChange(e.target.value)}
       onKeyDown={onKeyDown}
       rows={activeSessionId ? 1 : 3}
       className={cn(
-        'w-full resize-none bg-transparent text-foreground text-[15px] placeholder:text-muted-foreground/50 focus:outline-none transition-all duration-200',
-        activeSessionId ? 'min-h-[32px] max-h-[200px]' : 'min-h-[88px]',
-        !activeSessionId && 'placeholder:text-zinc-500',
+        'w-full resize-none bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none transition-all duration-200',
+        activeSessionId
+          ? 'text-xs min-h-[20px] max-h-[120px] py-0 leading-[20px] overflow-y-auto'
+          : 'text-[15px] min-h-[88px] placeholder:text-zinc-500',
       )}
     />
   )
