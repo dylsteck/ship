@@ -9,7 +9,7 @@ import {
   useIsMobile,
 } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft01Icon, Search01Icon } from '@hugeicons/core-free-icons'
+import { ArrowLeft01Icon, Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
 import { UserDropdown } from '@/components/user-dropdown'
 
@@ -109,6 +109,13 @@ export function DashboardHeader({
           >
             <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
           </button>
+          <Link
+            href="/"
+            className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+            title="New Agent"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
+          </Link>
         </div>
       )}
       {activeSessionId && isMobile && (

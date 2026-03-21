@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Search01Icon } from '@hugeicons/core-free-icons'
+import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { Card, CardContent } from '@ship/ui'
@@ -50,6 +50,13 @@ function SettingsSidebarTrigger() {
       >
         <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
       </button>
+      <Link
+        href="/"
+        className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+        title="New Agent"
+      >
+        <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
+      </Link>
     </div>
   )
 }

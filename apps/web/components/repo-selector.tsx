@@ -12,7 +12,7 @@ import {
 } from '@ship/ui'
 import { cn } from '@ship/ui/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import type { GitHubRepo } from '@/lib/api/types'
 
 export interface RepoSelectorProps {
@@ -109,22 +109,37 @@ export function RepoSelector({
         </div>
         <div className="max-h-[280px] overflow-y-auto" onScroll={handleScroll}>
           {isLoading ? (
-            <div className="p-3 text-center text-sm text-muted-foreground">Loading repos...</div>
+            <div className="p-3 text-center text-xs text-muted-foreground">Loading repos...</div>
           ) : filteredRepos.length === 0 ? (
-            <div className="p-3 text-center text-sm text-muted-foreground">No repos found</div>
+            <div className="p-3 text-center text-xs text-muted-foreground">No repos found</div>
           ) : (
             <DropdownMenuGroup>
               {allowNone && (
                 <DropdownMenuItem onClick={onClear}>
-                  <span className="text-muted-foreground italic">None</span>
+                  <span className="text-muted-foreground italic text-xs">None</span>
                 </DropdownMenuItem>
               )}
-              {filteredRepos.map((repo) => (
-                <DropdownMenuItem key={repo.id} onClick={() => onRepoSelect(repo)}>
-                  <span className="truncate flex-1">{repo.fullName}</span>
-                  {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
-                </DropdownMenuItem>
-              ))}
+              {filteredRepos.map((repo) => {
+                const isSelected = selectedRepo?.id === repo.id
+                return (
+                  <DropdownMenuItem
+                    key={repo.id}
+                    className={cn(
+                      'flex items-center justify-between cursor-pointer',
+                      isSelected && 'bg-accent',
+                    )}
+                    onClick={() => onRepoSelect(repo)}
+                  >
+                    <span className="truncate flex-1 text-xs">{repo.fullName}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
+                      {isSelected && (
+                        <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="text-foreground" />
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                )
+              })}
               {isLoadingMore && (
                 <div className="py-2 text-center text-xs text-muted-foreground">Loading more...</div>
               )}
