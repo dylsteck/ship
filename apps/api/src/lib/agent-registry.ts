@@ -38,8 +38,8 @@ export const AGENTS: Record<string, AgentConfig> = {
     requiredEnvVars: ['ANTHROPIC_API_KEY'],
     modes: [
       { id: 'default', label: 'default' },
-      { id: 'plan', label: 'plan' },
-      { id: 'acceptEdits', label: 'acceptEdits' },
+      { id: 'plan', label: 'Plan' },
+      { id: 'acceptEdits', label: 'Accept Edits' },
     ],
     models: [
       { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'Anthropic', contextWindow: 200000, maxTokens: 32000 },
@@ -56,8 +56,8 @@ export const AGENTS: Record<string, AgentConfig> = {
     sandboxAgentName: 'opencode',
     requiredEnvVars: [],
     modes: [
-      { id: 'build', label: 'build' },
-      { id: 'plan', label: 'plan' },
+      { id: 'build', label: 'Build' },
+      { id: 'plan', label: 'Plan' },
     ],
     models: [
       { id: 'opencode/big-pickle', name: 'Big Pickle', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 128000 },
@@ -78,9 +78,8 @@ export const AGENTS: Record<string, AgentConfig> = {
     sandboxAgentName: 'codex',
     requiredEnvVars: ['OPENAI_API_KEY'],
     modes: [
-      { id: 'auto', label: 'auto' },
-      { id: 'read-only', label: 'read-only' },
-      { id: 'full-access', label: 'full-access' },
+      { id: 'full-access', label: 'Full Access' },
+      { id: 'read-only', label: 'Read Only' },
     ],
     models: [
       { id: 'codex/default', name: 'Codex', provider: 'OpenAI' },
