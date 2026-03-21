@@ -10,6 +10,12 @@ import type { ToolInvocation } from '@/lib/ai-elements-adapter'
  * Detects if a ToolInvocation represents a subagent task that should be viewable
  */
 export function isSubagentToolInvocation(tool: ToolInvocation): boolean {
+  // Early check: if args contain subagent_type, it's a subagent regardless of toolName
+  // (toolName can get transformed from "task" to a description string during event replay)
+  if (typeof tool.args?.subagent_type === 'string') {
+    return true
+  }
+
   const lowerName = tool.toolName.toLowerCase()
 
   // Primary check: toolName is 'task' and has subagent_type in args

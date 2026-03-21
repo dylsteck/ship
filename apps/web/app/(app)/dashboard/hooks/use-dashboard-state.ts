@@ -80,7 +80,6 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
-  const [selectedBranch, setSelectedBranch] = useState<string>('main')
   const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null)
   const [mode, setModeState] = useState<AgentModeId>(getStoredMode)
@@ -246,7 +245,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
           repoName: data.repoName,
           model: data.model || selectedModel?.id || 'opencode/big-pickle',
           agentType: selectedAgent?.id || 'opencode',
-          baseBranch: data.baseBranch || selectedBranch || 'main',
+          baseBranch: data.baseBranch || 'main',
           title: initialTitle || undefined,
         })
 
@@ -281,7 +280,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
         console.error('Failed to create session:', error)
       }
     },
-    [createSession, userId, selectedModel, selectedAgent, selectedBranch, prompt, mode, chat, mutateSessions, onSessionCreated],
+    [createSession, userId, selectedModel, selectedAgent, prompt, mode, chat, mutateSessions, onSessionCreated],
   )
 
   const handleSubmit = useCallback(() => {
@@ -296,7 +295,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
         repoOwner: selectedRepo.owner,
         repoName: selectedRepo.name,
         model: selectedModel?.id,
-        baseBranch: selectedBranch,
+        baseBranch: selectedRepo.defaultBranch || 'main',
       })
     }
   }, [
@@ -304,7 +303,6 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
     chat.isStreaming,
     prompt,
     selectedRepo,
-    selectedBranch,
     isCreating,
     selectedModel,
     handleSend,
@@ -367,20 +365,11 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
     if (userOwnedRepo) setSelectedRepo(userOwnedRepo)
   }, [chat.activeSessionId, defaultRepoLoading, defaultRepoFullName, repos, selectedRepo, user.username])
 
-  // When repo changes, default branch to repo.defaultBranch or 'main'
-  useEffect(() => {
-    if (!selectedRepo) return
-    const branch = selectedRepo.defaultBranch || 'main'
-    setSelectedBranch(branch)
-  }, [selectedRepo])
-
   return {
     searchQuery,
     setSearchQuery,
     selectedRepo,
     setSelectedRepo,
-    selectedBranch,
-    setSelectedBranch,
     selectedAgent,
     selectedModel,
     setSelectedModel,

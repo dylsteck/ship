@@ -4,8 +4,7 @@ import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@ship/ui'
 import type { AgentModeId } from '@/lib/api/types'
@@ -15,49 +14,66 @@ export function ModeToggle() {
   const { mode, onModeChange, availableModes, isStreaming } = useComposer()
 
   const currentMode = availableModes.find((m) => m.id === mode)
+  const defaultMode = availableModes[0]
+  const isNonDefault = defaultMode && mode !== defaultMode.id
+
+  const plusButton = (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={isStreaming}
+      className="group flex items-center justify-center size-6 p-0 rounded-full bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60 disabled:pointer-events-none"
+    >
+      <svg className="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
+      </svg>
+    </Button>
+  )
 
   if (availableModes.length <= 1) {
     return (
-      <span className="text-xs text-muted-foreground">
-        {currentMode?.label ?? mode}
-      </span>
+      <button
+        type="button"
+        disabled={isStreaming}
+        className="flex items-center justify-center size-6 rounded-full bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-60 disabled:pointer-events-none"
+      >
+        <svg className="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
+        </svg>
+      </button>
     )
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
+    <div className="flex items-center gap-1.5">
+      <DropdownMenu>
+        <DropdownMenuTrigger render={plusButton} />
+        <DropdownMenuContent align="start" className="w-[140px]">
+          {availableModes
+            .filter((m) => m.id !== defaultMode?.id)
+            .map((m) => (
+              <DropdownMenuItem key={m.id} onClick={() => onModeChange(m.id)}>
+                {m.label}
+              </DropdownMenuItem>
+            ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {isNonDefault && currentMode && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 h-6 text-xs font-medium text-rose-400">
+          {currentMode.label}
+          <button
+            type="button"
             disabled={isStreaming}
-            className="group h-auto gap-0.5 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent disabled:opacity-60 disabled:pointer-events-none"
+            onClick={() => onModeChange(defaultMode.id)}
+            className="ml-0.5 rounded-full hover:bg-rose-500/20 transition-colors disabled:opacity-60"
           >
-            <span className="text-xs">{currentMode?.label ?? mode}</span>
-            <svg
-              className="size-2.5 shrink-0 opacity-40 transition-opacity duration-150 group-hover:opacity-100"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+            <svg className="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18 18 6M6 6l12 12" />
             </svg>
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="start" className="w-[140px]">
-        <DropdownMenuRadioGroup
-          value={mode}
-          onValueChange={(value) => onModeChange(value as AgentModeId)}
-        >
-          {availableModes.map((m) => (
-            <DropdownMenuRadioItem key={m.id} value={m.id}>
-              {m.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </button>
+        </span>
+      )}
+    </div>
   )
 }

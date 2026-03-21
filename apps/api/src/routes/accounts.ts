@@ -223,52 +223,5 @@ accounts.get('/github/repos/:userId', async (c) => {
   }
 })
 
-const BRANCHES_CACHE_MAX_AGE = 120 // 2 minutes
-
-/**
- * GET /accounts/github/branches/:userId/:owner/:repo
- * Fetch branches for a specific repository
- */
-accounts.get('/github/branches/:userId/:owner/:repo', async (c) => {
-  try {
-    const userId = c.req.param('userId')
-    const owner = c.req.param('owner')
-    const repo = c.req.param('repo')
-
-    // Check cache
-    const cache = caches.default
-    const cached = await cache.match(c.req.raw)
-    if (cached) return cached
-
-    const account = await c.env.DB.prepare(
-      'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ?',
-    )
-      .bind(userId, 'github')
-      .first<{ access_token: string }>()
-
-    if (!account?.access_token) {
-      return c.json({ error: 'GitHub account not found' }, 404)
-    }
-
-    const octokit = new Octokit({ auth: account.access_token })
-    const { data: branches } = await octokit.repos.listBranches({
-      owner,
-      repo,
-      per_page: 100,
-    })
-
-    const branchNames = branches.map((b) => b.name)
-    const body = { branches: branchNames }
-    const response = c.json(body, 200, {
-      'Cache-Control': `public, max-age=${BRANCHES_CACHE_MAX_AGE}, s-maxage=${BRANCHES_CACHE_MAX_AGE}`,
-    })
-
-    await cache.put(c.req.raw, response.clone())
-    return response
-  } catch (error) {
-    console.error('Error fetching branches:', error)
-    return c.json({ error: 'Failed to fetch branches' }, 500)
-  }
-})
 
 export default accounts

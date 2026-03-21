@@ -1,12 +1,21 @@
 'use client'
 
-import { Message, Tool, Response, Loader, ReasoningCollapsible, Conversation, ConversationScrollButton } from '@ship/ui'
+import * as React from 'react'
+import { Message, Tool, SubagentTool, Response, Loader, ReasoningCollapsible, Conversation, ConversationScrollButton } from '@ship/ui'
 import { ErrorMessage } from './error-message'
 import { Markdown } from './markdown'
 import { cn } from '@ship/ui'
 import { SubagentSheet } from './subagent-sheet'
-import { SubagentProvider, useSubagent } from '@/lib/subagent/subagent-context'
-import { type UIMessage, mapToolState } from '@/lib/ai-elements-adapter'
+import { type UIMessage, type ToolInvocation, mapToolState } from '@/lib/ai-elements-adapter'
+import {
+  isSubagentToolInvocation,
+  getSubagentType,
+  getSubagentDescription,
+  getSubagentFullPrompt,
+  getSubagentResultText,
+  extractChildToolsFromResult,
+  isResultJsonBlob,
+} from '@/lib/subagent/utils'
 
 interface AIMessageListProps {
   messages: UIMessage[]
@@ -17,7 +26,17 @@ interface AIMessageListProps {
   className?: string
 }
 
-// Inner component that uses the subagent context
+interface SubagentSheetData {
+  isOpen: boolean
+  agentType: string
+  description: string
+  prompt?: string
+  resultText?: string
+  childTools?: { name: string; status: string; title?: string }[]
+  status?: 'pending' | 'in_progress' | 'completed' | 'failed'
+  duration?: number
+}
+
 function MessageListContent({
   messages,
   isStreaming,
@@ -26,7 +45,31 @@ function MessageListContent({
   onRetryError,
   className,
 }: AIMessageListProps) {
-  const { closeSubagent, viewState } = useSubagent()
+  const [sheetData, setSheetData] = React.useState<SubagentSheetData>({ isOpen: false, agentType: '', description: '' })
+
+  const handleSubagentNavigate = React.useCallback((tool: ToolInvocation) => {
+    const agentType = getSubagentType(tool) || String(tool.args?.subagent_type || 'Agent')
+    const description = getSubagentDescription(tool) || String(tool.args?.description || '')
+    const prompt = getSubagentFullPrompt(tool)
+    const resultText = getSubagentResultText(tool)
+    const childTools = extractChildToolsFromResult(tool)
+    const toolStatus = mapToolState(tool.state)
+
+    setSheetData({
+      isOpen: true,
+      agentType,
+      description,
+      prompt: prompt || undefined,
+      resultText: resultText || undefined,
+      childTools: childTools.length > 0 ? childTools : undefined,
+      status: toolStatus,
+      duration: tool.duration,
+    })
+  }, [])
+
+  const handleCloseSheet = React.useCallback(() => {
+    setSheetData((prev) => ({ ...prev, isOpen: false }))
+  }, [])
 
   if (messages.length === 0 && !isStreaming) {
     return (
@@ -91,10 +134,38 @@ function MessageListContent({
                   />
                 )}
 
-                {/* Assistant tools - only show tool calls */}
+                {/* Assistant tools - detect subagent tools and render with SubagentTool */}
                 {msg.role === 'assistant' && msg.toolInvocations && msg.toolInvocations.length > 0 && (
                   <div className="space-y-1">
-                    {msg.toolInvocations.map((tool) => (
+                    {msg.toolInvocations.map((tool) => {
+                      if (isSubagentToolInvocation(tool)) {
+                        const agentType =
+                          getSubagentType(tool) ||
+                          String(tool.args?.subagent_type ?? tool.args?.description ?? 'Agent')
+                        const description =
+                          getSubagentDescription(tool) ||
+                          String(tool.args?.prompt ?? tool.args?.description ?? '')
+                        const childTools = extractChildToolsFromResult(tool)
+                        const resultText = getSubagentResultText(tool)
+                        const toolStatus = mapToolState(tool.state)
+                        const showResult = resultText && !(toolStatus === 'completed' && isResultJsonBlob(tool))
+
+                        return (
+                          <SubagentTool
+                            key={tool.toolCallId}
+                            toolCallId={tool.toolCallId}
+                            agentType={agentType}
+                            description={description}
+                            status={toolStatus}
+                            duration={tool.duration}
+                            childTools={childTools.length > 0 ? childTools : undefined}
+                            result={showResult ? <Markdown content={resultText!} /> : undefined}
+                            onNavigate={() => handleSubagentNavigate(tool)}
+                          />
+                        )
+                      }
+
+                      return (
                         <Tool
                           key={tool.toolCallId}
                           name={tool.toolName}
@@ -103,7 +174,8 @@ function MessageListContent({
                           output={tool.result}
                           duration={tool.duration}
                         />
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
@@ -130,20 +202,20 @@ function MessageListContent({
 
       {/* Subagent Detail Sheet */}
       <SubagentSheet
-        sessionId={viewState.sessionId || undefined}
-        toolName={viewState.toolName}
-        isOpen={viewState.isOpen}
-        onClose={closeSubagent}
+        agentType={sheetData.agentType}
+        description={sheetData.description}
+        prompt={sheetData.prompt}
+        resultText={sheetData.resultText}
+        childTools={sheetData.childTools}
+        status={sheetData.status}
+        duration={sheetData.duration}
+        isOpen={sheetData.isOpen}
+        onClose={handleCloseSheet}
       />
     </>
   )
 }
 
-// Wrapper component that provides the SubagentProvider
 export function AIMessageList(props: AIMessageListProps) {
-  return (
-    <SubagentProvider>
-      <MessageListContent {...props} />
-    </SubagentProvider>
-  )
+  return <MessageListContent {...props} />
 }

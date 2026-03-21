@@ -5,7 +5,6 @@ import { ClientOnly } from '@/components/client-only'
 import { ComposerProvider, type ComposerContextValue } from './composer-context'
 import { ComposerTextarea } from './composer-textarea'
 import { ComposerRepoSelector } from './repo-selector'
-import { BranchSelector } from './branch-selector'
 import { SubmitButton } from './submit-button'
 import { AgentModelSelector } from './agent-model-selector'
 import { ModeToggle } from './mode-toggle'
@@ -40,48 +39,58 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
         >
           {/* Repo + branch above the card (Cursor-style) */}
           {!activeSessionId && (
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 min-h-[28px] px-1.5 pb-1.5">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 min-h-[28px] px-0.5 pb-1.5">
               <ClientOnly>
                 <ComposerRepoSelector />
               </ClientOnly>
-              <ClientOnly>
-                <BranchSelector />
-              </ClientOnly>
             </div>
           )}
-          <div
-            className={cn(
-              'rounded-2xl border overflow-hidden transition-all',
-              activeSessionId
-                ? 'bg-card/95 backdrop-blur-sm border-border/40 shadow-md focus-within:border-border/60 focus-within:shadow-lg'
-                : 'rounded-3xl bg-card border-border/50 focus-within:ring-2 focus-within:ring-foreground/10',
-            )}
-          >
-            {/* Textarea */}
-            <div className="px-3 pt-3">
-              <ComposerTextarea />
-            </div>
 
-            {/* Bottom bar inside the card: selectors left, actions right */}
-            <div className="flex items-center gap-1 px-3 h-[36px]">
-              {!activeSessionId && (
-                <div className="shrink min-w-0 overflow-hidden">
-                  <ClientOnly>
-                    <AgentModelSelector />
-                  </ClientOnly>
-                </div>
-              )}
-              <div className="ml-2">
+          {activeSessionId ? (
+            /* Session follow-up: slim single-line pill */
+            <div className="flex items-center gap-2 rounded-[20px] border border-border/40 bg-card/95 backdrop-blur-sm shadow-md focus-within:border-border/60 focus-within:shadow-lg px-2 min-h-[40px] py-[10px]">
+              <div className="shrink-0">
                 <ClientOnly>
                   <ModeToggle />
                 </ClientOnly>
               </div>
-              <div className="flex-1" />
-              <div className="flex items-center gap-2 shrink-0">
-                <SubmitButton />
+              <div className="flex-1 min-w-0 flex items-center">
+                <ComposerTextarea />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <ClientOnly>
+                  <AgentModelSelector />
+                </ClientOnly>
+                <SubmitButton size="small" />
               </div>
             </div>
-          </div>
+          ) : (
+            /* Home: full multi-line composer card */
+            <div className="rounded-3xl border overflow-hidden transition-all bg-card border-border/50 focus-within:ring-2 focus-within:ring-foreground/10">
+              {/* Textarea */}
+              <div className="px-3 pt-3">
+                <ComposerTextarea />
+              </div>
+
+              {/* Bottom bar inside the card: + mode button, model selector, spacer, submit */}
+              <div className="flex items-center gap-2.5 px-3 pb-1 h-[40px]">
+                <div className="flex items-center gap-2">
+                  <ClientOnly>
+                    <ModeToggle />
+                  </ClientOnly>
+                  <div className="shrink min-w-0 overflow-hidden">
+                    <ClientOnly>
+                      <AgentModelSelector />
+                    </ClientOnly>
+                  </div>
+                </div>
+                <div className="flex-1" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <SubmitButton />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </ComposerProvider>

@@ -40,7 +40,6 @@ export function ChatInterface({
     messages,
     isStreaming,
     messageQueue,
-    wsStatus,
     streamingMessageId,
     handleSend,
     handleStop,
@@ -75,16 +74,6 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Connection status indicator */}
-      {wsStatus !== 'connected' && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200">
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-yellow-500 animate-pulse"></div>
-            {wsStatus === 'connecting' ? 'Connecting...' : 'Disconnected - Reconnecting...'}
-          </div>
-        </div>
-      )}
-
       {/* Message List */}
       <AIMessageList
         messages={messages}
@@ -95,7 +84,7 @@ export function ChatInterface({
       />
 
       {/* Input Area */}
-      <div className="border-t bg-white dark:bg-background p-3 sm:p-4">
+      <div className="bg-white dark:bg-background px-3 sm:px-4 pb-3 sm:pb-4 pt-2">
         <div className="max-w-3xl mx-auto">
           <EnhancedPromptInput
             onSend={handleSend}

@@ -20,7 +20,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "nanoid": "^5.1.5",
-    "shiki": "^3.22.0",
+    "shiki": "^3.23.0",
     "tailwind-merge": "^3.4.0",
     "use-stick-to-bottom": "^1.0.0"
   },

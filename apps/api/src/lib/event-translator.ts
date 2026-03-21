@@ -390,8 +390,14 @@ export class EventTranslatorState {
     const toolName = (update.toolName ?? update.title) as string || toolState?.tool || 'unknown'
     const status = (update.status as string) || toolState?.state || 'running'
     const input = (update.input ?? update.rawInput) as Record<string, unknown> | undefined
-    const rawOut = update.output ?? update.rawOutput
+    const rawOut = update.output ?? update.rawOutput ?? update.content ?? update.result
     const output = typeof rawOut === 'string' ? rawOut : (rawOut != null ? JSON.stringify(rawOut) : undefined)
+
+    // Debug: log tool_call_update fields when output is missing for completed tools
+    if (status === 'completed' && !output) {
+      const keys = Object.keys(update).filter(k => k !== 'sessionUpdate' && k !== 'toolCallId' && k !== 'toolName' && k !== 'status')
+      console.log(`[event-translator] tool_call_update completed but no output for ${toolName} (callId=${callId}), keys: [${keys.join(', ')}]`)
+    }
 
     if (input) {
       const existing = this.toolCallMap.get(callId)

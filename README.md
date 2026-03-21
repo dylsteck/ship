@@ -10,7 +10,7 @@ Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/p
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/8ca7aa09-9004-4d4d-8d83-d086403afa63" controls></video>
+<video src="https://github.com/user-attachments/assets/ed0df63a-7fe5-444c-8647-037cc23446cc" controls></video>
 
 ---
 

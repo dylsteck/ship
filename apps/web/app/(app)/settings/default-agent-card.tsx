@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react'
 import {
   Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@ship/ui'
 import { useSetDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultAgent } from '@/lib/api/hooks/use-agents'
@@ -49,48 +49,53 @@ export function DefaultAgentCard({ userId, agents, defaultAgentId, onAgentChange
   }
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Default Agent</CardTitle>
-        <CardDescription className="text-xs">
-          Choose which agent is used by default for new sessions
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Agent</label>
-          <select
+    <div className="px-4 py-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Default Agent</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose which agent is used by default for new sessions
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Select
             value={selected}
-            onChange={(e) => {
-              setSelected(e.target.value)
-              onAgentChange(e.target.value)
+            onValueChange={(val) => {
+              if (val) {
+                setSelected(val)
+                onAgentChange(val)
+              }
             }}
             disabled={isSetting}
-            className="w-full h-9 px-3 text-[13px] rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="min-w-[140px]">
+              <SelectValue placeholder={agents.find(a => a.id === selected)?.name ?? 'Select agent'} />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {hasChanges && (
+            <Button size="sm" variant="outline" onClick={handleSave} disabled={isSetting} className="h-7 text-xs">
+              {isSetting ? 'Saving...' : 'Save'}
+            </Button>
+          )}
         </div>
-        {error && (
-          <div className="rounded-md bg-destructive/10 px-3 py-2">
-            <p className="text-xs text-destructive">{error}</p>
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="rounded-md bg-emerald-500/10 px-3 py-2">
-            <p className="text-xs text-emerald-600">Saved!</p>
-          </div>
-        )}
-        <div className="flex justify-end pt-1">
-          <Button size="sm" onClick={handleSave} disabled={!hasChanges || isSetting}>
-            {isSetting ? 'Saving...' : 'Save'}
-          </Button>
+      </div>
+      {error && (
+        <div className="mt-2 rounded-md bg-destructive/10 px-3 py-1.5">
+          <p className="text-xs text-destructive">{error}</p>
         </div>
-      </CardContent>
-    </Card>
+      )}
+      {saveSuccess && (
+        <div className="mt-2 rounded-md bg-emerald-500/10 px-3 py-1.5">
+          <p className="text-xs text-emerald-600">Saved!</p>
+        </div>
+      )}
+    </div>
   )
 }

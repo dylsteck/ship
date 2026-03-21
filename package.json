@@ -10,13 +10,10 @@
     "lint": "turbo lint",
     "type-check": "turbo type-check",
     "deploy": "concurrently -n vercel,wrangler \"vercel\" \"cd apps/api && npx wrangler deploy\"",
-    "deploy:prod": "concurrently -n vercel,wrangler \"vercel --prod\" \"cd apps/api && npx wrangler deploy --env production\"",
-    "e2b:build:dev": "cd ship-sandbox && npx tsx build.dev.ts",
-    "e2b:build:prod": "cd ship-sandbox && npx tsx build.prod.ts"
+    "deploy:prod": "concurrently -n vercel,wrangler \"vercel --prod\" \"cd apps/api && npx wrangler deploy --env production\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "e2b": "^2.14.1",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "turbo": "^2.8.14",

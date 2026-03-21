@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
 import { mermaid } from '@streamdown/mermaid'
@@ -115,11 +116,11 @@ const customComponents: Components = {
   },
 }
 
-export function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
   return (
     <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed', className)}>
       <Streamdown
-        plugins={{ code, mermaid }}
+        plugins={{ code, mermaid } as never}
         components={customComponents}
         animated={{ animation: 'fadeIn' }}
         isAnimating={isAnimating}
@@ -128,4 +129,4 @@ export function Markdown({ content, className, isAnimating = false }: MarkdownPr
       </Streamdown>
     </div>
   )
-}
+})

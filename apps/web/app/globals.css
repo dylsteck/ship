@@ -138,7 +138,7 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.16 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -178,6 +178,13 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Shiki dual-theme: swap to dark colors when .dark class is present */
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
 }
 
 /* Shimmer animation for loading/thinking text */

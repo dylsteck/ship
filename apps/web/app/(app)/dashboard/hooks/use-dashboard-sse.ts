@@ -70,7 +70,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   const isStreamingRef = useRef(isStreaming)
   isStreamingRef.current = isStreaming
 
-  const scheduleFlush = useCallback(() => {
+  // Debounced flush: batch rapid text deltas into a single React render per animation frame
+  const flushRafRef = useRef<number | null>(null)
+
+  const doFlush = useCallback(() => {
+    flushRafRef.current = null
     const msgId = streamingMessageRef.current
     if (!msgId) return
     const text = assistantTextRef.current
@@ -86,6 +90,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
       }),
     )
   }, [setMessages, streamingMessageRef, assistantTextRef, reasoningRef])
+
+  const scheduleFlush = useCallback(() => {
+    if (flushRafRef.current != null) return // already scheduled
+    flushRafRef.current = requestAnimationFrame(doFlush)
+  }, [doFlush])
 
   const handleSend = useCallback(
     async (content: string, modeOverride?: string, sessionIdOverride?: string) => {
@@ -339,6 +348,8 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                   case 'session.idle': {
                     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
                     if (stallTimerId) { clearTimeout(stallTimerId); stallTimerId = null }
+                    // Cancel any pending debounced flush — done handler writes final state
+                    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null }
                     handleDoneOrIdle(ctx, streamStartTimeRef)
                     sessionStatusStore.update(targetSessionId, {
                       isRunning: false,
@@ -683,6 +694,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                 switch (event.type) {
                   case 'session.idle':
                   case 'done':
+                    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null }
                     if (!placeholderAdded) {
                       setIsStreaming(false)
                       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })

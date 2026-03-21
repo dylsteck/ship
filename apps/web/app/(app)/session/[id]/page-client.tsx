@@ -55,6 +55,9 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   })
   const [sessionTitle, setSessionTitle] = useState<string | undefined>()
 
+  // Right sidebar state
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+
   // Sandbox state
   const [sandboxId, setSandboxId] = useState<string | null>(null)
   const [sandboxStatus, setSandboxStatus] = useState<'provisioning' | 'ready' | 'error' | 'none'>('none')
@@ -342,22 +345,38 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
       <SidebarInset>
         <div className="flex h-screen flex-col relative bg-white dark:bg-background">
           {/* Header */}
-          <header className="flex items-center justify-between border-b bg-white dark:bg-background/95 px-4 py-3 relative z-10">
-            <div className="flex items-center gap-3">
-              <div>
-                <h1 className="font-semibold text-foreground">
-                  {sessionTitle
-                    ? sessionTitle
-                    : sessionInfo.repoOwner && sessionInfo.repoName
-                      ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
-                      : 'Session'}
-                </h1>
-                {sessionInfo.repoOwner && sessionInfo.repoName && sessionTitle && (
-                  <p className="text-xs text-muted-foreground">{sessionInfo.repoOwner}/{sessionInfo.repoName}</p>
-                )}
-              </div>
+          <header className="flex items-center justify-between border-b border-border/40 bg-white dark:bg-background/95 px-3 h-[38px] relative z-10">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Status indicator */}
+              {agentStatus !== 'idle' ? (
+                <div className="relative flex items-center justify-center size-3.5 shrink-0">
+                  <div className={`size-1.5 rounded-full ${agentStatus === 'error' ? 'bg-red-500' : 'bg-green-500'} ${agentStatus !== 'error' ? 'animate-pulse' : ''}`} />
+                </div>
+              ) : (
+                <svg className="size-3.5 shrink-0 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {/* Title */}
+              <span className="text-xs text-muted-foreground truncate">
+                {sessionTitle || 'Session'}
+              </span>
+              {/* Branch */}
+              {sessionInfo.branch && (
+                <span className="text-xs text-muted-foreground/40 shrink-0">{sessionInfo.branch}</span>
+              )}
             </div>
-
+            {/* Right sidebar toggle */}
+            <button
+              onClick={() => setRightSidebarOpen((v) => !v)}
+              className="flex items-center justify-center size-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+              title={rightSidebarOpen ? 'Hide panel' : 'Show panel'}
+            >
+              <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M15 3v18" />
+              </svg>
+            </button>
           </header>
 
           {/* Main content: Chat + Side Panel */}
@@ -408,17 +427,19 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
             </div>
 
             {/* Side Panel */}
-            <SessionSidebar
-              sessionId={sessionId}
-              sessionInfo={sessionInfo}
-              agentStatus={agentStatus}
-              currentTool={currentTool}
-              sandboxId={sandboxId}
-              sandboxStatus={sandboxStatus}
-              opencodeUrl={opencodeUrl}
-              opencodeSessionId={opencodeSessionId}
-              sessionTitle={sessionTitle}
-            />
+            {rightSidebarOpen && (
+              <SessionSidebar
+                sessionId={sessionId}
+                sessionInfo={sessionInfo}
+                agentStatus={agentStatus}
+                currentTool={currentTool}
+                sandboxId={sandboxId}
+                sandboxStatus={sandboxStatus}
+                opencodeUrl={opencodeUrl}
+                opencodeSessionId={opencodeSessionId}
+                sessionTitle={sessionTitle}
+              />
+            )}
           </div>
 
         </div>

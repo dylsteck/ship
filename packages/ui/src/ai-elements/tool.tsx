@@ -4,6 +4,15 @@ import * as React from 'react'
 import { cn } from '../utils'
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible'
 import { ScrollArea } from '../scroll-area'
+import { CodeBlock } from './code-block'
+import {
+  getInputSummary,
+  formatOutput,
+  parseGrepOutput,
+  extractReadContent,
+  getLanguageFromPath,
+  isFileReadTool,
+} from './tool-utils'
 
 interface ToolProps {
   name: string
@@ -95,88 +104,7 @@ function ToolIcon({ name }: { name: string }) {
   )
 }
 
-function getInputSummary(name: string, input: Record<string, unknown>): string | null {
-  const lower = name.toLowerCase()
-  const path = String(input.file_path ?? input.path ?? input.filePath ?? input.directory ?? input.cwd ?? '')
-  const pattern = String(input.pattern ?? input.query ?? '')
-  const start = input.start_line ?? input.startLine ?? input.start
-  const end = input.end_line ?? input.endLine ?? input.end
-
-  // grep: "Grepped {pattern} in {path}"
-  if (lower.includes('grep') && (pattern || path)) {
-    const scope = path || 'codebase'
-    return pattern ? `Grepped ${pattern} in ${scope}` : `Grepped in ${scope}`
-  }
-
-  // read: "Read {path} L{start}-{end}" or "Read {path}"
-  if (lower.includes('read') && path) {
-    if (start != null && end != null) return `Read ${path} L${start}-${end}`
-    if (start != null) return `Read ${path} L${start}`
-    return `Read ${path}`
-  }
-
-  // glob/search: "Searched {query} in {path}"
-  if ((lower.includes('glob') || lower.includes('search')) && (pattern || input.glob || path)) {
-    const q = String(input.glob ?? pattern)
-    return q ? `Searched ${q} in ${path || 'codebase'}` : `Searched in ${path || 'codebase'}`
-  }
-
-  // web/fetch: "Searched web {query}"
-  if ((lower.includes('web') || lower.includes('fetch')) && (pattern || input.url)) {
-    const q = String(input.url ?? pattern)
-    return q ? `Searched web ${q}` : 'Searched web'
-  }
-
-  // Fallback: generic summaries with truncation
-  if (path) {
-    const segments = path.split('/')
-    return segments.length > 3 ? '.../' + segments.slice(-3).join('/') : path
-  }
-  if (input.command) {
-    const cmd = String(input.command)
-    return cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd
-  }
-  if (pattern) return pattern.length > 60 ? pattern.slice(0, 57) + '...' : pattern
-  if (input.glob) return String(input.glob)
-  if (input.content) {
-    const c = String(input.content)
-    return c.length > 60 ? c.slice(0, 57) + '...' : c
-  }
-  if (input.description) {
-    const d = String(input.description)
-    return d.length > 60 ? d.slice(0, 57) + '...' : d
-  }
-  if (input.prompt) {
-    const p = String(input.prompt)
-    return p.length > 60 ? p.slice(0, 57) + '...' : p
-  }
-  const keys = Object.keys(input)
-  if (keys.length === 1) {
-    const val = String(input[keys[0]])
-    return val.length > 60 ? val.slice(0, 57) + '...' : val
-  }
-  return null
-}
-
-function formatOutput(output: unknown): [string, boolean] {
-  let text: string
-  if (typeof output === 'string') {
-    try {
-      const parsed = JSON.parse(output)
-      text = JSON.stringify(parsed, null, 2)
-    } catch {
-      text = output
-    }
-  } else {
-    text = JSON.stringify(output, null, 2)
-  }
-  const MAX_LINES = 30
-  const lines = text.split('\n')
-  if (lines.length > MAX_LINES) {
-    return [lines.slice(0, MAX_LINES).join('\n'), true]
-  }
-  return [text, false]
-}
+// ============ Shared Icons ============
 
 const FILE_ICON = (
   <svg className="w-3 h-3 shrink-0 text-muted-foreground/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -187,57 +115,12 @@ const FILE_ICON = (
   </svg>
 )
 
-function parseGrepOutput(output: unknown): Array<{ path: string; count?: number }> | null {
-  if (!output) return null
-  let data: unknown
-  if (typeof output === 'string') {
-    try {
-      data = JSON.parse(output)
-    } catch {
-      const pathCounts = new Map<string, number>()
-      for (const line of output.split('\n')) {
-        const colonIdx = line.indexOf(':')
-        if (colonIdx > 0) {
-          const path = line.slice(0, colonIdx).trim()
-          if (path && !path.startsWith('{')) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1)
-        }
-      }
-      return pathCounts.size > 0
-        ? Array.from(pathCounts.entries()).map(([path, count]) => ({ path, count }))
-        : null
-    }
-  } else {
-    data = output
-  }
-  if (Array.isArray(data)) {
-    return data
-      .map((item) => {
-        if (typeof item === 'string') return { path: item }
-        if (item && typeof item === 'object' && 'path' in item) return { path: String(item.path), count: (item as { count?: number }).count }
-        if (item && typeof item === 'object' && 'file' in item) return { path: String((item as { file: string }).file) }
-        return null
-      })
-      .filter((x): x is { path: string; count?: number } => x !== null)
-  }
-  if (data && typeof data === 'object' && 'matches' in data) {
-    const matches = (data as { matches?: unknown[] }).matches
-    if (Array.isArray(matches)) {
-      const paths = new Map<string, number>()
-      for (const m of matches) {
-        const path = m && typeof m === 'object' && 'path' in m ? String((m as { path: string }).path) : null
-        if (path) paths.set(path, (paths.get(path) ?? 0) + 1)
-      }
-      return Array.from(paths.entries()).map(([path, count]) => ({ path, count }))
-    }
-  }
-  return null
-}
+// ============ Specialized Output Renderers ============
 
 function renderToolOutput(
   name: string,
   input: Record<string, unknown> | undefined,
   output: unknown,
-  compact?: boolean,
 ): React.ReactNode | null {
   const lower = name.toLowerCase()
 
@@ -262,41 +145,25 @@ function renderToolOutput(
     }
   }
 
-  if (lower.includes('read') && input) {
+  if (isFileReadTool(name, input, output) && input) {
     const path = String(input.file_path ?? input.path ?? input.filePath ?? '')
     const start = input.start_line ?? input.startLine ?? input.start
     const end = input.end_line ?? input.endLine ?? input.end
     if (path) {
-      return (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-foreground/90 font-mono text-[11px]">
-            {FILE_ICON}
-            <span className="font-medium">{path}</span>
-            {(start != null || end != null) && (
-              <span className="text-muted-foreground/60">
-                {start != null && end != null ? `L${start}-${end}` : start != null ? `L${start}` : end != null ? `L${end}` : ''}
-              </span>
-            )}
-          </div>
-          {output != null && (
-            <ScrollArea
-              className={cn(
-                'rounded border max-h-[300px]',
-                compact ? 'border-border/20 bg-muted/10' : 'border-border/40 bg-muted/20',
-              )}
-            >
-              <pre className="p-3 text-foreground/80 font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
-                {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
-              </pre>
-            </ScrollArea>
-          )}
-        </div>
-      )
+      const fileContent = extractReadContent(output)
+      const fileName = path.split('/').pop() ?? path
+      const lang = getLanguageFromPath(fileName)
+
+      return fileContent ? (
+        <CodeBlock code={fileContent} language={lang} className="my-0" />
+      ) : null
     }
   }
 
   return null
 }
+
+// ============ Tool Component ============
 
 export function Tool({
   name,
@@ -312,8 +179,10 @@ export function Tool({
   const [isOpen, setIsOpen] = React.useState(false)
   const [showFullOutput, setShowFullOutput] = React.useState(false)
 
+  const isReadTool = isFileReadTool(name, input, output)
   const inputSummary = input && Object.keys(input).length > 0 ? getInputSummary(name, input) : null
-  const hasDetails = (input && Object.keys(input).length > 0) || output !== undefined
+  const hasOutput = output !== undefined && (typeof output !== 'string' || output.length > 0)
+  const hasDetails = (input && Object.keys(input).length > 0 && !isReadTool) || hasOutput
 
   const [truncatedOutput, isOutputTruncated] = output !== undefined ? formatOutput(output) : ['', false]
   const fullOutputText =
@@ -386,7 +255,7 @@ export function Tool({
                 !compact && 'border-l border-border/30',
               )}
             >
-              {input && Object.keys(input).length > 0 && (
+              {input && Object.keys(input).length > 0 && !isReadTool && (
                 <div className="space-y-1.5">
                   <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
                     Input
@@ -403,12 +272,14 @@ export function Tool({
                   </ScrollArea>
                 </div>
               )}
-              {output !== undefined && (
-                <div className="space-y-1.5">
-                  <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
-                    Output
-                  </p>
-                  {renderToolOutput(name, input, output, compact) ?? (
+              {hasOutput && (
+                <div className={cn('space-y-1.5', isReadTool && 'space-y-0')}>
+                  {!isReadTool && (
+                    <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
+                      Output
+                    </p>
+                  )}
+                  {renderToolOutput(name, input, output) ?? (
                     <>
                       <ScrollArea
                         className={cn(

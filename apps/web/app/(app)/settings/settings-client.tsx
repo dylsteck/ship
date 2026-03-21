@@ -4,9 +4,11 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { setApiToken } from '@/lib/api/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useIsMobile, SidebarTrigger } from '@ship/ui'
+import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
+import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
-import { Card, CardContent } from '@ship/ui'
 import {
   useModels,
   useDefaultModel,
@@ -14,6 +16,7 @@ import {
   useDefaultAgent,
   useFilteredGitHubRepos,
   useDefaultRepo,
+  useSessions,
 } from '@/lib/api'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -30,22 +33,46 @@ interface SettingsClientProps {
   apiToken?: string
 }
 
-export function SettingsClient({ userId, user, sessions, apiToken }: SettingsClientProps) {
-  // Set API auth token synchronously so SWR fetches have it before they run
+function SettingsSidebarTrigger() {
+  const { state } = useSidebar()
+  if (state !== 'collapsed') return null
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
+      <button
+        type="button"
+        onClick={() => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+        }}
+        className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+        title="Search (⌘K)"
+      >
+        <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
+      </button>
+      <Link
+        href="/"
+        className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+        title="New Agent"
+      >
+        <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
+      </Link>
+    </div>
+  )
+}
+
+export function SettingsClient({ userId, user, sessions: initialSessions, apiToken }: SettingsClientProps) {
   if (apiToken) setApiToken(apiToken)
   const router = useRouter()
   const isMobile = useIsMobile()
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Agent hooks
+  const { sessions: swrSessions } = useSessions(userId, { revalidateOnFocus: true })
+  const sessions = swrSessions.length > 0 ? swrSessions : initialSessions
+
   const { agents, isLoading: agentsLoading } = useAgents()
   const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-
-  // Model hooks
   const { models: availableModels, isLoading: modelsLoading } = useModels()
   const { defaultModelId, isLoading: defaultModelLoading } = useDefaultModel(userId)
-
-  // Repo hooks
   const {
     repos,
     isLoading: reposLoading,
@@ -55,7 +82,6 @@ export function SettingsClient({ userId, user, sessions, apiToken }: SettingsCli
   } = useFilteredGitHubRepos(userId, '')
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
 
-  // Track selected agent to filter models
   const [selectedAgentId, setSelectedAgentId] = useState<string>('')
 
   useEffect(() => {
@@ -84,84 +110,67 @@ export function SettingsClient({ userId, user, sessions, apiToken }: SettingsCli
       <div className="size-4 border-2 border-muted border-t-foreground rounded-full animate-spin" />
     </div>
   ) : (
-    <div className="mx-auto max-w-2xl px-4 py-6">
+    <div className="mx-auto max-w-2xl px-4 py-8">
       {/* Mobile header */}
       {isMobile && (
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center justify-between px-3 pt-3 pb-1.5 -mx-4 -mt-8 mb-6">
           <Link
             href="/"
-            className="flex items-center justify-center size-8 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            aria-label="Back to dashboard"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-4"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
+            <span className="text-base leading-none">&lsaquo;</span>
+            Back to Agents
           </Link>
-          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+          <UserDropdown user={user} />
         </div>
       )}
 
-      {/* Desktop header */}
-      {!isMobile && (
-        <div className="flex items-center gap-2 mb-6">
-          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
-        </div>
-      )}
+      <h1 className="text-xl font-semibold text-foreground mb-8">Settings</h1>
 
-      <p className="text-xs text-muted-foreground mb-6">Manage your preferences</p>
-
-      {/* Defaults */}
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">Defaults</h2>
-      <div className="space-y-3 mb-8">
-        <DefaultAgentCard
-          userId={userId}
-          agents={agents}
-          defaultAgentId={defaultAgentId}
-          onAgentChange={setSelectedAgentId}
-        />
-
-        {agentModels.length > 1 && (
-          <DefaultModelCard
+      {/* Preferences */}
+      <section className="mb-8">
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Preferences</h2>
+        <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+          <DefaultAgentCard
             userId={userId}
-            models={agentModels}
-            defaultModelId={defaultModelId}
+            agents={agents}
+            defaultAgentId={defaultAgentId}
+            onAgentChange={setSelectedAgentId}
           />
-        )}
-
-        <DefaultRepoCard
-          userId={userId}
-          repos={repos}
-          reposLoading={reposLoading}
-          reposLoadMore={reposLoadMore}
-          reposHasMore={reposHasMore ?? false}
-          reposLoadingMore={reposLoadingMore ?? false}
-          defaultRepoFullName={defaultRepoFullName}
-        />
-      </div>
+          {agentModels.length > 1 && (
+            <DefaultModelCard
+              userId={userId}
+              models={agentModels}
+              defaultModelId={defaultModelId}
+            />
+          )}
+          <DefaultRepoCard
+            userId={userId}
+            repos={repos}
+            reposLoading={reposLoading}
+            reposLoadMore={reposLoadMore}
+            reposHasMore={reposHasMore ?? false}
+            reposLoadingMore={reposLoadingMore ?? false}
+            defaultRepoFullName={defaultRepoFullName}
+          />
+        </div>
+      </section>
 
       {/* Integrations */}
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">Integrations</h2>
-      <div className="space-y-3 mb-8">
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <ConnectorSettings userId={userId} />
-          </CardContent>
-        </Card>
-      </div>
+      <section className="mb-8">
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Integrations</h2>
+        <div className="rounded-lg border border-border overflow-hidden">
+          <ConnectorSettings userId={userId} />
+        </div>
+      </section>
 
       {/* Data */}
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">Data</h2>
-      <div className="space-y-3">
-        <DeleteAllSessionsCard userId={userId} />
-      </div>
+      <section>
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Data</h2>
+        <div className="rounded-lg border border-border overflow-hidden">
+          <DeleteAllSessionsCard userId={userId} />
+        </div>
+      </section>
     </div>
   )
 
@@ -178,7 +187,12 @@ export function SettingsClient({ userId, user, sessions, apiToken }: SettingsCli
         isStreaming: false,
       }}
     >
-      <div className="min-h-screen bg-muted/30">
+      <div className="min-h-screen relative">
+        {!isMobile && (
+          <div className="fixed top-3 left-3 z-10">
+            <SettingsSidebarTrigger />
+          </div>
+        )}
         {settingsContent}
       </div>
     </DashboardLayout>

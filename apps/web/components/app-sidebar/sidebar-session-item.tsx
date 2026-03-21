@@ -37,8 +37,8 @@ export function SessionItem({
         className={cn(
           'flex items-center gap-2 py-1.5 pr-6 pl-2 rounded-md text-left w-full transition-colors',
           isCurrent
-            ? 'bg-sidebar-accent text-foreground'
-            : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+            ? 'text-foreground'
+            : 'text-muted-foreground hover:text-foreground',
         )}
       >
         {isStreamingForSession && (

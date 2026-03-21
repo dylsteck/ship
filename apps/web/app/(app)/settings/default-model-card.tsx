@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import {
   Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectGroup,
+  SelectLabel,
+  SelectItem,
 } from '@ship/ui'
-import { ModelSelector, ModelBadge } from '@/components/model/model-selector'
 import { useSetDefaultModel, useDefaultModel } from '@/lib/api/hooks/use-models'
 import type { ModelInfo } from '@/lib/api/types'
 
@@ -47,49 +48,64 @@ export function DefaultModelCard({ userId, models, defaultModelId }: DefaultMode
     }
   }
 
+  // Group models by provider
+  const groupedModels = models.reduce<Record<string, ModelInfo[]>>((acc, model) => {
+    if (!acc[model.provider]) acc[model.provider] = []
+    acc[model.provider].push(model)
+    return acc
+  }, {})
+
   return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Default Model</CardTitle>
-        <CardDescription className="text-xs">
-          Choose which model is selected by default for new sessions
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Model</label>
-          <ModelSelector
+    <div className="px-4 py-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Default Model</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose which model is selected by default for new sessions
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Select
             value={selected}
-            onChange={setSelected}
-            availableModels={models}
+            onValueChange={(val) => val && setSelected(val)}
             disabled={isSetting}
-          />
+          >
+            <SelectTrigger className="min-w-[140px]">
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(groupedModels).map(([provider, providerModels]) => {
+                const singleGroup = Object.keys(groupedModels).length === 1
+                return (
+                  <SelectGroup key={provider}>
+                    {!singleGroup && <SelectLabel className="capitalize">{provider}</SelectLabel>}
+                    {providerModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )
+              })}
+            </SelectContent>
+          </Select>
+          {hasChanges && (
+            <Button size="sm" variant="outline" onClick={handleSave} disabled={isSetting} className="h-7 text-xs">
+              {isSetting ? 'Saving...' : 'Save'}
+            </Button>
+          )}
         </div>
-        {selected && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Current:</p>
-            <ModelBadge
-              modelId={selected}
-              modelName={models.find((m) => m.id === selected)?.name}
-            />
-          </div>
-        )}
-        {error && (
-          <div className="rounded-md bg-destructive/10 px-3 py-2">
-            <p className="text-xs text-destructive">{error}</p>
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="rounded-md bg-emerald-500/10 px-3 py-2">
-            <p className="text-xs text-emerald-600">Saved!</p>
-          </div>
-        )}
-        <div className="flex justify-end pt-1">
-          <Button size="sm" onClick={handleSave} disabled={!hasChanges || isSetting}>
-            {isSetting ? 'Saving...' : 'Save'}
-          </Button>
+      </div>
+      {error && (
+        <div className="mt-2 rounded-md bg-destructive/10 px-3 py-1.5">
+          <p className="text-xs text-destructive">{error}</p>
         </div>
-      </CardContent>
-    </Card>
+      )}
+      {saveSuccess && (
+        <div className="mt-2 rounded-md bg-emerald-500/10 px-3 py-1.5">
+          <p className="text-xs text-emerald-600">Saved!</p>
+        </div>
+      )}
+    </div>
   )
 }

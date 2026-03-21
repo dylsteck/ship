@@ -19,9 +19,9 @@ export function Message({ role, children, className }: MessageProps) {
 
   if (role === 'user') {
     return (
-      <div className={cn('flex justify-end py-3', className)}>
-        <div className="inline-block rounded-2xl bg-secondary text-secondary-foreground px-5 py-3 max-w-[80%]">
-          <div className="text-[15px]">{children}</div>
+      <div className={cn('py-3', className)}>
+        <div className="w-full rounded-full border border-border/50 bg-secondary/30 text-secondary-foreground px-4 py-2">
+          <div className="text-sm">{children}</div>
         </div>
       </div>
     )

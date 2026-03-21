@@ -16,12 +16,12 @@ export function SessionActionsSection({ tokens }: SessionActionsSectionProps) {
   if (usagePercent < 75) return null
 
   return (
-    <div className="px-3 py-2 border-t border-border/10">
+    <div className="px-3 py-2">
       <div className={cn(
-        'text-[9px] font-medium px-2 py-1.5 rounded-md',
+        'text-[11px] font-medium px-3 py-2 rounded-md border',
         usagePercent >= 90
-          ? 'bg-red-500/10 text-red-500'
-          : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500',
+          ? 'bg-red-500/5 text-red-500 border-red-500/20'
+          : 'bg-yellow-500/5 text-yellow-600 dark:text-yellow-500 border-yellow-500/20',
       )}>
         Context {usagePercent >= 95 ? 'nearly full' : 'getting full'} ({usagePercent.toFixed(0)}%)
       </div>

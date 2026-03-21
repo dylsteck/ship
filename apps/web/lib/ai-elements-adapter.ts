@@ -416,6 +416,28 @@ interface ApiMessage {
 }
 
 /**
+ * If content is a JSON array of text parts (e.g. [{"text":"...","type":"text"}]),
+ * extract and join the text. Otherwise return as-is.
+ */
+function extractTextContent(content: string): string {
+  if (!content || !content.startsWith('[')) return content
+  try {
+    const parts = JSON.parse(content)
+    if (Array.isArray(parts) && parts.length > 0 && parts[0]?.type === 'text') {
+      return parts
+        .filter((p: { type: string; text?: string }) =>
+          p.type === 'text' && p.text && !p.text.startsWith('agentId:'),
+        )
+        .map((p: { text: string }) => p.text)
+        .join('\n\n')
+    }
+  } catch {
+    // Not JSON, return as-is
+  }
+  return content
+}
+
+/**
  * Map an array of API messages to UIMessages (for loading history on reload).
  * Parses the `parts` JSON string to restore reasoning, tool invocations, and elapsed time.
  */
@@ -424,7 +446,7 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
     const uiMsg: UIMessage = {
       id: msg.id,
       role: msg.role,
-      content: msg.content,
+      content: extractTextContent(msg.content),
       createdAt: new Date(msg.createdAt * 1000),
     }
 
