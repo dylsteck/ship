@@ -97,7 +97,7 @@ export function DashboardHeader({
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
       {showSidebarTrigger && (
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
           <button
             type="button"

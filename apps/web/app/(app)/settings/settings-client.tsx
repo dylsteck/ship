@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon } from '@hugeicons/core-free-icons'
+import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { Card, CardContent } from '@ship/ui'
 import {
@@ -37,7 +38,7 @@ function SettingsSidebarTrigger() {
   const { state } = useSidebar()
   if (state !== 'collapsed') return null
   return (
-    <div className="flex items-center gap-1 shrink-0">
+    <div className="flex items-center gap-2 shrink-0">
       <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
       <button
         type="button"
@@ -114,40 +115,35 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
     <div className="mx-auto max-w-2xl px-4 py-6">
       {/* Mobile header */}
       {isMobile && (
-        <div className="flex items-center gap-3 mb-6">
-          <Link
-            href="/"
-            className="flex items-center justify-center size-8 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            aria-label="Back to dashboard"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-4"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </Link>
-          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+        <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 -mx-4 -mt-6 mb-4">
+          <div className="flex items-center gap-2 ml-auto">
+            <nav className="flex items-center gap-0.5">
+              <Link
+                href="/"
+                className="px-1.5 py-1 text-sm transition-colors text-muted-foreground hover:text-foreground"
+              >
+                Agents
+              </Link>
+              <Link
+                href="/settings"
+                className="px-1.5 py-1 text-sm transition-colors text-foreground font-medium"
+              >
+                Settings
+              </Link>
+            </nav>
+            <UserDropdown user={user} />
+          </div>
         </div>
       )}
 
-      {/* Desktop header */}
-      {!isMobile && (
-        <div className="flex items-center gap-2 mb-6">
-          <SettingsSidebarTrigger />
+      <div className="mb-6">
+        <div className="flex items-center gap-2">
+          {!isMobile && <SettingsSidebarTrigger />}
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         </div>
-      )}
+        <p className="text-xs text-muted-foreground mt-1">Manage your preferences</p>
+      </div>
 
-      <p className="text-xs text-muted-foreground mb-6">Manage your preferences</p>
-
-      {/* Defaults */}
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">Defaults</h2>
       <div className="space-y-3 mb-8">
         <DefaultAgentCard
           userId={userId}
@@ -206,7 +202,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
         isStreaming: false,
       }}
     >
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen">
         {settingsContent}
       </div>
     </DashboardLayout>

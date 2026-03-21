@@ -59,8 +59,8 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
             </div>
 
             {/* Bottom bar inside the card: + mode button, model selector, spacer, submit */}
-            <div className="flex items-center gap-1 px-3 h-[36px]">
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2.5 px-3 pb-1 h-[40px]">
+              <div className="flex items-center gap-2">
                 <ClientOnly>
                   <ModeToggle />
                 </ClientOnly>

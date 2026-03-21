@@ -48,7 +48,7 @@ export function AgentModelSelector() {
             variant="ghost"
             size="sm"
             disabled={isStreaming}
-            className="group h-auto gap-0.5 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent! hover:shadow-none! disabled:opacity-60 disabled:pointer-events-none max-w-full overflow-hidden"
+            className="group h-6 gap-0.5 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent! hover:shadow-none! disabled:opacity-60 disabled:pointer-events-none max-w-full overflow-hidden"
           >
             <span className="truncate text-xs">{triggerLabel}</span>
             <svg

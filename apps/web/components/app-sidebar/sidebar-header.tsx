@@ -26,7 +26,7 @@ export function SidebarHeaderSection({ onSearchOpen, onNewChat }: SidebarHeaderP
     <>
       <SidebarHeaderPrimitive>
         <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:justify-center">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
             <button
               type="button"

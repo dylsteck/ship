@@ -60,7 +60,7 @@ export function ModeToggle() {
       </DropdownMenu>
 
       {isNonDefault && currentMode && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 py-0.5 text-xs font-medium text-rose-400">
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 h-6 text-xs font-medium text-rose-400">
           {currentMode.label}
           <button
             type="button"
