@@ -4,6 +4,7 @@ import * as React from 'react'
 import { cn } from '../utils'
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible'
 import { ScrollArea } from '../scroll-area'
+import { CodeBlock } from './code-block'
 
 interface ToolProps {
   name: string
@@ -233,6 +234,76 @@ function parseGrepOutput(output: unknown): Array<{ path: string; count?: number 
   return null
 }
 
+function extractReadContent(output: unknown): string | null {
+  if (output == null) return null
+  let data: unknown = output
+  if (typeof output === 'string') {
+    try {
+      data = JSON.parse(output)
+    } catch {
+      // Not JSON — might be raw file content or structured text
+    }
+  }
+
+  // Handle structured output: { output: "...<content>...</content>...", preview: "...", metadata: {...} }
+  if (data && typeof data === 'object' && 'output' in data) {
+    const raw = String((data as { output: string }).output)
+    // Extract content between <content> tags if present
+    const contentMatch = raw.match(/<content>([\s\S]*?)$/)
+    if (contentMatch) {
+      // Strip line number prefixes like "1: ", "23: " etc
+      return stripLineNumbers(contentMatch[1])
+    }
+    return stripLineNumbers(raw)
+  }
+
+  // Handle plain string output
+  if (typeof output === 'string') {
+    const contentMatch = output.match(/<content>([\s\S]*?)$/)
+    if (contentMatch) {
+      return stripLineNumbers(contentMatch[1])
+    }
+    return output
+  }
+
+  return typeof data === 'string' ? data : JSON.stringify(data, null, 2)
+}
+
+function stripLineNumbers(text: string): string {
+  const lines = text.split('\n')
+  // Check if lines start with line number prefixes like "1: ", "12: ", " 5: "
+  const hasLineNumbers = lines.length > 1 && lines.slice(0, 5).every(
+    (l) => l === '' || /^\s*\d+[:\t]\s?/.test(l),
+  )
+  if (hasLineNumbers) {
+    return lines.map((l) => l.replace(/^\s*\d+[:\t]\s?/, '')).join('\n')
+  }
+  return text
+}
+
+const EXT_TO_LANG: Record<string, string> = {
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  ts: 'typescript', mts: 'typescript', cts: 'typescript',
+  tsx: 'tsx', jsx: 'jsx',
+  py: 'python',
+  json: 'json',
+  html: 'html', htm: 'html',
+  css: 'css', scss: 'css',
+  sh: 'bash', zsh: 'bash',
+  md: 'markdown', mdx: 'markdown',
+  yml: 'yaml', yaml: 'yaml',
+  sql: 'sql',
+  rs: 'rust',
+  go: 'go',
+  toml: 'toml',
+  diff: 'diff', patch: 'diff',
+}
+
+function getLanguageFromPath(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  return EXT_TO_LANG[ext] ?? 'text'
+}
+
 function renderToolOutput(
   name: string,
   input: Record<string, unknown> | undefined,
@@ -267,6 +338,11 @@ function renderToolOutput(
     const start = input.start_line ?? input.startLine ?? input.start
     const end = input.end_line ?? input.endLine ?? input.end
     if (path) {
+      // Extract clean file content from structured output
+      const fileContent = extractReadContent(output)
+      const fileName = path.split('/').pop() ?? path
+      const lang = getLanguageFromPath(fileName)
+
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-foreground/90 font-mono text-[11px]">
@@ -278,17 +354,8 @@ function renderToolOutput(
               </span>
             )}
           </div>
-          {output != null && (
-            <ScrollArea
-              className={cn(
-                'rounded border max-h-[300px]',
-                compact ? 'border-border/20 bg-muted/10' : 'border-border/40 bg-muted/20',
-              )}
-            >
-              <pre className="p-3 text-foreground/80 font-mono text-[11px] whitespace-pre-wrap wrap-break-word">
-                {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
-              </pre>
-            </ScrollArea>
+          {fileContent != null && (
+            <CodeBlock code={fileContent} language={lang} className="my-0" />
           )}
         </div>
       )
@@ -312,6 +379,7 @@ export function Tool({
   const [isOpen, setIsOpen] = React.useState(false)
   const [showFullOutput, setShowFullOutput] = React.useState(false)
 
+  const isReadTool = name.toLowerCase().includes('read')
   const inputSummary = input && Object.keys(input).length > 0 ? getInputSummary(name, input) : null
   const hasDetails = (input && Object.keys(input).length > 0) || output !== undefined
 
@@ -386,7 +454,7 @@ export function Tool({
                 !compact && 'border-l border-border/30',
               )}
             >
-              {input && Object.keys(input).length > 0 && (
+              {input && Object.keys(input).length > 0 && !isReadTool && (
                 <div className="space-y-1.5">
                   <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
                     Input
@@ -404,10 +472,12 @@ export function Tool({
                 </div>
               )}
               {output !== undefined && (
-                <div className="space-y-1.5">
-                  <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
-                    Output
-                  </p>
+                <div className={cn('space-y-1.5', isReadTool && 'space-y-0')}>
+                  {!isReadTool && (
+                    <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
+                      Output
+                    </p>
+                  )}
                   {renderToolOutput(name, input, output, compact) ?? (
                     <>
                       <ScrollArea
