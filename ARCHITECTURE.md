@@ -66,7 +66,7 @@ This package hosts the API and session orchestration.
 
 Responsibilities:
 
-- mounts Hono routes: `/health`, `/users`, `/sessions`, `/chat`, `/sandbox`, `/git`, `/models`, `/accounts`, `/connectors`, `/terminal`, `/desktop`
+- mounts Hono routes: `/health`, `/users`, `/sessions`, `/chat`, `/sandbox`, `/git`, `/models`, `/accounts`, `/connectors`, `/terminal`
 - creates and manages Session Durable Objects (one per chat session)
 - provisions E2B sandboxes per session and starts sandbox-agent inside them
 - connects to sandbox-agent, creates or resumes agent sessions, and streams events
@@ -114,15 +114,6 @@ AI-specific rendering components:
 4. **Follow-up chats** — Reuse sandbox and agent session; refresh timeout on each message.
 5. **Unhealthy sandbox** — Try resume; if needed, re-provision and re-clone.
 6. **Delete session** — Hard delete from D1 (messages then session), `POST https://do/sandbox/terminate` for cleanup.
-
-### Desktop streaming
-
-Users can open an interactive Linux desktop for any active sandbox:
-
-1. **Start stream** — `POST /desktop/:sessionId/start` → connects via `@e2b/desktop` SDK, starts noVNC stream with auth.
-2. **View desktop** — Stream URL is loaded in an iframe (noVNC web client, fully interactive with mouse + keyboard).
-3. **State persistence** — Stream URL and auth key are stored in Session DO meta (`desktop_stream_url`, `desktop_stream_auth_key`), so the stream survives page refreshes.
-4. **Stop stream** — `POST /desktop/:sessionId/stop` → stops stream, clears DO meta.
 
 ### Agent lifecycle
 
@@ -291,7 +282,6 @@ DashboardClient (orchestrator — state, routing, session lifecycle)
 │   └── ComposerFooter
 └── RightSidebar (session stats, todos, file diffs, VCS link)
     ├── Git tab (diff, review, commits)
-    ├── Desktop tab (interactive noVNC desktop stream via @e2b/desktop)
     ├── Terminal tab (xterm.js)
     └── Overview tab (SessionPanel + EventsSection)
 ```
@@ -334,7 +324,6 @@ DashboardClient (orchestrator — state, routing, session lifecycle)
 | `/sessions` | Session CRUD, sandbox provisioning |
 | `/chat` | SSE streaming, messages, permission/question replies |
 | `/sandbox` | Sandbox lifecycle |
-| `/desktop` | Desktop stream start/stop/status |
 
 ### Deployment
 

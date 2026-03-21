@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This document provides context for AI agents working on this codebase.
+This document provides context for AI agents working on the Ship codebase.
 
 ## Agent Skills
 
@@ -102,14 +102,12 @@ ship/
 │           │   ├── chat.ts             # SSE streaming chat endpoint
 │           │   ├── sessions.ts         # Session CRUD
 │           │   ├── sandbox.ts          # Sandbox management
-│           │   ├── desktop.ts          # Desktop stream start/stop/status
 │           │   ├── models.ts           # Model listing
 │           │   ├── git.ts              # Git operations
 │           │   ├── connectors.ts       # GitHub connector status/enable/disable
 │           │   └── terminal.ts         # Terminal access
 │           ├── lib/
 │           │   ├── sandbox-agent.ts    # sandbox-agent SDK wrapper (with pre-install detection)
-│           │   ├── desktop.ts          # E2B desktop stream helpers (@e2b/desktop)
 │           │   ├── agent-registry.ts   # Agent config registry
 │           │   ├── event-translator.ts # UniversalEvent → Ship SSE translator
 │           │   └── e2b.ts              # E2B sandbox management (custom template support)
@@ -134,7 +132,7 @@ Ship uses **sandbox-agent** (by Rivet) as its agent runtime, which supports mult
 3. If binaries are missing (non-custom template fallback), they are installed at runtime via `sandbox-agent install-agent`
 4. `sandbox-agent server` exposes an HTTP/SSE API inside the sandbox on port 3000
 5. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
-6. Users can open an interactive desktop stream via the Desktop tab (noVNC via `@e2b/desktop` SDK)
+6. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
 
 ### Building the custom E2B template
 
@@ -179,7 +177,6 @@ Agent configs are defined in `apps/api/src/lib/agent-registry.ts`. Default agent
 ### Key API Files
 
 - **`sandbox-agent.ts`** — SDK wrapper. Functions: `startSandboxAgentServer`, `connectToSandboxAgent`, `createAgentSession`, `promptAgent`, `cancelAgent`, `subscribeToSessionEvents`. Caches client instances per sandbox URL. Checks for pre-installed binaries before installing (custom template fast path). `promptAgent` runs without artificial timeout — safety is provided by server-side event timeout, client-side stall detector, and user cancel.
-- **`desktop.ts`** — Desktop stream helpers using `@e2b/desktop` SDK. Functions: `startDesktopStream`, `stopDesktopStream`.
 - **`e2b.ts`** — E2B sandbox provisioning. Supports custom template via `E2B_TEMPLATE_ID` constant.
 - **`event-translator.ts`** — Stateful translator class (`EventTranslatorState`) that maps sandbox-agent's `UniversalEvent` schema to Ship's SSE events. Tracks text/reasoning accumulators, tool call state, and file changes across a session stream.
 - **`agent-registry.ts`** — Registry of `AgentConfig` objects with `getAgent()`, `listAgents()`, and `getDefaultAgentId()` helpers.

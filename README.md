@@ -158,8 +158,7 @@ pnpm dev
 3. **Chat** with the AI agent (Claude Code, OpenCode, or Codex)
 4. **sandbox-agent** runs in an E2B sandbox (custom template for fast startup), hosts the ACP agent — writes code, runs tests, creates PRs
 5. **Watch progress** via SSE (tool calls, reasoning, file changes)
-6. **Interactive desktop** — open a live noVNC desktop stream to see and interact with the sandbox
-7. **Review & deploy** via MCP (Vercel, GitHub, docs)
+6. **Review & deploy** via MCP (Vercel, GitHub, docs)
 
 ---
 
@@ -186,8 +185,7 @@ graph TD
 | Backend   | Cloudflare Workers (Hono), Durable Objects |
 | Database  | Cloudflare D1 (SQLite)                     |
 | Auth      | GitHub OAuth (Arctic), JWT (jose)          |
-| Sandboxes | E2B (custom template with sandbox-agent + desktop pre-baked) |
-| Desktop   | E2B Desktop streaming (@e2b/desktop, noVNC)  |
+| Sandboxes | E2B (custom template with sandbox-agent pre-baked) |
 | Agents    | sandbox-agent + ACP (Claude Code, OpenCode, Codex) |
 | MCP       | Grep, DeepWiki, Exa                       |
 | Real-time | SSE, WebSockets                            |
@@ -204,9 +202,9 @@ ship/
 │   └── api/           # Cloudflare Worker
 │       ├── src/
 │       │   ├── index.ts
-│       │   ├── routes/       # Hono routes (incl. desktop streaming)
+│       │   ├── routes/       # Hono routes
 │       │   ├── durable-objects/
-│       │   └── lib/          # E2B, sandbox-agent, desktop, event-translator
+│       │   └── lib/          # E2B, sandbox-agent, event-translator
 │       ├── migrations/
 │       └── wrangler.toml
 ├── e2b/               # Custom E2B template
