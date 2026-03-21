@@ -180,6 +180,13 @@
   }
 }
 
+/* Shiki dual-theme: swap to dark colors when .dark class is present */
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+}
+
 /* Shimmer animation for loading/thinking text */
 @keyframes shimmer {
   0% {

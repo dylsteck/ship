@@ -16,7 +16,7 @@ function getHighlighter() {
   if (!highlighterPromise) {
     highlighterPromise = import('shiki').then((mod) =>
       mod.createHighlighter({
-        themes: ['github-dark'],
+        themes: ['github-dark', 'github-light'],
         langs: [
           'javascript',
           'typescript',
@@ -52,14 +52,16 @@ function useShikiHighlight(code: string, language: string) {
       .then((highlighter) => {
         if (cancelled) return
 
-        // Check if the language is supported, fallback to 'text' rendering
         const loadedLangs = highlighter.getLoadedLanguages()
         const lang = loadedLangs.includes(language as never) ? language : null
 
         if (lang) {
           const highlighted = highlighter.codeToHtml(code, {
             lang,
-            theme: 'github-dark',
+            themes: {
+              light: 'github-light',
+              dark: 'github-dark',
+            },
           })
           if (!cancelled) setHtml(highlighted)
         }
@@ -87,7 +89,11 @@ export function CodeBlock({ code, language = 'text', className }: CodeBlockProps
   }
 
   return (
-    <div className={cn('group/codeblock relative rounded-lg overflow-hidden border border-border/30 bg-[#0d1117] my-3', className)}>
+    <div className={cn(
+      'group/codeblock relative rounded-lg overflow-hidden border border-border/30 my-3',
+      'bg-[#f6f8fa] dark:bg-[#0d1117]',
+      className,
+    )}>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2 opacity-0 group-hover/codeblock:opacity-100 transition-opacity">
         {language && language !== 'text' && (
           <span className="text-[10px] text-muted-foreground/40 font-mono select-none">{language}</span>
@@ -97,8 +103,8 @@ export function CodeBlock({ code, language = 'text', className }: CodeBlockProps
           className={cn(
             'text-[11px] px-1.5 py-0.5 rounded transition-all font-medium',
             copied
-              ? 'text-green-400'
-              : 'text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-white/5',
+              ? 'text-green-600 dark:text-green-400'
+              : 'text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-black/5 dark:hover:bg-white/5',
           )}
         >
           {copied ? 'Copied!' : 'Copy'}
@@ -111,7 +117,7 @@ export function CodeBlock({ code, language = 'text', className }: CodeBlockProps
         />
       ) : (
         <pre className="p-4 overflow-x-auto text-[13px] leading-[1.6]">
-          <code className="font-mono text-[#e6edf3]">{code}</code>
+          <code className="font-mono text-[#1f2328] dark:text-[#e6edf3]">{code}</code>
         </pre>
       )}
     </div>
