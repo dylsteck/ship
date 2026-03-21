@@ -5,7 +5,7 @@ import type { SessionPanelProps } from './types'
 import { TasksSection } from './tasks-section'
 import { StatsSection } from './stats-section'
 import { ChangesSection } from './changes-section'
-import { AgentLink } from './agent-link'
+
 import { SessionActionsSection } from './session-actions-section'
 import { VCSSection } from './vcs-section'
 import { EventsSection } from './events-section'
@@ -48,6 +48,7 @@ export function SessionPanel({
         cost={cost}
         messages={messages}
         sessionInfo={sessionInfo}
+        agentUrl={agentUrl}
       />
 
       {/* Tasks */}
@@ -61,9 +62,6 @@ export function SessionPanel({
 
       {/* Session Health */}
       <SessionActionsSection tokens={tokens} sessionCreatedAt={sessionInfo?.time?.created} />
-
-      {/* Agent link */}
-      {agentUrl && <AgentLink url={agentUrl} agentSessionId={agentSessionId} />}
 
       {/* Events inspector */}
       <EventsSection sessionId={sessionId} messageCount={messages.length} />

@@ -34,7 +34,8 @@ export function StatsSection({
   cost,
   messages,
   sessionInfo,
-}: Pick<SessionPanelProps, 'sessionId' | 'agent' | 'model' | 'repo' | 'tokens' | 'cost' | 'sessionInfo'> & { messages: UIMessage[] }) {
+  agentUrl,
+}: Pick<SessionPanelProps, 'sessionId' | 'agent' | 'model' | 'repo' | 'tokens' | 'cost' | 'sessionInfo' | 'agentUrl'> & { messages: UIMessage[] }) {
   const messageCounts = useMemo(() => {
     const user = messages.filter((m) => m.role === 'user').length
     const assistant = messages.filter((m) => m.role === 'assistant').length
@@ -45,7 +46,7 @@ export function StatsSection({
   const contextLimit = tokens?.contextLimit || 200000
   const usagePercent = tokens ? Math.min((totalTokens / contextLimit) * 100, 100) : 0
 
-  const hasInfo = agent || model || repo
+  const hasInfo = agent || model || repo || agentUrl
   const hasTokens = tokens && totalTokens > 0
 
   if (!hasInfo && !hasTokens && messageCounts.total === 0) return null
@@ -71,6 +72,21 @@ export function StatsSection({
           {repo && <StatRow label="Repo" value={`${repo.owner}/${repo.name}`} />}
           {messageCounts.total > 0 && (
             <StatRow label="Messages" value={`${messageCounts.total}`} />
+          )}
+          {agentUrl && (
+            <StatRow
+              label="URL"
+              value={
+                <a
+                  href={agentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-primary transition-colors truncate"
+                >
+                  {agentUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </a>
+              }
+            />
           )}
           {cost !== undefined && cost > 0 && (
             <StatRow label="Cost" value={formatCost(cost)} />
