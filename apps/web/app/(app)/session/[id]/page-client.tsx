@@ -356,11 +356,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               )}
               {/* Title */}
               <span className="text-xs text-muted-foreground truncate">
-                {sessionTitle
-                  ? sessionTitle
-                  : sessionInfo.repoOwner && sessionInfo.repoName
-                    ? `${sessionInfo.repoOwner}/${sessionInfo.repoName}`
-                    : 'Session'}
+                {sessionTitle || 'Session'}
               </span>
               {/* Branch */}
               {sessionInfo.branch && (

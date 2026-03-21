@@ -63,7 +63,7 @@ export function AppSidebar({
         window.location.href = '/'
       }
     } catch (error) {
-      console.error('Failed to delete session:', error)
+      console.warn('Failed to delete session:', error)
       onSessionDeleteFailed?.(session)
     } finally {
       setDeletingSessionId(null)
