@@ -31,6 +31,8 @@ export function AppSidebar({
   const { deleteSession } = useDeleteSession()
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [groupBy, setGroupBy] = useState<'none' | 'project' | 'date' | 'status'>('none')
+  const [compact, setCompact] = useState(true)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -83,9 +85,17 @@ export function AppSidebar({
         streamingSessionIds={streamingSessionIds}
         deletingSessionId={deletingSessionId}
         onDeleteSession={handleDeleteSession}
+        groupBy={groupBy}
+        compact={compact}
       />
 
-      <SidebarFooterSection user={user} />
+      <SidebarFooterSection
+        user={user}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+        compact={compact}
+        onCompactChange={setCompact}
+      />
 
       <ChatSearchCommand
         open={searchOpen}

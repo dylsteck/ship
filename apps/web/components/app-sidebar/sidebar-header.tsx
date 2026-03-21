@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -27,22 +26,16 @@ export function SidebarHeaderSection({ onSearchOpen, onNewChat }: SidebarHeaderP
     <>
       <SidebarHeaderPrimitive>
         <div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:justify-center">
-          <Link
-            href="/"
-            className="text-sm font-semibold text-foreground group-data-[collapsible=icon]:hidden hover:opacity-80 transition-opacity"
-          >
-            Ship
-          </Link>
           <div className="flex items-center gap-1">
+            <SidebarTrigger className="size-4.5 cursor-pointer text-muted-foreground hover:text-foreground" />
             <button
               type="button"
               onClick={onSearchOpen}
-              className="size-5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors group-data-[collapsible=icon]:hidden"
+              className="size-4.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
               title="Search (⌘K)"
             >
-              <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" />
+              <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4.5" />
             </button>
-            <SidebarTrigger className="size-5 cursor-pointer text-muted-foreground hover:text-foreground" />
           </div>
         </div>
       </SidebarHeaderPrimitive>
@@ -57,30 +50,6 @@ export function SidebarHeaderSection({ onSearchOpen, onNewChat }: SidebarHeaderP
               <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4 text-muted-foreground/50 shrink-0" />
               <span className="text-sm font-normal text-foreground/75 group-data-[collapsible=icon]:hidden">
                 New chat
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton render={<button type="button" />}>
-              <svg className="size-4 shrink-0 text-muted-foreground/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 8v4l3 3" />
-                <circle cx="12" cy="12" r="9" />
-              </svg>
-              <span className="text-sm font-normal text-foreground/75 group-data-[collapsible=icon]:hidden">
-                Automations
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton render={<button type="button" />}>
-              <svg className="size-4 shrink-0 text-muted-foreground/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="5" r="3" />
-                <circle cx="5" cy="19" r="3" />
-                <circle cx="19" cy="19" r="3" />
-                <path d="M12 8v3M7.5 17.2 10.5 11M16.5 17.2 13.5 11" />
-              </svg>
-              <span className="text-sm font-normal text-foreground/75 group-data-[collapsible=icon]:hidden">
-                Swarm
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
