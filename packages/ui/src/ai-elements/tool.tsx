@@ -271,12 +271,22 @@ function extractReadContent(output: unknown): string | null {
 
 function stripLineNumbers(text: string): string {
   const lines = text.split('\n')
-  // Check if lines start with line number prefixes like "1: ", "12: ", " 5: "
-  const hasLineNumbers = lines.length > 1 && lines.slice(0, 5).every(
-    (l) => l === '' || /^\s*\d+[:\t]\s?/.test(l),
-  )
-  if (hasLineNumbers) {
-    return lines.map((l) => l.replace(/^\s*\d+[:\t]\s?/, '')).join('\n')
+  // Match "cat -n" style: "     1\tcode" or Claude-style: "1: code", " 12: code"
+  // Only strip if the majority of non-empty lines match the pattern
+  const nonEmpty = lines.filter((l) => l.trim() !== '')
+  if (nonEmpty.length < 2) return text
+
+  const catNPattern = /^\s+\d+\t/
+  const colonPattern = /^\s*\d+: /
+
+  const catNMatches = nonEmpty.filter((l) => catNPattern.test(l)).length
+  const colonMatches = nonEmpty.filter((l) => colonPattern.test(l)).length
+
+  if (catNMatches / nonEmpty.length > 0.8) {
+    return lines.map((l) => l.replace(/^\s+\d+\t/, '')).join('\n')
+  }
+  if (colonMatches / nonEmpty.length > 0.8) {
+    return lines.map((l) => l.replace(/^\s*\d+: /, '')).join('\n')
   }
   return text
 }
