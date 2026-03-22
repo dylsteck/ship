@@ -87,9 +87,18 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
 
   const { agents, isLoading: agentsLoading } = useAgents()
   const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-  const { bankrEnabled, isLoading: bankrLoading, mutate: mutateBankr } = useBankrEnabled(userId)
-  const { setBankrEnabled, isSetting: bankrSetting } = useSetBankrEnabled()
+  const { bankrEnabled: bankrEnabledRemote, isLoading: bankrLoading, mutate: mutateBankr } = useBankrEnabled(userId)
+  const { setBankrEnabled } = useSetBankrEnabled()
+  const [bankrLocal, setBankrLocal] = useState<boolean | null>(null)
+  const bankrEnabled = bankrLocal ?? bankrEnabledRemote
   const { models: availableModels, isLoading: modelsLoading, mutate: mutateModels } = useModels(userId)
+
+  // Sync remote → local when remote resolves
+  useEffect(() => {
+    if (!bankrLoading && bankrLocal === null) {
+      setBankrLocal(bankrEnabledRemote)
+    }
+  }, [bankrLoading, bankrEnabledRemote, bankrLocal])
   const {
     repos,
     isLoading: reposLoading,
@@ -179,14 +188,17 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
                 </div>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     const next = !bankrEnabled
-                    await setBankrEnabled({ userId, enabled: next })
-                    mutateBankr({ enabled: next }, false)
-                    mutateModels()
+                    setBankrLocal(next)
+                    setBankrEnabled({ userId, enabled: next })
+                      .then(() => {
+                        mutateBankr()
+                        mutateModels()
+                      })
+                      .catch(() => setBankrLocal(!next))
                   }}
-                  disabled={bankrSetting}
-                  className={`relative h-5 w-9 rounded-full transition-colors shrink-0 ${
+                  className={`relative h-5 w-9 rounded-full transition-colors shrink-0 cursor-pointer ${
                     bankrEnabled ? 'bg-foreground' : 'bg-muted-foreground/30'
                   }`}
                   aria-label={bankrEnabled ? 'Disable Bankr' : 'Enable Bankr'}
