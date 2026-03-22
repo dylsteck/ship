@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Agent that works autonomously in the background',
     start_url: '/',
     display: 'standalone',
-    background_color: '#000000',
-    theme_color: '#000000',
+    background_color: '#0d0d0d',
+    theme_color: '#0d0d0d',
     icons: [
       {
         src: '/icon-192x192.png',
