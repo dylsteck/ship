@@ -6,6 +6,11 @@ import { SWRProvider } from '@/components/providers/swr-provider'
 export const metadata: Metadata = {
   title: 'Ship',
   description: 'Agent that works autonomously in the background',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Ship',
+  },
 }
 
 export const viewport: Viewport = {

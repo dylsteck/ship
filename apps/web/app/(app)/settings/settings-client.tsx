@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { setApiToken } from '@/lib/api/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -61,11 +61,15 @@ function SettingsSidebarTrigger() {
   )
 }
 
-/** Closes sidebar on mount — must render inside SidebarProvider */
+/** Closes sidebar on initial mount only — must render inside SidebarProvider */
 function SidebarAutoClose() {
   const { setOpen } = useSidebar()
+  const hasClosed = useRef(false)
   useEffect(() => {
-    setOpen(false)
+    if (!hasClosed.current) {
+      setOpen(false)
+      hasClosed.current = true
+    }
   }, [setOpen])
   return null
 }
