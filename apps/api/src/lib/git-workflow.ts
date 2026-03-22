@@ -229,9 +229,12 @@ export async function commitChanges(
       )
     }
 
-    // Commit with message (escape quotes in message)
+    // Commit with message + Ship co-author trailer
+    // Using two -m flags: first is commit message, second is the co-author trailer paragraph
     const escapedMessage = message.replace(/"/g, '\\"')
-    const commitResult = await sandbox.commands.run(`cd ${repoPath} && git commit -m "${escapedMessage}"`)
+    const commitResult = await sandbox.commands.run(
+      `cd ${repoPath} && git commit -m "${escapedMessage}" -m "Co-Authored-By: Ship <shipagent@dylansteck.com>"`,
+    )
     if (commitResult.error) {
       throw new GitWorkflowError(
         `Failed to commit: ${commitResult.error}`,

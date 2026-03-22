@@ -74,7 +74,7 @@ interface AssistantRunBlockProps {
   isFirstAssistantBlock: boolean
 }
 
-function AssistantRunBlock({
+const AssistantRunBlock = React.memo(function AssistantRunBlock({
   messages,
   streamingMessageId,
   streamingStatusSteps,
@@ -108,33 +108,55 @@ function AssistantRunBlock({
   }
 
   // Filter out completely empty messages (unless they're the streaming target)
-  const substantiveMessages = messages.filter(
-    (m) =>
-      m.content ||
-      m.toolInvocations?.length ||
-      m.reasoning?.length ||
-      m.id === streamingMessageId,
+  const substantiveMessages = React.useMemo(
+    () =>
+      messages.filter(
+        (m) =>
+          m.content ||
+          m.toolInvocations?.length ||
+          m.reasoning?.length ||
+          m.id === streamingMessageId,
+      ),
+    [messages, streamingMessageId],
+  )
+
+  // Memoize reasoning array — only recompute when tool invocations or reasoning actually change
+  const allReasoning = React.useMemo(
+    () => substantiveMessages.flatMap((m) => m.reasoning || []),
+    // Depend on the reasoning content, not the messages array reference
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [substantiveMessages.map((m) => m.reasoning?.join()).join()],
+  )
+
+  // Memoize tools — only recompute when tool invocations change
+  const allTools = React.useMemo(() => {
+    const allToolsRaw = substantiveMessages.flatMap((m) => m.toolInvocations || [])
+    const toolsByCallId = new Map<string, ToolInvocation>()
+    const toolOrder: string[] = []
+    for (const t of allToolsRaw) {
+      if (!toolsByCallId.has(t.toolCallId)) toolOrder.push(t.toolCallId)
+      toolsByCallId.set(t.toolCallId, t)
+    }
+    return toolOrder.map((id) => toolsByCallId.get(id)!)
+    // Depend on tool count + states, not array reference
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [substantiveMessages.map((m) => m.toolInvocations?.map((t) => `${t.toolCallId}:${t.state}`).join()).join()])
+
+  const allPlanItems = React.useMemo(() => {
+    const allPlanItemsRaw = substantiveMessages.flatMap((m) => m.planItems || [])
+    const planById = new Map(allPlanItemsRaw.map((p) => [p.id, p]))
+    return Array.from(planById.values())
+  }, [substantiveMessages])
+
+  const startupStepsMsg = React.useMemo(
+    () => substantiveMessages.find((m) => m.startupSteps?.length),
+    [substantiveMessages],
   )
 
   if (substantiveMessages.length === 0) return null
 
-  const allReasoning = substantiveMessages.flatMap((m) => m.reasoning || [])
-  const allToolsRaw = substantiveMessages.flatMap((m) => m.toolInvocations || [])
-  // Dedupe by toolCallId — keep last occurrence (most up-to-date state)
-  const toolsByCallId = new Map<string, ToolInvocation>()
-  const toolOrder: string[] = []
-  for (const t of allToolsRaw) {
-    if (!toolsByCallId.has(t.toolCallId)) toolOrder.push(t.toolCallId)
-    toolsByCallId.set(t.toolCallId, t)
-  }
-  const allTools = toolOrder.map((id) => toolsByCallId.get(id)!)
-  const startupStepsMsg = substantiveMessages.find((m) => m.startupSteps?.length)
-  const allPlanItemsRaw = substantiveMessages.flatMap((m) => m.planItems || [])
-  const planById = new Map(allPlanItemsRaw.map((p) => [p.id, p]))
-  const allPlanItems = Array.from(planById.values())
   // Use only last message's content — parts are cumulative, last has full text
-  const lastMsgContent = substantiveMessages[substantiveMessages.length - 1]?.content ?? ''
-  const textContent = lastMsgContent
+  const textContent = substantiveMessages[substantiveMessages.length - 1]?.content ?? ''
 
   const hasReasoning = allReasoning.length > 0
   const hasTools = allTools.length > 0
@@ -214,7 +236,7 @@ function AssistantRunBlock({
 
     </Message>
   )
-}
+})
 
 // ─── Dashboard Messages ─────────────────────────────────────────────
 
