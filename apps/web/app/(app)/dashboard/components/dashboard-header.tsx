@@ -54,7 +54,7 @@ function MobileNav({
         <Link
           href="/"
           className={cn(
-            'px-1.5 py-1 text-sm transition-colors',
+            'px-1.5 py-1 text-xs transition-colors',
             isAgents
               ? 'text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground',
@@ -65,7 +65,7 @@ function MobileNav({
         <Link
           href="/settings"
           className={cn(
-            'px-1.5 py-1 text-sm transition-colors',
+            'px-1.5 py-1 text-xs transition-colors',
             isSettings
               ? 'text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground',
@@ -96,9 +96,9 @@ export function DashboardHeader({
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
-      {(showSidebarTrigger || (activeSessionId && isMobile)) && (
+      {(showSidebarTrigger || isMobile) && (
         <div className="flex items-center gap-2 shrink-0">
-          {showSidebarTrigger && (
+          {(showSidebarTrigger || isMobile) && (
             <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
           )}
           <button

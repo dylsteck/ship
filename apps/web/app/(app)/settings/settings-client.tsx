@@ -34,7 +34,8 @@ interface SettingsClientProps {
 
 function SettingsSidebarTrigger() {
   const { state } = useSidebar()
-  if (state !== 'collapsed') return null
+  const isMobileTrigger = useIsMobile()
+  if (state !== 'collapsed' && !isMobileTrigger) return null
   return (
     <div className="flex items-center gap-2 shrink-0">
       <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
@@ -119,13 +120,13 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
           <nav className="flex items-center gap-0.5">
             <Link
               href="/"
-              className="px-1.5 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Agents
             </Link>
             <Link
               href="/settings"
-              className="px-1.5 py-1 text-sm text-foreground font-medium transition-colors"
+              className="px-1.5 py-1 text-xs text-foreground font-medium transition-colors"
             >
               Settings
             </Link>
@@ -210,11 +211,9 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
     >
       <div className="min-h-screen relative">
         <SidebarAutoClose />
-        {!isMobile && (
-          <div className="fixed top-3 left-3 z-10">
-            <SettingsSidebarTrigger />
-          </div>
-        )}
+        <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
+          <SettingsSidebarTrigger />
+        </header>
         {settingsContent}
       </div>
     </DashboardLayout>

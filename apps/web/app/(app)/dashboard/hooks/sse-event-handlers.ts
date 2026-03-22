@@ -64,9 +64,28 @@ export function handleMessagePartUpdated(
     }
     scheduleFlush()
   } else {
-    ctx.setMessages((prev) =>
-      processPartUpdated(part, delta, ctx.streamingMessageRef.current!, prev, ctx.assistantTextRef, ctx.reasoningRef),
-    )
+    // For non-text events (tools, step-finish, etc.), also sync pending text/reasoning
+    // from refs to prevent flicker. Without this, a tool event can cause a React render
+    // where the message has tools but stale/empty content (because the rAF text flush
+    // hasn't fired yet), causing the Markdown component to unmount and remount.
+    const pendingText = ctx.assistantTextRef.current
+    const pendingReasoning = ctx.reasoningRef.current
+    const msgId = ctx.streamingMessageRef.current!
+    ctx.setMessages((prev) => {
+      const afterTool = processPartUpdated(part, delta, msgId, prev, ctx.assistantTextRef, ctx.reasoningRef)
+      if (!pendingText && !pendingReasoning) return afterTool
+      return afterTool.map((m) => {
+        if (m.id !== msgId) return m
+        const needsText = pendingText && m.content !== pendingText
+        const needsReasoning = pendingReasoning && m.reasoning?.[0] !== pendingReasoning
+        if (!needsText && !needsReasoning) return m
+        return {
+          ...m,
+          ...(needsText ? { content: pendingText } : {}),
+          ...(needsReasoning ? { reasoning: [pendingReasoning] } : {}),
+        }
+      })
+    })
   }
 
   if (part.type === 'step-finish') {

@@ -13,6 +13,9 @@ interface MarkdownProps {
   isAnimating?: boolean
 }
 
+// Stable references — hoisted outside component to avoid re-creating on every render
+const PLUGINS = { code, mermaid } as never
+
 const customComponents: Components = {
   a({ href, children, ...props }) {
     return (
@@ -120,9 +123,9 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
   return (
     <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed', className)}>
       <Streamdown
-        plugins={{ code, mermaid } as never}
+        plugins={PLUGINS}
         components={customComponents}
-        animated={{ animation: 'fadeIn' }}
+        mode="streaming"
         isAnimating={isAnimating}
       >
         {content}

@@ -158,7 +158,6 @@ export function MessageItem({
     <Message
       key={message.id}
       role={message.role}
-      className={isCurrentlyStreaming ? 'will-change-contents' : undefined}
     >
       {message.role === 'user' && message.content && (
         <div className="text-foreground whitespace-pre-wrap">{message.content}</div>

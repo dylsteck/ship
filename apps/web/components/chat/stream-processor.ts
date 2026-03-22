@@ -31,9 +31,31 @@ export function processStreamEvent(
     const delta = props?.delta
 
     if (part) {
-      setMessages((prev) =>
-        processPartUpdated(part, delta, streamingMessageId, prev, assistantTextRef, reasoningRef),
-      )
+      // For text/reasoning, accumulate in refs first (they'll be applied via processPartUpdated)
+      // For tool events, also sync pending text/reasoning to prevent flicker from stale content
+      if (part.type !== 'text' && part.type !== 'reasoning') {
+        const pendingText = assistantTextRef.current
+        const pendingReasoning = reasoningRef.current
+        setMessages((prev) => {
+          const afterPart = processPartUpdated(part, delta, streamingMessageId, prev, assistantTextRef, reasoningRef)
+          if (!pendingText && !pendingReasoning) return afterPart
+          return afterPart.map((m) => {
+            if (m.id !== streamingMessageId) return m
+            const needsText = pendingText && m.content !== pendingText
+            const needsReasoning = pendingReasoning && m.reasoning?.[0] !== pendingReasoning
+            if (!needsText && !needsReasoning) return m
+            return {
+              ...m,
+              ...(needsText ? { content: pendingText } : {}),
+              ...(needsReasoning ? { reasoning: [pendingReasoning] } : {}),
+            }
+          })
+        })
+      } else {
+        setMessages((prev) =>
+          processPartUpdated(part, delta, streamingMessageId, prev, assistantTextRef, reasoningRef),
+        )
+      }
       updateStatusFromPart(part, onStatusChange)
     }
   }

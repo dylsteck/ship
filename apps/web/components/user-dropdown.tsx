@@ -27,12 +27,12 @@ function UserAvatar({ user }: UserDropdownProps) {
     <img
       src={user.avatarUrl}
       alt={user.username}
-      width={28}
-      height={28}
-      className="size-7 rounded-full object-cover hover:opacity-80 transition-opacity"
+      width={20}
+      height={20}
+      className="size-5 rounded-full object-cover hover:opacity-80 transition-opacity"
     />
   ) : (
-    <div className="size-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium hover:opacity-80 transition-opacity">
+    <div className="size-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium hover:opacity-80 transition-opacity">
       {user?.username?.[0]?.toUpperCase() || '?'}
     </div>
   )

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useDeleteSession, type ChatSession } from '@/lib/api'
-import { Sidebar } from '@ship/ui'
+import { Sidebar, useSidebar, useIsMobile } from '@ship/ui'
 import { ChatSearchCommand } from '../chat-search-command'
 import { SidebarHeaderSection } from './sidebar-header'
 import { SidebarSessionsList } from './sidebar-sessions-list'
@@ -29,6 +29,8 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const router = useRouter()
   const { deleteSession } = useDeleteSession()
+  const { setOpenMobile } = useSidebar()
+  const isMobile = useIsMobile()
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [groupBy, setGroupBy] = useState<'none' | 'project' | 'date' | 'status'>('none')
@@ -73,7 +75,10 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="offcanvas" className={className}>
       <SidebarHeaderSection
-        onSearchOpen={() => setSearchOpen(true)}
+        onSearchOpen={() => {
+          if (isMobile) setOpenMobile(false)
+          setSearchOpen(true)
+        }}
         onNewChat={onNewChat}
       />
 

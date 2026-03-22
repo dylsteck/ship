@@ -25,7 +25,7 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
         className={cn(
           'w-full transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
           activeSessionId
-            ? 'mt-auto pb-3 sm:pb-4 px-4 sm:px-8'
+            ? 'mt-auto pb-3 sm:pb-4 px-4 sm:px-8 bg-background/80 backdrop-blur-sm'
             : compactLayout
               ? 'flex flex-col px-3 pt-4 pb-2'
               : 'flex items-start justify-center px-3 sm:px-6 pt-[6vh] sm:pt-[8vh]',

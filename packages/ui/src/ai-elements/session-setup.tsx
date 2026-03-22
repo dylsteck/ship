@@ -49,17 +49,7 @@ export function SessionSetup({
   defaultOpen = false,
   className,
 }: SessionSetupProps) {
-  const [open, setOpen] = React.useState(defaultOpen || isStreaming)
-  const prevStreamingRef = React.useRef(isStreaming)
-
-  React.useEffect(() => {
-    if (isStreaming) {
-      setOpen(true)
-    } else if (prevStreamingRef.current) {
-      setOpen(false)
-    }
-    prevStreamingRef.current = isStreaming
-  }, [isStreaming])
+  const [open, setOpen] = React.useState(defaultOpen)
 
   if (!steps.length) return null
 

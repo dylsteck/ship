@@ -275,7 +275,7 @@ export function RightSidebar({
 
       {isMobile && (
         <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
-          <SheetContent side="right" className="w-[85vw] max-w-md p-0 overflow-hidden">
+          <SheetContent side="right" className="w-[85vw] max-w-md p-0 overflow-hidden" showCloseButton={false}>
             <SheetHeader className="sr-only">
               <SheetTitle>Session Context</SheetTitle>
               <SheetDescription>Session details and context panel.</SheetDescription>

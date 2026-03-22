@@ -167,6 +167,42 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let rafId: number | null = null
+    let pendingFlush = false
+
+    // Batch state updates: collect events and flush once per animation frame
+    const pendingEvents: Record<string, unknown>[] = []
+    const clearStreamingRef = () => { streamingMessageRef.current = null }
+
+    function flushEvents() {
+      rafId = null
+      pendingFlush = false
+      const events = pendingEvents.splice(0)
+      if (events.length === 0) return
+
+      // Stable options object — reused across all events in the batch
+      const opts = {
+        streamingMessageId: streamingMessageRef.current!,
+        assistantTextRef,
+        reasoningRef,
+        setMessages,
+        setIsStreaming,
+        clearStreamingRef,
+        onStatusChange,
+      }
+
+      // Process all pending events in a single React batch
+      for (const data of events) {
+        processStreamEvent(data, opts)
+      }
+    }
+
+    function scheduleFlush() {
+      if (!pendingFlush) {
+        pendingFlush = true
+        rafId = requestAnimationFrame(flushEvents)
+      }
+    }
 
     while (true) {
       const { done, value } = await reader.read()
@@ -174,17 +210,14 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
 
       buffer += decoder.decode(value, { stream: true })
       buffer = parseSSELines(buffer, (data) => {
-        processStreamEvent(data, {
-          streamingMessageId: streamingMessageRef.current!,
-          assistantTextRef,
-          reasoningRef,
-          setMessages,
-          setIsStreaming,
-          clearStreamingRef: () => { streamingMessageRef.current = null },
-          onStatusChange,
-        })
+        pendingEvents.push(data)
+        scheduleFlush()
       })
     }
+
+    // Flush any remaining events immediately on stream end
+    if (rafId !== null) cancelAnimationFrame(rafId)
+    flushEvents()
   }
 
   const handleStop = useCallback(async () => {

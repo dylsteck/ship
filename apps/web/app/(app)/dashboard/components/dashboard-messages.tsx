@@ -140,7 +140,7 @@ function AssistantRunBlock({
   const hasTools = allTools.length > 0
 
   return (
-    <Message role="assistant" className={isGroupStreaming ? 'will-change-contents' : undefined}>
+    <Message role="assistant">
       {isFirstAssistantBlock && startupStepsMsg?.startupSteps && (
         <SessionSetup
           steps={startupStepsMsg.startupSteps}
