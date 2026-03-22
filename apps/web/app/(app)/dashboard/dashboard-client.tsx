@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
-import { useModels, useDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
+import { useModels, useDefaultModel, useAgentDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
 import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
 import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks/use-sessions'
@@ -129,7 +129,7 @@ export function DashboardClient({
   const { models, isLoading: modelsLoading } = useModels()
   const { agents, isLoading: agentsLoading } = useAgents()
   const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-  const { defaultModelId, isLoading: defaultModelLoading } = useDefaultModel(userId)
+  const { defaultModelId: globalDefaultModelId, isLoading: globalDefaultModelLoading } = useDefaultModel(userId)
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
@@ -258,6 +258,12 @@ export function DashboardClient({
       models,
     },
   })
+
+  // Fetch agent-specific default model (must be after state is initialized)
+  const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading } = useAgentDefaultModel(userId, state.selectedAgent?.id)
+  // Prefer agent-specific default over global default
+  const defaultModelId = agentDefaultModelId || globalDefaultModelId
+  const defaultModelLoading = globalDefaultModelLoading || agentDefaultModelLoading
 
   const derived = useDashboardDerived({
     chat,

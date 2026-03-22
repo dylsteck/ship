@@ -260,6 +260,21 @@ app.post('/:sessionId', async (c) => {
           ? { bankrEnabled: true, bankrApiKey: c.env.BANKR_API_KEY! }
           : undefined
 
+        // Fetch GitHub token early so it's available for sandbox env vars + clone
+        let githubToken: string | null = null
+        if (userId) {
+          try {
+            const accountRes = await c.env.DB.prepare(
+              'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
+            )
+              .bind(userId, 'github')
+              .first<{ access_token: string }>()
+            githubToken = accountRes?.access_token ?? null
+          } catch {
+            /* ignore — token will be null */
+          }
+        }
+
         // Start sandbox-agent server if not running
         if (!currentSandboxAgentUrl) {
           console.log(`[chat:${sessionId}] Starting sandbox-agent server...`)
@@ -279,7 +294,7 @@ app.post('/:sessionId', async (c) => {
             // Extend timeout to prevent auto-pause during agent server startup
             await sandbox.setTimeout(10 * 60 * 1000)
 
-            const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env), sandboxAgentOptions)
+            const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env, { githubToken: githubToken ?? undefined }), sandboxAgentOptions)
             currentSandboxAgentUrl = url
             currentSandboxAgentToken = newToken
             agentJustStarted = true
@@ -334,14 +349,7 @@ app.post('/:sessionId', async (c) => {
 
           try {
             if (!userId) throw new Error('User ID not found')
-
-            const accountRes = await c.env.DB.prepare(
-              'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
-            )
-              .bind(userId, 'github')
-              .first<{ access_token: string }>()
-
-            if (!accountRes?.access_token) throw new Error('No GitHub token found')
+            if (!githubToken) throw new Error('No GitHub token found')
 
             const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`
             const baseBranch = latestMeta.base_branch || 'main'
@@ -359,7 +367,7 @@ app.post('/:sessionId', async (c) => {
             // Try with auth first, fall back to unauthenticated (works for public repos)
             try {
               await sandbox.commands.run(
-                `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${githubToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
                 { timeoutMs: 60000 },
               )
             } catch (authCloneErr) {
@@ -471,7 +479,7 @@ app.post('/:sessionId', async (c) => {
                   // Extend timeout to prevent re-pause during agent server restart
                   await resumedSandbox.setTimeout(10 * 60 * 1000)
 
-                  const { url, token: restartToken } = await startSandboxAgentServer(resumedSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env), sandboxAgentOptions)
+                  const { url, token: restartToken } = await startSandboxAgentServer(resumedSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env, { githubToken: githubToken ?? undefined }), sandboxAgentOptions)
                   currentSandboxAgentUrl = url
                   currentSandboxAgentToken = restartToken
                   currentAgentSessionId = undefined
@@ -532,7 +540,7 @@ app.post('/:sessionId', async (c) => {
               // Re-provision sandbox
               try {
                 const { createSessionSandbox, Sandbox } = await import('../lib/e2b')
-                const agentEnvs = buildAgentEnvVars(c.env)
+                const agentEnvs = buildAgentEnvVars(c.env, { githubToken: githubToken ?? undefined })
                 const sandboxInfo = await createSessionSandbox(c.env.E2B_API_KEY, {
                   sessionId,
                   ...(Object.keys(agentEnvs).length > 0 && { envs: agentEnvs }),
@@ -555,7 +563,7 @@ app.post('/:sessionId', async (c) => {
                   }),
                 )
 
-                const { url, token: reprovisionToken } = await startSandboxAgentServer(newSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env), sandboxAgentOptions)
+                const { url, token: reprovisionToken } = await startSandboxAgentServer(newSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env, { githubToken: githubToken ?? undefined }), sandboxAgentOptions)
                 currentSandboxAgentUrl = url
                 currentSandboxAgentToken = reprovisionToken
                 console.log(`[chat:${sessionId}] Re-provisioned sandbox-agent at ${url}`)
@@ -603,7 +611,7 @@ app.post('/:sessionId', async (c) => {
                       let cloneOk = false
                       try {
                         await newSandbox.commands.run(
-                          `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${accountRes.access_token}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                          `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${githubToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
                           { timeoutMs: 60000 },
                         )
                         cloneOk = true

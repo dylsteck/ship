@@ -101,9 +101,8 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
       const savedMode = getStoredMode()
       const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
       setMode(validMode)
-      if (agent.models.length > 0) {
-        setSelectedModel(agent.models[0])
-      }
+      // Don't set selectedModel here — use-session-sync handles default model
+      // selection using the user's saved agent-specific or global default.
     }
   }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent, setMode])
 
@@ -113,10 +112,9 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
     const savedMode = getStoredMode()
     const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
     setMode(validMode)
-    if (agent.models.length > 0) {
-      setSelectedModel(agent.models[0])
-    }
-  }, [setMode])
+    // Reset selectedModel so use-session-sync can apply the user's saved default for this agent
+    setSelectedModel(null)
+  }, [setMode, setSelectedModel])
 
   /** Read SSE stream in background to populate live status for a homepage session card */
   const streamSessionInBackground = useCallback(
