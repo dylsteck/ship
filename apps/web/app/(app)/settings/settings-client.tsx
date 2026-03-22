@@ -106,7 +106,21 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
     <div className="mx-auto max-w-2xl px-4 py-8">
       {/* Mobile header */}
       {isMobile && (
-        <div className="flex items-center justify-end px-3 pt-3 pb-1.5 -mx-4 -mt-8 mb-6">
+        <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 -mx-4 -mt-8 mb-6 justify-end">
+          <nav className="flex items-center gap-0.5">
+            <Link
+              href="/"
+              className="px-1.5 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Agents
+            </Link>
+            <Link
+              href="/settings"
+              className="px-1.5 py-1 text-sm text-foreground font-medium transition-colors"
+            >
+              Settings
+            </Link>
+          </nav>
           <UserDropdown user={user} />
         </div>
       )}
@@ -115,12 +129,12 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
 
       {/* Preferences */}
       <section className="mb-8">
-        <Tabs defaultValue="defaults">
+        <Tabs defaultValue="defaults" className="items-start">
           <TabsList>
             <TabsTrigger value="defaults">Defaults</TabsTrigger>
             <TabsTrigger value="agents">Agents</TabsTrigger>
           </TabsList>
-          <TabsContent value="defaults">
+          <TabsContent value="defaults" className="w-full self-stretch">
             <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
               <DefaultAgentCard
                 userId={userId}
@@ -139,7 +153,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
               />
             </div>
           </TabsContent>
-          <TabsContent value="agents">
+          <TabsContent value="agents" className="w-full self-stretch">
             <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
               {agents.map((agent) => (
                 <AgentModelRow

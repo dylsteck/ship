@@ -12,7 +12,7 @@ export function ComposerTextarea() {
     if (!textareaRef.current) return
     const el = textareaRef.current
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, activeSessionId ? 120 : 200)}px`
+    el.style.height = `${Math.min(el.scrollHeight, activeSessionId ? 200 : 200)}px`
   }, [prompt, activeSessionId])
 
   return (
@@ -26,7 +26,7 @@ export function ComposerTextarea() {
       className={cn(
         'w-full resize-none bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none transition-all duration-200',
         activeSessionId
-          ? 'text-xs min-h-[20px] max-h-[120px] py-0 leading-[20px] overflow-y-auto'
+          ? 'text-xs min-h-[20px] max-h-[200px] py-0 leading-[20px] overflow-y-auto'
           : 'text-[15px] min-h-[88px] placeholder:text-zinc-500',
       )}
     />

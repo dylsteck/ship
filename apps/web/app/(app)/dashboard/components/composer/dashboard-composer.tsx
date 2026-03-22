@@ -48,19 +48,20 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
 
           {activeSessionId ? (
             /* Session follow-up: slim single-line pill */
-            <div className="flex items-center gap-2 rounded-[20px] border border-border/40 bg-card/95 backdrop-blur-sm shadow-md focus-within:border-border/60 focus-within:shadow-lg px-2 min-h-[40px] py-[10px]">
-              <div className="shrink-0">
-                <ClientOnly>
-                  <ModeToggle />
-                </ClientOnly>
-              </div>
-              <div className="flex-1 min-w-0 flex items-center">
+            <div className="flex flex-col rounded-[20px] border border-border/40 bg-card/95 backdrop-blur-sm shadow-md focus-within:border-border/60 focus-within:shadow-lg px-3 min-h-[40px] py-[10px]">
+              <div className="flex-1 min-w-0">
                 <ComposerTextarea />
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-2 pt-1">
+                <div className="shrink-0">
+                  <ClientOnly>
+                    <ModeToggle />
+                  </ClientOnly>
+                </div>
                 <ClientOnly>
                   <AgentModelSelector />
                 </ClientOnly>
+                <div className="flex-1" />
                 <SubmitButton size="small" />
               </div>
             </div>

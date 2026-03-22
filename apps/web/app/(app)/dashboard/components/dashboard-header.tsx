@@ -9,7 +9,7 @@ import {
   useIsMobile,
 } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft01Icon, Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
+import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
 import { UserDropdown } from '@/components/user-dropdown'
 
@@ -96,9 +96,11 @@ export function DashboardHeader({
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
-      {showSidebarTrigger && (
+      {(showSidebarTrigger || (activeSessionId && isMobile)) && (
         <div className="flex items-center gap-2 shrink-0">
-          <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
+          {showSidebarTrigger && (
+            <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
+          )}
           <button
             type="button"
             onClick={() => {
@@ -117,15 +119,6 @@ export function DashboardHeader({
             <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
           </Link>
         </div>
-      )}
-      {activeSessionId && isMobile && (
-        <Link
-          href="/"
-          className="shrink-0 p-1.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-          aria-label="Back to home"
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="size-5" />
-        </Link>
       )}
       {activeSessionId && (
         <div className="min-w-0 flex-1">

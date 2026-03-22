@@ -70,7 +70,6 @@ export function SessionSetup({
       className={cn('overflow-hidden', className)}
     >
       <CollapsibleTrigger className="w-full flex items-center gap-2 py-1.5 -mx-1 px-1 rounded text-left group/trigger">
-        <SessionSetupIcon />
         <span
           className={cn(
             'text-sm text-muted-foreground shrink-0',

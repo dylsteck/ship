@@ -146,6 +146,7 @@ export function SidebarFooterSection({ user, groupBy, onGroupByChange, compact, 
           </DropdownMenu>
         </ClientOnly>
 
+        <div className="flex items-center gap-0.5 group-data-[collapsible=icon]:hidden">
         {/* Filter dropdown */}
         <ClientOnly
           fallback={
@@ -205,6 +206,21 @@ export function SidebarFooterSection({ user, groupBy, onGroupByChange, compact, 
             </DropdownMenuContent>
           </DropdownMenu>
         </ClientOnly>
+        {/* Settings link */}
+        <a
+          href="/settings"
+          className={cn(
+            'p-1 rounded transition-colors cursor-pointer',
+            isSettingsActive
+              ? 'bg-sidebar-accent text-foreground'
+              : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/50',
+          )}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <HugeiconsIcon icon={Settings01Icon} className="size-3.5 text-muted-foreground" />
+        </a>
+        </div>
       </div>
     </SidebarFooterPrimitive>
   )
