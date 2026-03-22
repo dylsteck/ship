@@ -237,6 +237,20 @@ export async function startSandboxAgentServer(
     }
   }
 
+  // Step 3.5: Configure git to use GITHUB_TOKEN for HTTPS auth so the agent can push
+  if (envVars.GITHUB_TOKEN) {
+    console.log(`[sandbox-agent:${sandboxId}] Configuring git credential helper for GITHUB_TOKEN...`)
+    try {
+      await sandbox.commands.run(
+        `git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=\${GITHUB_TOKEN}"; }; f'`,
+        { timeoutMs: 5000 },
+      )
+    } catch (err) {
+      console.warn(`[sandbox-agent:${sandboxId}] Failed to configure git credentials: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    envVars.GIT_TERMINAL_PROMPT = '0'
+  }
+
   // Step 4: Start sandbox-agent server
   console.log(`[sandbox-agent:${sandboxId}] Step 4: Starting server on port ${SANDBOX_AGENT_PORT}...`)
   const serverCmd = `sandbox-agent server --token ${sandboxToken} --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`
