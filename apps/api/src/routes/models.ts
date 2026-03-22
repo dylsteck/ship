@@ -22,14 +22,6 @@ const FALLBACK_MODELS = [
     isDefault: true,
   },
   {
-    id: 'opencode/kimi-k2.5-free',
-    name: 'Kimi K2.5 Free',
-    provider: 'OpenCode Zen',
-    description: 'Free high-performance model from Moonshot AI (256K context)',
-    contextWindow: 256000,
-    maxTokens: 128000,
-  },
-  {
     id: 'opencode/glm-4.7-free',
     name: 'GLM 4.7 Free',
     provider: 'OpenCode Zen',
@@ -81,6 +73,20 @@ const FALLBACK_MODELS = [
   },
 ]
 
+// Bankr LLM Gateway models — available when user has Bankr enabled
+// These route through https://llm.bankr.bot via OpenCode's bankr provider config
+const BANKR_MODELS = [
+  { id: 'bankr/claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'Bankr', description: 'Most capable Claude model via Bankr', contextWindow: 200000, maxTokens: 32000 },
+  { id: 'bankr/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Bankr', description: 'Fast and capable Claude via Bankr', contextWindow: 200000, maxTokens: 64000 },
+  { id: 'bankr/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Bankr', description: 'Fastest Claude model via Bankr', contextWindow: 200000, maxTokens: 64000 },
+  { id: 'bankr/gpt-5.2', name: 'GPT-5.2', provider: 'Bankr', description: 'Latest GPT model via Bankr', contextWindow: 1000000, maxTokens: 128000 },
+  { id: 'bankr/gpt-5.2-codex', name: 'GPT-5.2 Codex', provider: 'Bankr', description: 'GPT-5.2 optimized for code via Bankr', contextWindow: 1000000, maxTokens: 128000 },
+  { id: 'bankr/gpt-5-mini', name: 'GPT-5 Mini', provider: 'Bankr', description: 'Compact GPT-5 via Bankr', contextWindow: 1000000, maxTokens: 65536 },
+  { id: 'bankr/gpt-5-nano', name: 'GPT-5 Nano', provider: 'Bankr', description: 'Smallest GPT-5 via Bankr', contextWindow: 1000000, maxTokens: 65536 },
+  { id: 'bankr/kimi-k2.5', name: 'Kimi K2.5', provider: 'Bankr', description: 'High-performance model from Moonshot AI via Bankr', contextWindow: 256000, maxTokens: 128000 },
+  { id: 'bankr/qwen3-coder', name: 'Qwen3 Coder', provider: 'Bankr', description: 'Code-focused model from Alibaba via Bankr', contextWindow: 256000, maxTokens: 65536 },
+]
+
 /**
  * Validate model ID against available models (with fallback)
  * Since OpenCode runs in sandbox, we just validate against fallback list
@@ -93,17 +99,46 @@ function validateModelWithFallback(modelId: string): boolean {
   // Check if it's the new format with opencode/ prefix
   if (FALLBACK_MODELS.some((m) => m.id === modelId)) return true
 
+  // Check Bankr models
+  if (BANKR_MODELS.some((m) => m.id === modelId)) return true
+
   // Check agent-specific models (e.g. codex/default)
   const agents = listAgents()
   return agents.some((a) => a.models.some((m) => m.id === modelId))
 }
 
 /**
+ * Check if user has Bankr enabled
+ */
+async function isUserBankrEnabled(db: D1Database, userId: string): Promise<boolean> {
+  try {
+    const result = await db.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
+      .bind(userId, 'use_bankr')
+      .first<{ value: string }>()
+    return result?.value === 'true'
+  } catch {
+    return false
+  }
+}
+
+/**
  * GET /models/available
  * List all available models
  * Returns static list - OpenCode runs in sandbox so we can't query it from here
+ * When Bankr is enabled (checked via userId query param), includes Bankr models
  */
-models.get('/available', (c) => {
+models.get('/available', async (c) => {
+  const userId = c.req.query('userId')
+
+  if (userId) {
+    const bankrEnabled = await isUserBankrEnabled(c.env.DB, userId)
+    if (bankrEnabled) {
+      // Bankr on: OpenCode Zen free models + Bankr models
+      const zenModels = FALLBACK_MODELS.filter((m) => m.provider === 'OpenCode Zen')
+      return c.json([...zenModels, ...BANKR_MODELS])
+    }
+  }
+
   return c.json(FALLBACK_MODELS)
 })
 
@@ -382,6 +417,54 @@ models.post('/default-agent-model', async (c) => {
   } catch (error) {
     console.error('Error setting default agent model:', error)
     return c.json({ error: 'Failed to set default agent model' }, 500)
+  }
+})
+
+/**
+ * GET /models/bankr
+ * Get user's Bankr preference
+ * Query param: userId (required)
+ */
+models.get('/bankr', async (c) => {
+  try {
+    const userId = c.req.query('userId')
+    if (!userId) {
+      return c.json({ error: 'userId query parameter is required' }, 400)
+    }
+
+    const enabled = await isUserBankrEnabled(c.env.DB, userId)
+    return c.json({ enabled })
+  } catch (error) {
+    console.error('Error fetching Bankr preference:', error)
+    return c.json({ error: 'Failed to fetch Bankr preference' }, 500)
+  }
+})
+
+/**
+ * POST /models/bankr
+ * Set user's Bankr preference
+ * Body: { userId: string, enabled: boolean }
+ */
+models.post('/bankr', async (c) => {
+  try {
+    const { userId, enabled } = await c.req.json<{ userId: string; enabled: boolean }>()
+
+    if (!userId || typeof enabled !== 'boolean') {
+      return c.json({ error: 'userId and enabled (boolean) are required' }, 400)
+    }
+
+    await c.env.DB.prepare(
+      `INSERT INTO user_preferences (user_id, key, value)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+    )
+      .bind(userId, 'use_bankr', String(enabled))
+      .run()
+
+    return c.json({ success: true, enabled })
+  } catch (error) {
+    console.error('Error setting Bankr preference:', error)
+    return c.json({ error: 'Failed to set Bankr preference' }, 500)
   }
 })
 

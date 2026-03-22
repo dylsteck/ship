@@ -22,6 +22,10 @@ SESSION_SECRET=your-session-secret-here
 # Get from: https://platform.openai.com/api-keys
 OPENAI_API_KEY=sk-...
 
+# Bankr LLM Gateway API Key (optional, enables Bankr-powered models)
+# Get from: https://bankr.bot/api
+BANKR_API_KEY=bk_...
+
 # Allowed CORS Origins (comma-separated)
 # In production, set via: wrangler secret put ALLOWED_ORIGINS --env production
 ALLOWED_ORIGINS=http://localhost:3000
