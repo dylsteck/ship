@@ -116,11 +116,17 @@ async function syncSharedMcpConfigs(client: SandboxAgent, workingDir: string): P
  *
  * Replaces startOpenCodeServer() from e2b.ts
  */
+export interface SandboxAgentOptions {
+  bankrEnabled?: boolean
+  bankrApiKey?: string
+}
+
 export async function startSandboxAgentServer(
   sandbox: Sandbox,
   sandboxId: string,
   agentType: string,
   envVars: Record<string, string>,
+  options?: SandboxAgentOptions,
 ): Promise<{ url: string; token: string }> {
   const agentConfig = getAgent(agentType) || getAgent(getDefaultAgentId())!
   const sandboxToken = generateToken()
@@ -191,6 +197,45 @@ export async function startSandboxAgentServer(
     }
   } else {
     console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} already installed`)
+  }
+
+  // Step 3.5: Write Bankr provider config if enabled
+  if (options?.bankrEnabled && options?.bankrApiKey) {
+    console.log(`[sandbox-agent:${sandboxId}] Step 3.5: Writing Bankr provider config...`)
+    const opencodeConfig = JSON.stringify({
+      provider: {
+        bankr: {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Bankr',
+          options: {
+            baseURL: 'https://llm.bankr.bot/v1',
+            apiKey: '{env:BANKR_API_KEY}',
+          },
+          models: {
+            'claude-opus-4.6': { name: 'Claude Opus 4.6', limit: { context: 200000, output: 32000 } },
+            'claude-sonnet-4.6': { name: 'Claude Sonnet 4.6', limit: { context: 200000, output: 64000 } },
+            'claude-haiku-4.5': { name: 'Claude Haiku 4.5', limit: { context: 200000, output: 64000 } },
+            'gpt-5.2': { name: 'GPT-5.2', limit: { context: 1000000, output: 128000 } },
+            'gpt-5.2-codex': { name: 'GPT-5.2 Codex', limit: { context: 1000000, output: 128000 } },
+            'gpt-5-mini': { name: 'GPT-5 Mini', limit: { context: 1000000, output: 65536 } },
+            'gpt-5-nano': { name: 'GPT-5 Nano', limit: { context: 1000000, output: 65536 } },
+            'kimi-k2.5': { name: 'Kimi K2.5', limit: { context: 256000, output: 128000 } },
+            'qwen3-coder': { name: 'Qwen3 Coder', limit: { context: 256000, output: 65536 } },
+          },
+        },
+      },
+    })
+    try {
+      await sandbox.commands.run(
+        `mkdir -p ~/.config/opencode && echo '${opencodeConfig.replace(/'/g, "'\\''")}' > ~/.config/opencode/opencode.json`,
+        { timeoutMs: 5000 },
+      )
+      // Also ensure BANKR_API_KEY is in env vars for the server process
+      envVars.BANKR_API_KEY = options.bankrApiKey
+      console.log(`[sandbox-agent:${sandboxId}] Bankr provider config written`)
+    } catch (err) {
+      console.warn(`[sandbox-agent:${sandboxId}] Failed to write Bankr config: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   // Step 4: Start sandbox-agent server

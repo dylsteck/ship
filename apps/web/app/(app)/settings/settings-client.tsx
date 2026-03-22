@@ -16,6 +16,8 @@ import {
   useFilteredGitHubRepos,
   useDefaultRepo,
   useSessions,
+  useBankrEnabled,
+  useSetBankrEnabled,
 } from '@/lib/api'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -85,7 +87,9 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
 
   const { agents, isLoading: agentsLoading } = useAgents()
   const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-  const { models: availableModels, isLoading: modelsLoading } = useModels()
+  const { bankrEnabled, isLoading: bankrLoading, mutate: mutateBankr } = useBankrEnabled(userId)
+  const { setBankrEnabled, isSetting: bankrSetting } = useSetBankrEnabled()
+  const { models: availableModels, isLoading: modelsLoading, mutate: mutateModels } = useModels(userId)
   const {
     repos,
     isLoading: reposLoading,
@@ -103,7 +107,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
     }
   }, [defaultAgentId, selectedAgentId])
 
-  const loading = agentsLoading || defaultAgentLoading || modelsLoading || reposLoading || defaultRepoLoading
+  const loading = agentsLoading || defaultAgentLoading || modelsLoading || reposLoading || defaultRepoLoading || bankrLoading
 
   const handleNewChat = useCallback(() => {
     router.push('/')
@@ -166,6 +170,32 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
                 reposLoadingMore={reposLoadingMore ?? false}
                 defaultRepoFullName={defaultRepoFullName}
               />
+              <div className="px-4 py-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Bankr LLM Gateway</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Route models through Bankr for access to GPT-5, Kimi, Qwen, and more
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = !bankrEnabled
+                    await setBankrEnabled({ userId, enabled: next })
+                    mutateBankr({ enabled: next }, false)
+                    mutateModels()
+                  }}
+                  disabled={bankrSetting}
+                  className={`relative h-5 w-9 rounded-full transition-colors shrink-0 ${
+                    bankrEnabled ? 'bg-foreground' : 'bg-muted-foreground/30'
+                  }`}
+                  aria-label={bankrEnabled ? 'Disable Bankr' : 'Enable Bankr'}
+                >
+                  <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-background shadow transition-transform ${
+                    bankrEnabled ? 'translate-x-4' : ''
+                  }`} />
+                </button>
+              </div>
             </div>
           </TabsContent>
           <TabsContent value="agents" className="w-full self-stretch">

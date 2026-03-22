@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import {
   startSandboxAgentServer,
+  type SandboxAgentOptions,
   connectToSandboxAgent,
   checkSandboxAgentHealth,
   createAgentSession,
@@ -254,7 +255,7 @@ app.post('/:sessionId', async (c) => {
             // Extend timeout to prevent auto-pause during agent server startup
             await sandbox.setTimeout(10 * 60 * 1000)
 
-            const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
+            const { url, token: newToken } = await startSandboxAgentServer(sandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env), sandboxAgentOptions)
             currentSandboxAgentUrl = url
             currentSandboxAgentToken = newToken
             agentJustStarted = true
@@ -303,6 +304,18 @@ app.post('/:sessionId', async (c) => {
         const repoName = latestMeta.repoName || latestMeta.repo_name
         const userId = latestMeta.userId || latestMeta.user_id
         const repoPath = '/home/user/repo'
+
+        // Check Bankr preference for this user
+        let bankrEnabled = false
+        if (userId && c.env.BANKR_API_KEY) {
+          try {
+            const bankrPref = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
+              .bind(userId, 'use_bankr')
+              .first<{ value: string }>()
+            bankrEnabled = bankrPref?.value === 'true'
+          } catch { /* ignore — default to false */ }
+        }
+        const sandboxAgentOptions = bankrEnabled ? { bankrEnabled: true, bankrApiKey: c.env.BANKR_API_KEY! } : undefined
 
         // Clone repo if needed
         if (repoOwner && repoName && !latestMeta.repo_url) {
@@ -455,7 +468,7 @@ app.post('/:sessionId', async (c) => {
                   // Extend timeout to prevent re-pause during agent server restart
                   await resumedSandbox.setTimeout(10 * 60 * 1000)
 
-                  const { url, token: restartToken } = await startSandboxAgentServer(resumedSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
+                  const { url, token: restartToken } = await startSandboxAgentServer(resumedSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env), sandboxAgentOptions)
                   currentSandboxAgentUrl = url
                   currentSandboxAgentToken = restartToken
                   currentAgentSessionId = undefined
@@ -539,7 +552,7 @@ app.post('/:sessionId', async (c) => {
                   }),
                 )
 
-                const { url, token: reprovisionToken } = await startSandboxAgentServer(newSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env))
+                const { url, token: reprovisionToken } = await startSandboxAgentServer(newSandbox, currentSandboxId, agentType, buildAgentEnvVars(c.env), sandboxAgentOptions)
                 currentSandboxAgentUrl = url
                 currentSandboxAgentToken = reprovisionToken
                 console.log(`[chat:${sessionId}] Re-provisioned sandbox-agent at ${url}`)
@@ -1124,10 +1137,11 @@ app.post('/:sessionId', async (c) => {
         }
 
         // Generate LLM title when agent did not send session_info_update
-        if (!receivedAiTitle && content?.trim() && (c.env.ANTHROPIC_API_KEY || c.env.OPENAI_API_KEY)) {
+        if (!receivedAiTitle && content?.trim() && (c.env.BANKR_API_KEY || c.env.ANTHROPIC_API_KEY || c.env.OPENAI_API_KEY)) {
           const generatedTitle = await generateSessionTitle({
             userPrompt: content,
             assistantPreview: assistantContent?.slice(0, 300),
+            bankrApiKey: bankrEnabled ? c.env.BANKR_API_KEY : undefined,
             anthropicApiKey: c.env.ANTHROPIC_API_KEY,
             openaiApiKey: c.env.OPENAI_API_KEY,
           })

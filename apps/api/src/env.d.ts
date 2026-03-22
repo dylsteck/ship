@@ -28,6 +28,10 @@ export interface Env {
   // Optional agent API keys
   OPENAI_API_KEY?: string;
 
+  // Bankr LLM Gateway (optional, enables Bankr-powered models)
+  // Get from: https://bankr.bot/api
+  BANKR_API_KEY?: string;
+
   // Login restriction (optional)
   LOGIN_RESTRICTED_TO_SINGLE_USER?: string;
   ALLOWED_USER_ID?: string;
