@@ -245,6 +245,25 @@ app.post('/:sessionId', async (c) => {
         const userId = latestMeta.userId || latestMeta.user_id
         const repoPath = '/home/user/repo'
 
+        // Look up user's real name/email for git attribution
+        let gitUserName = 'Ship Agent'
+        let gitUserEmail = 'shipagent@dylansteck.com'
+        if (userId) {
+          try {
+            const userRow = await c.env.DB.prepare(
+              'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
+            )
+              .bind(userId)
+              .first<{ name: string | null; email: string | null; username: string | null }>()
+            if (userRow) {
+              gitUserName = userRow.name || userRow.username || gitUserName
+              gitUserEmail = userRow.email || gitUserEmail
+            }
+          } catch {
+            /* ignore — fall back to Ship Agent */
+          }
+        }
+
         let bankrEnabled = false
         if (userId && c.env.BANKR_API_KEY) {
           try {
@@ -380,8 +399,8 @@ app.post('/:sessionId', async (c) => {
               )
             }
 
-            await sandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
-            await sandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
+            await sandbox.commands.run(`cd ${repoPath} && git config user.name "${gitUserName.replace(/"/g, '\\"')}"`)
+            await sandbox.commands.run(`cd ${repoPath} && git config user.email "${gitUserEmail.replace(/"/g, '\\"')}"`)
             try {
               await sandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
             } catch {
@@ -627,8 +646,9 @@ app.post('/:sessionId', async (c) => {
                         } catch { /* both failed */ }
                       }
                       if (cloneOk) {
-                        await newSandbox.commands.run(`cd ${repoPath} && git config user.name "Ship Agent"`)
-                        await newSandbox.commands.run(`cd ${repoPath} && git config user.email "shipagent@dylansteck.com"`)
+                        await newSandbox.commands.run(`cd ${repoPath} && git config user.name "${gitUserName.replace(/"/g, '\\"')}"`)
+                        await newSandbox.commands.run(`cd ${repoPath} && git config user.email "${gitUserEmail.replace(/"/g, '\\"')}"`)
+
                         await newSandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
                         await newSandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
 

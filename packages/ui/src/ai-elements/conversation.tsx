@@ -11,17 +11,18 @@ interface ConversationProps {
 
 export function Conversation({ children, className }: ConversationProps) {
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({
-    // Smoother spring animation for auto-scroll during streaming
-    damping: 0.88,
-    stiffness: 0.04,
-    mass: 0.7,
+    // Stiff spring that keeps up with rapid content growth during streaming.
+    // Low mass + high stiffness = responsive following without scroll lag.
+    damping: 0.92,
+    stiffness: 0.14,
+    mass: 0.4,
     resize: 'smooth',
     initial: 'smooth',
   })
 
   return (
     <ConversationContext.Provider value={{ isAtBottom, scrollToBottom }}>
-      <div ref={scrollRef} className={cn('relative flex-1 overflow-y-auto scroll-smooth', className)}>
+      <div ref={scrollRef} className={cn('relative flex-1 overflow-y-auto', className)}>
         <div ref={contentRef} className="flex flex-col gap-2">
           {children}
         </div>

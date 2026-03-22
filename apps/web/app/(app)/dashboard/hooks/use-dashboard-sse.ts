@@ -70,11 +70,16 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   const isStreamingRef = useRef(isStreaming)
   isStreamingRef.current = isStreaming
 
-  // Debounced flush: batch rapid text deltas into a single React render per animation frame
-  const flushRafRef = useRef<number | null>(null)
+  // Throttled flush: batch rapid text deltas into a single React render.
+  // Uses a 33ms minimum interval (~30fps) instead of rAF (~60fps) to reduce
+  // markdown re-parsing overhead in Streamdown during streaming.
+  const FLUSH_INTERVAL_MS = 33
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastFlushTimeRef = useRef(0)
 
   const doFlush = useCallback(() => {
-    flushRafRef.current = null
+    flushTimerRef.current = null
+    lastFlushTimeRef.current = performance.now()
     const msgId = streamingMessageRef.current
     if (!msgId) return
     const text = assistantTextRef.current
@@ -92,8 +97,16 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   }, [setMessages, streamingMessageRef, assistantTextRef, reasoningRef])
 
   const scheduleFlush = useCallback(() => {
-    if (flushRafRef.current != null) return // already scheduled
-    flushRafRef.current = requestAnimationFrame(doFlush)
+    if (flushTimerRef.current != null) return // already scheduled
+    const elapsed = performance.now() - lastFlushTimeRef.current
+    if (elapsed >= FLUSH_INTERVAL_MS) {
+      // First chunk after idle — flush immediately for low latency
+      doFlush()
+    } else {
+      // Rapid subsequent chunks — batch until next interval
+      const delay = FLUSH_INTERVAL_MS - elapsed
+      flushTimerRef.current = setTimeout(doFlush, delay)
+    }
   }, [doFlush])
 
   const handleSend = useCallback(
@@ -348,8 +361,8 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                   case 'session.idle': {
                     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
                     if (stallTimerId) { clearTimeout(stallTimerId); stallTimerId = null }
-                    // Cancel any pending debounced flush — done handler writes final state
-                    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null }
+                    // Cancel any pending throttled flush — done handler writes final state
+                    if (flushTimerRef.current != null) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
                     handleDoneOrIdle(ctx, streamStartTimeRef)
                     sessionStatusStore.update(targetSessionId, {
                       isRunning: false,
@@ -694,7 +707,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                 switch (event.type) {
                   case 'session.idle':
                   case 'done':
-                    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null }
+                    if (flushTimerRef.current != null) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
                     if (!placeholderAdded) {
                       setIsStreaming(false)
                       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })

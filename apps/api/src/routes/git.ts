@@ -163,11 +163,29 @@ git.post('/commit', async (c) => {
       return c.json({ error: 'Session has no sandbox' }, 404)
     }
 
-    // Get user info from session meta (for git config)
+    // Get user info from session meta, then look up real name/email from DB
     const metaResponse = await doStub.fetch('http://do/meta')
     const meta = (await metaResponse.json()) as Record<string, string>
-    const userName = meta['user_name'] || 'Ship Agent'
-    const userEmail = meta['user_email'] || 'shipagent@dylansteck.com'
+    let userName = meta['user_name'] || 'Ship Agent'
+    let userEmail = meta['user_email'] || 'shipagent@dylansteck.com'
+
+    // Try to resolve real user identity from DB
+    const commitUserId = meta['userId'] || meta['user_id']
+    if (commitUserId && (userName === 'Ship Agent' || userEmail === 'shipagent@dylansteck.com')) {
+      try {
+        const userRow = await c.env.DB.prepare(
+          'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
+        )
+          .bind(commitUserId)
+          .first<{ name: string | null; email: string | null; username: string | null }>()
+        if (userRow) {
+          userName = userRow.name || userRow.username || userName
+          userEmail = userRow.email || userEmail
+        }
+      } catch {
+        /* ignore — keep fallback */
+      }
+    }
 
     // Connect to sandbox
     const sandbox = await Sandbox.connect(sandboxStatus.sandboxId, {
