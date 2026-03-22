@@ -236,6 +236,30 @@ app.post('/:sessionId', async (c) => {
           return
         }
 
+        // Session meta (repo, user) — needed before starting sandbox-agent for Bankr merge + later clone
+        const latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
+        const latestMeta = (await latestMetaRes.json()) as Record<string, string>
+
+        const repoOwner = latestMeta.repoOwner || latestMeta.repo_owner
+        const repoName = latestMeta.repoName || latestMeta.repo_name
+        const userId = latestMeta.userId || latestMeta.user_id
+        const repoPath = '/home/user/repo'
+
+        let bankrEnabled = false
+        if (userId && c.env.BANKR_API_KEY) {
+          try {
+            const bankrPref = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
+              .bind(userId, 'use_bankr')
+              .first<{ value: string }>()
+            bankrEnabled = bankrPref?.value === 'true'
+          } catch {
+            /* ignore — default to false */
+          }
+        }
+        const sandboxAgentOptions = bankrEnabled
+          ? { bankrEnabled: true, bankrApiKey: c.env.BANKR_API_KEY! }
+          : undefined
+
         // Start sandbox-agent server if not running
         if (!currentSandboxAgentUrl) {
           console.log(`[chat:${sessionId}] Starting sandbox-agent server...`)
@@ -295,27 +319,6 @@ app.post('/:sessionId', async (c) => {
             return
           }
         }
-
-        // Get latest metadata (repo info)
-        const latestMetaRes = await stub.fetch(new Request(`${doUrl}/meta`))
-        const latestMeta = (await latestMetaRes.json()) as Record<string, string>
-
-        const repoOwner = latestMeta.repoOwner || latestMeta.repo_owner
-        const repoName = latestMeta.repoName || latestMeta.repo_name
-        const userId = latestMeta.userId || latestMeta.user_id
-        const repoPath = '/home/user/repo'
-
-        // Check Bankr preference for this user
-        let bankrEnabled = false
-        if (userId && c.env.BANKR_API_KEY) {
-          try {
-            const bankrPref = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
-              .bind(userId, 'use_bankr')
-              .first<{ value: string }>()
-            bankrEnabled = bankrPref?.value === 'true'
-          } catch { /* ignore — default to false */ }
-        }
-        const sandboxAgentOptions = bankrEnabled ? { bankrEnabled: true, bankrApiKey: c.env.BANKR_API_KEY! } : undefined
 
         // Clone repo if needed
         if (repoOwner && repoName && !latestMeta.repo_url) {

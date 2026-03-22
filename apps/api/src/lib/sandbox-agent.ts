@@ -199,42 +199,41 @@ export async function startSandboxAgentServer(
     console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} already installed`)
   }
 
-  // Step 3.5: Write Bankr provider config if enabled
+  // Step 3.5: Merge Bankr provider into ~/.config/opencode/opencode.json if enabled
+  // Important: do not replace the whole file — OpenCode Zen and other providers rely on
+  // the existing merged config; overwriting with only `provider.bankr` breaks opencode/* models.
   if (options?.bankrEnabled && options?.bankrApiKey) {
-    console.log(`[sandbox-agent:${sandboxId}] Step 3.5: Writing Bankr provider config...`)
-    const opencodeConfig = JSON.stringify({
-      provider: {
-        bankr: {
-          npm: '@ai-sdk/openai-compatible',
-          name: 'Bankr',
-          options: {
-            baseURL: 'https://llm.bankr.bot/v1',
-            apiKey: '{env:BANKR_API_KEY}',
-          },
-          models: {
-            'claude-opus-4.6': { name: 'Claude Opus 4.6', limit: { context: 200000, output: 32000 } },
-            'claude-sonnet-4.6': { name: 'Claude Sonnet 4.6', limit: { context: 200000, output: 64000 } },
-            'claude-haiku-4.5': { name: 'Claude Haiku 4.5', limit: { context: 200000, output: 64000 } },
-            'gpt-5.2': { name: 'GPT-5.2', limit: { context: 1000000, output: 128000 } },
-            'gpt-5.2-codex': { name: 'GPT-5.2 Codex', limit: { context: 1000000, output: 128000 } },
-            'gpt-5-mini': { name: 'GPT-5 Mini', limit: { context: 1000000, output: 65536 } },
-            'gpt-5-nano': { name: 'GPT-5 Nano', limit: { context: 1000000, output: 65536 } },
-            'kimi-k2.5': { name: 'Kimi K2.5', limit: { context: 256000, output: 128000 } },
-            'qwen3-coder': { name: 'Qwen3 Coder', limit: { context: 256000, output: 65536 } },
-          },
-        },
+    console.log(`[sandbox-agent:${sandboxId}] Step 3.5: Merging Bankr provider into opencode.json...`)
+    const bankrProvider = {
+      npm: '@ai-sdk/openai-compatible',
+      name: 'Bankr',
+      options: {
+        baseURL: 'https://llm.bankr.bot/v1',
+        apiKey: '{env:BANKR_API_KEY}',
       },
-    })
+      models: {
+        'claude-opus-4.6': { name: 'Claude Opus 4.6', limit: { context: 200000, output: 32000 } },
+        'claude-sonnet-4.6': { name: 'Claude Sonnet 4.6', limit: { context: 200000, output: 64000 } },
+        'claude-haiku-4.5': { name: 'Claude Haiku 4.5', limit: { context: 200000, output: 64000 } },
+        'gpt-5.2': { name: 'GPT-5.2', limit: { context: 1000000, output: 128000 } },
+        'gpt-5.2-codex': { name: 'GPT-5.2 Codex', limit: { context: 1000000, output: 128000 } },
+        'gpt-5-mini': { name: 'GPT-5 Mini', limit: { context: 1000000, output: 65536 } },
+        'gpt-5-nano': { name: 'GPT-5 Nano', limit: { context: 1000000, output: 65536 } },
+        'kimi-k2.5': { name: 'Kimi K2.5', limit: { context: 256000, output: 128000 } },
+        'qwen3-coder': { name: 'Qwen3 Coder', limit: { context: 256000, output: 65536 } },
+      },
+    }
+    const bankrConfigB64 = btoa(JSON.stringify(bankrProvider))
+    const mergeOpencodeConfig = `const fs=require("fs"),path=require("path"),os=require("os");const p=path.join(os.homedir(),".config/opencode/opencode.json");const bankr=JSON.parse(Buffer.from(process.env.BANKR_CONFIG_B64,"base64").toString());let j={};try{j=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}j.provider=j.provider||{};j.provider.bankr=bankr;fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j));`
     try {
-      await sandbox.commands.run(
-        `mkdir -p ~/.config/opencode && echo '${opencodeConfig.replace(/'/g, "'\\''")}' > ~/.config/opencode/opencode.json`,
-        { timeoutMs: 5000 },
-      )
-      // Also ensure BANKR_API_KEY is in env vars for the server process
+      await sandbox.commands.run(`mkdir -p ~/.config/opencode && node -e '${mergeOpencodeConfig}'`, {
+        timeoutMs: 10000,
+        envs: { BANKR_CONFIG_B64: bankrConfigB64 },
+      })
       envVars.BANKR_API_KEY = options.bankrApiKey
-      console.log(`[sandbox-agent:${sandboxId}] Bankr provider config written`)
+      console.log(`[sandbox-agent:${sandboxId}] Bankr provider merged into opencode.json`)
     } catch (err) {
-      console.warn(`[sandbox-agent:${sandboxId}] Failed to write Bankr config: ${err instanceof Error ? err.message : String(err)}`)
+      console.warn(`[sandbox-agent:${sandboxId}] Failed to merge Bankr config: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
