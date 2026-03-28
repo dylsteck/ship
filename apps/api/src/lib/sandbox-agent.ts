@@ -17,6 +17,7 @@ import {
 } from 'sandbox-agent'
 import type { Sandbox } from '@e2b/code-interpreter'
 import { getAgent, getDefaultAgentId, type AgentConfig } from './agent-registry'
+import { getBankrOpenCodeProvider } from './bankr'
 
 function generateToken(): string {
   const array = new Uint8Array(24)
@@ -204,25 +205,7 @@ export async function startSandboxAgentServer(
   // the existing merged config; overwriting with only `provider.bankr` breaks opencode/* models.
   if (options?.bankrEnabled && options?.bankrApiKey) {
     console.log(`[sandbox-agent:${sandboxId}] Step 3.5: Merging Bankr provider into opencode.json...`)
-    const bankrProvider = {
-      npm: '@ai-sdk/openai-compatible',
-      name: 'Bankr',
-      options: {
-        baseURL: 'https://llm.bankr.bot/v1',
-        apiKey: '{env:BANKR_API_KEY}',
-      },
-      models: {
-        'claude-opus-4.6': { name: 'Claude Opus 4.6', limit: { context: 200000, output: 32000 } },
-        'claude-sonnet-4.6': { name: 'Claude Sonnet 4.6', limit: { context: 200000, output: 64000 } },
-        'claude-haiku-4.5': { name: 'Claude Haiku 4.5', limit: { context: 200000, output: 64000 } },
-        'gpt-5.2': { name: 'GPT-5.2', limit: { context: 1000000, output: 128000 } },
-        'gpt-5.2-codex': { name: 'GPT-5.2 Codex', limit: { context: 1000000, output: 128000 } },
-        'gpt-5-mini': { name: 'GPT-5 Mini', limit: { context: 1000000, output: 65536 } },
-        'gpt-5-nano': { name: 'GPT-5 Nano', limit: { context: 1000000, output: 65536 } },
-        'kimi-k2.5': { name: 'Kimi K2.5', limit: { context: 256000, output: 128000 } },
-        'qwen3-coder': { name: 'Qwen3 Coder', limit: { context: 256000, output: 65536 } },
-      },
-    }
+    const bankrProvider = getBankrOpenCodeProvider('{env:BANKR_API_KEY}')
     const bankrConfigB64 = btoa(JSON.stringify(bankrProvider))
     const mergeOpencodeConfig = `const fs=require("fs"),path=require("path"),os=require("os");const p=path.join(os.homedir(),".config/opencode/opencode.json");const bankr=JSON.parse(Buffer.from(process.env.BANKR_CONFIG_B64,"base64").toString());let j={};try{j=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}j.provider=j.provider||{};j.provider.bankr=bankr;fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j));`
     try {
@@ -237,7 +220,7 @@ export async function startSandboxAgentServer(
     }
   }
 
-  // Step 3.5: Configure git to use GITHUB_TOKEN for HTTPS auth so the agent can push
+  // Step 3.6: Configure git to use GITHUB_TOKEN for HTTPS auth so the agent can push
   if (envVars.GITHUB_TOKEN) {
     console.log(`[sandbox-agent:${sandboxId}] Configuring git credential helper for GITHUB_TOKEN...`)
     try {
