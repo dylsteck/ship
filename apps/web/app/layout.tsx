@@ -34,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        <div className="pwa-titlebar-drag" />
         <ThemeProvider>
           <SWRProvider>{children}</SWRProvider>
         </ThemeProvider>

@@ -6,7 +6,7 @@
  * Uses the cheapest available model to keep title generation fast and inexpensive.
  */
 
-import { bankrMessages, toBankrModelId } from './bankr'
+import { bankrMessages } from './bankr'
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
@@ -107,6 +107,11 @@ async function generateViaBankr(
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     })
+
+    if (res.status === 402) {
+      console.warn('[generate-session-title] Bankr credits depleted, falling back')
+      return null
+    }
 
     if (!res.ok) {
       console.error('[generate-session-title] Bankr API error:', res.status, await res.text())

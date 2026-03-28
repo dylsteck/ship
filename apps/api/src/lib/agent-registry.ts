@@ -30,6 +30,8 @@ export interface AgentConfig {
   extensions: string[] // agent-specific extensions
 }
 
+import { getBankrAgentModels } from './bankr'
+
 export const AGENTS: Record<string, AgentConfig> = {
   'claude-code': {
     id: 'claude-code',
@@ -71,15 +73,7 @@ export const AGENTS: Record<string, AgentConfig> = {
       { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic' },
       { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
       // Bankr gateway (shown when Bankr is enabled)
-      { id: 'bankr/claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'Bankr', contextWindow: 200000, maxTokens: 32000 },
-      { id: 'bankr/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Bankr', contextWindow: 200000, maxTokens: 64000 },
-      { id: 'bankr/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Bankr', contextWindow: 200000, maxTokens: 64000 },
-      { id: 'bankr/gpt-5.2', name: 'GPT-5.2', provider: 'Bankr', contextWindow: 1000000, maxTokens: 128000 },
-      { id: 'bankr/gpt-5.2-codex', name: 'GPT-5.2 Codex', provider: 'Bankr', contextWindow: 1000000, maxTokens: 128000 },
-      { id: 'bankr/gpt-5-mini', name: 'GPT-5 Mini', provider: 'Bankr', contextWindow: 1000000, maxTokens: 65536 },
-      { id: 'bankr/gpt-5-nano', name: 'GPT-5 Nano', provider: 'Bankr', contextWindow: 1000000, maxTokens: 65536 },
-      { id: 'bankr/kimi-k2.5', name: 'Kimi K2.5', provider: 'Bankr', contextWindow: 256000, maxTokens: 128000 },
-      { id: 'bankr/qwen3-coder', name: 'Qwen3 Coder', provider: 'Bankr', contextWindow: 256000, maxTokens: 65536 },
+      ...getBankrAgentModels(),
     ],
     extensions: [],
   },

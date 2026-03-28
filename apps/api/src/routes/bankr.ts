@@ -28,6 +28,10 @@ bankr.post('/chat', async (c) => {
 
   const res = await bankrChatCompletion({ apiKey, ...body })
 
+  if (res.status === 402) {
+    return c.json({ error: 'Bankr credits depleted. Add credits at bankr.bot/llm or switch providers.' }, 402)
+  }
+
   if (body.stream) {
     return new Response(res.body, {
       status: res.status,
@@ -67,6 +71,10 @@ bankr.post('/messages', async (c) => {
   }
 
   const res = await bankrMessages({ apiKey, ...body })
+
+  if (res.status === 402) {
+    return c.json({ error: 'Bankr credits depleted. Add credits at bankr.bot/llm or switch providers.' }, 402)
+  }
 
   if (body.stream) {
     return new Response(res.body, {

@@ -32,7 +32,6 @@ export function buildAgentEnvVars(env: Env, extras?: { githubToken?: string }): 
   const envVars: Record<string, string> = {}
   if (env.ANTHROPIC_API_KEY) envVars.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY
   if (env.OPENAI_API_KEY) envVars.OPENAI_API_KEY = env.OPENAI_API_KEY
-  if (env.BANKR_API_KEY) envVars.BANKR_API_KEY = env.BANKR_API_KEY
   if (extras?.githubToken) {
     envVars.GITHUB_TOKEN = extras.githubToken
     envVars.GH_TOKEN = extras.githubToken // gh CLI uses GH_TOKEN

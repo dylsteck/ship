@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { listAgents, getDefaultAgentId } from '../lib/agent-registry'
+import { getBankrRouteModels } from '../lib/bankr'
 
 const models = new Hono<{ Bindings: Env }>()
 
@@ -73,19 +74,8 @@ const FALLBACK_MODELS = [
   },
 ]
 
-// Bankr LLM Gateway models — available when user has Bankr enabled
-// These route through https://llm.bankr.bot via OpenCode's bankr provider config
-const BANKR_MODELS = [
-  { id: 'bankr/claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'Bankr', description: 'Most capable Claude model via Bankr', contextWindow: 200000, maxTokens: 32000 },
-  { id: 'bankr/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Bankr', description: 'Fast and capable Claude via Bankr', contextWindow: 200000, maxTokens: 64000 },
-  { id: 'bankr/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Bankr', description: 'Fastest Claude model via Bankr', contextWindow: 200000, maxTokens: 64000 },
-  { id: 'bankr/gpt-5.2', name: 'GPT-5.2', provider: 'Bankr', description: 'Latest GPT model via Bankr', contextWindow: 1000000, maxTokens: 128000 },
-  { id: 'bankr/gpt-5.2-codex', name: 'GPT-5.2 Codex', provider: 'Bankr', description: 'GPT-5.2 optimized for code via Bankr', contextWindow: 1000000, maxTokens: 128000 },
-  { id: 'bankr/gpt-5-mini', name: 'GPT-5 Mini', provider: 'Bankr', description: 'Compact GPT-5 via Bankr', contextWindow: 1000000, maxTokens: 65536 },
-  { id: 'bankr/gpt-5-nano', name: 'GPT-5 Nano', provider: 'Bankr', description: 'Smallest GPT-5 via Bankr', contextWindow: 1000000, maxTokens: 65536 },
-  { id: 'bankr/kimi-k2.5', name: 'Kimi K2.5', provider: 'Bankr', description: 'High-performance model from Moonshot AI via Bankr', contextWindow: 256000, maxTokens: 128000 },
-  { id: 'bankr/qwen3-coder', name: 'Qwen3 Coder', provider: 'Bankr', description: 'Code-focused model from Alibaba via Bankr', contextWindow: 256000, maxTokens: 65536 },
-]
+// Bankr LLM Gateway models — derived from shared source in lib/bankr.ts
+const BANKR_MODELS = getBankrRouteModels()
 
 /**
  * Validate model ID against available models (with fallback)
@@ -451,6 +441,10 @@ models.post('/bankr', async (c) => {
 
     if (!userId || typeof enabled !== 'boolean') {
       return c.json({ error: 'userId and enabled (boolean) are required' }, 400)
+    }
+
+    if (enabled && !c.env.BANKR_API_KEY) {
+      return c.json({ error: 'Bankr LLM Gateway is not available on this server' }, 400)
     }
 
     await c.env.DB.prepare(
