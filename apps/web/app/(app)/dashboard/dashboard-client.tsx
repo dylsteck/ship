@@ -354,6 +354,24 @@ export function DashboardClient({
     state.setSelectedModel,
   ])
 
+  const terminalConnectionHint = (() => {
+    for (let i = chat.messages.length - 1; i >= 0; i--) {
+      const m = chat.messages[i]!
+      if (m.type !== 'error') continue
+      const t = `${m.content} ${m.rawErrorMessage || ''}`.toLowerCase()
+      if (
+        t.includes('clone') ||
+        t.includes('repository') ||
+        t.includes('sandbox') ||
+        t.includes('git') ||
+        t.includes('github')
+      ) {
+        return 'A setup or git error occurred. Fix it using the message above, then send another chat message — the terminal connects after the sandbox is ready.'
+      }
+    }
+    return undefined
+  })()
+
   const rightSidebarData: SessionPanelData | null = chat.activeSessionId
     ? {
         sessionId: chat.activeSessionId,
@@ -387,6 +405,7 @@ export function DashboardClient({
         sessionInfo: chat.sessionInfo,
         messages: chat.messages,
         sandboxStatus: chat.sandboxStatus ?? undefined,
+        terminalConnectionHint,
       }
     : null
 

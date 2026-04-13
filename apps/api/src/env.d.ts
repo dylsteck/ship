@@ -28,6 +28,10 @@ export interface Env {
   // Optional agent API keys
   OPENAI_API_KEY?: string;
 
+  /** GitHub OAuth app credentials — used to refresh user access tokens for private repo clone/git */
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+
   // Bankr LLM Gateway (optional, enables Bankr-powered models)
   // Get from: https://bankr.bot/api
   BANKR_API_KEY?: string;

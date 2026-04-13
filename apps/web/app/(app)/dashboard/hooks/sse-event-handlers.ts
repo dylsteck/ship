@@ -170,6 +170,7 @@ export function handleGenericError(
   error: unknown,
   ctx: SSEHandlerContext,
   details?: string,
+  errorAction?: { label: string; href: string },
 ) {
   const errorMessage = parseErrorMessage(error)
   const messageToShow =
@@ -182,7 +183,7 @@ export function handleGenericError(
     const withoutPlaceholder = msgId ? prev.filter((m) => m.id !== msgId) : prev
     return [
       ...withoutPlaceholder,
-      createErrorMessage(messageToShow, category, retryable, messageToShow),
+      createErrorMessage(messageToShow, category, retryable, messageToShow, errorAction),
     ]
   })
   ctx.setIsStreaming(false)

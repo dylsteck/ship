@@ -22,10 +22,51 @@ import { executeWithRetry, classifyError, sanitizeError, safeErrorForLog } from 
 import { generateBranchName } from '../lib/git-workflow'
 import { generateSessionTitle } from '../lib/generate-session-title'
 import { buildAgentEnvVars, writeStatusEvent, writeErrorEvent, StreamStatus } from '../lib/chat-helpers'
+import { getGitHubAccessTokenForUser } from '../lib/github-token'
 import type { Env } from '../env.d'
 
 const CREATE_SESSION_TIMEOUT_MS = 25_000
 const RESUME_SESSION_TIMEOUT_MS = 15_000
+
+const SETTINGS_PATH = '/settings'
+
+function cloneFailureDetails(cmdErr: { stderr?: string; stdout?: string }, base: string): string {
+  const extra = [cmdErr.stderr, cmdErr.stdout].filter(Boolean).join('\n').trim()
+  if (!extra) return base
+  return `${base}\n\n${extra.slice(0, 4000)}`
+}
+
+async function persistChatErrorMessage(
+  stub: { fetch: typeof fetch },
+  doUrl: string,
+  content: string,
+  category: 'transient' | 'persistent' | 'user-action' | 'fatal',
+  retryable: boolean,
+  action?: { label: string; href: string },
+) {
+  try {
+    await stub.fetch(
+      new Request(`${doUrl}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'system',
+          content,
+          parts: JSON.stringify([
+            {
+              type: 'error',
+              category,
+              retryable,
+              ...(action && { action }),
+            },
+          ]),
+        }),
+      }),
+    )
+  } catch (e) {
+    console.warn('[chat] Failed to persist error message:', e)
+  }
+}
 
 async function createAgentSessionWithTimeout(
   client: SandboxAgent,
@@ -279,18 +320,15 @@ app.post('/:sessionId', async (c) => {
           ? { bankrEnabled: true, bankrApiKey: c.env.BANKR_API_KEY! }
           : undefined
 
-        // Fetch GitHub token early so it's available for sandbox env vars + clone
+        // Resolve GitHub OAuth token (refresh when expired) for sandbox env + git clone
         let githubToken: string | null = null
+        let githubTokenError: string | null = null
         if (userId) {
-          try {
-            const accountRes = await c.env.DB.prepare(
-              'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
-            )
-              .bind(userId, 'github')
-              .first<{ access_token: string }>()
-            githubToken = accountRes?.access_token ?? null
-          } catch {
-            /* ignore — token will be null */
+          const ghRes = await getGitHubAccessTokenForUser(c.env.DB, c.env, userId)
+          if (ghRes.token) {
+            githubToken = ghRes.token
+          } else if ('message' in ghRes) {
+            githubTokenError = ghRes.message
           }
         }
 
@@ -368,7 +406,23 @@ app.post('/:sessionId', async (c) => {
 
           try {
             if (!userId) throw new Error('User ID not found')
-            if (!githubToken) throw new Error('No GitHub token found')
+            if (!githubToken) {
+              const msg =
+                githubTokenError ||
+                'GitHub is not connected. Connect GitHub in Settings to clone private repositories.'
+              const payload = {
+                error: 'Cannot clone repository',
+                details: msg,
+                category: 'user-action' as const,
+                retryable: false,
+              }
+              await stream.writeSSE({ event: 'error', data: JSON.stringify(payload) })
+              await persistChatErrorMessage(stub, doUrl, msg, 'user-action', false, {
+                label: 'Open Settings',
+                href: SETTINGS_PATH,
+              })
+              return
+            }
 
             const repoUrl = `https://github.com/${repoOwner}/${repoName}.git`
             const baseBranch = latestMeta.base_branch || 'main'
@@ -383,20 +437,57 @@ app.post('/:sessionId', async (c) => {
 
             // NOTE: E2B SDK throws CommandExitError on non-zero exit codes
             // GIT_TERMINAL_PROMPT=0 prevents git from hanging waiting for credentials
-            // Try with auth first, fall back to unauthenticated (works for public repos)
+            let cloneSucceeded = false
+            let lastAuthErr: unknown
             try {
               await sandbox.commands.run(
                 `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${githubToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                { timeoutMs: 60000 },
+                { timeoutMs: 120_000 },
               )
-            } catch (authCloneErr) {
-              console.warn(`[chat:${sessionId}] Auth clone failed, retrying without auth (public repo fallback)`)
-              // Clean up failed clone attempt
+              cloneSucceeded = true
+            } catch (e) {
+              lastAuthErr = e
+              const ce = e as { stderr?: string; stdout?: string }
+              console.warn(
+                `[chat:${sessionId}] Authenticated clone failed:`,
+                safeErrorForLog(e),
+                ce.stderr || '',
+              )
+            }
+
+            if (!cloneSucceeded) {
               await sandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
-              await sandbox.commands.run(
-                `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                { timeoutMs: 60000 },
-              )
+              let allowPublicFallback = false
+              try {
+                const repoInfo = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}`, {
+                  headers: {
+                    Authorization: `Bearer ${githubToken}`,
+                    Accept: 'application/vnd.github+json',
+                    'User-Agent': 'Ship',
+                  },
+                  signal: AbortSignal.timeout(10_000),
+                })
+                if (repoInfo.ok) {
+                  const j = (await repoInfo.json()) as { private?: boolean }
+                  allowPublicFallback = j.private !== true
+                }
+              } catch {
+                allowPublicFallback = false
+              }
+
+              if (allowPublicFallback) {
+                console.log(`[chat:${sessionId}] Retrying clone without auth (public repository)`)
+                await sandbox.commands.run(
+                  `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                  { timeoutMs: 120_000 },
+                )
+                cloneSucceeded = true
+              } else {
+                const cmdErr = lastAuthErr as { stderr?: string; stdout?: string }
+                const baseMsg =
+                  'Could not clone this repository with your GitHub account. For a private repo, ensure GitHub is connected in Settings and your account has access. You can also try reconnecting GitHub under Settings → Connectors.'
+                throw new Error(cloneFailureDetails(cmdErr, baseMsg))
+              }
             }
 
             await sandbox.commands.run(`cd ${repoPath} && git config user.name "${gitUserName.replace(/"/g, '\\"')}"`)
@@ -437,17 +528,33 @@ app.post('/:sessionId', async (c) => {
             console.error(`[chat:${sessionId}] Clone failed: ${cloneErrMsg}`)
             if (cmdErr.stderr) console.error(`[chat:${sessionId}] Clone stderr: ${cmdErr.stderr}`)
             if (cmdErr.stdout) console.error(`[chat:${sessionId}] Clone stdout: ${cmdErr.stdout}`)
+            const detailText = cloneError instanceof Error ? cloneError.message : String(cloneError)
+            const lower = detailText.toLowerCase()
+            const isAuth =
+              lower.includes('403') ||
+              lower.includes('authentication failed') ||
+              lower.includes('could not read from remote') ||
+              lower.includes('repository not found') ||
+              lower.includes('access denied')
             const clonePayload = {
               error: 'Failed to clone repository',
-              details: cloneError instanceof Error ? cloneError.message : String(cloneError),
-              category: 'persistent' as const,
-              retryable: true,
+              details: detailText,
+              category: (isAuth ? 'user-action' : 'persistent') as 'user-action' | 'persistent',
+              retryable: !isAuth,
             }
             console.error(`[chat:${sessionId}] ERROR:`, clonePayload)
             await stream.writeSSE({
               event: 'error',
               data: JSON.stringify(clonePayload),
             })
+            await persistChatErrorMessage(
+              stub,
+              doUrl,
+              detailText,
+              clonePayload.category,
+              clonePayload.retryable,
+              isAuth ? { label: 'GitHub settings', href: SETTINGS_PATH } : undefined,
+            )
             return
           }
         }
@@ -616,51 +723,125 @@ app.post('/:sessionId', async (c) => {
                       }),
                     })
 
-                    const accountRes = await c.env.DB.prepare(
-                      'SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1',
-                    )
-                      .bind(uid, 'github')
-                      .first<{ access_token: string }>()
+                    const recloneGh = await getGitHubAccessTokenForUser(c.env.DB, c.env, uid)
+                    const recloneToken = recloneGh.token
 
-                    if (accountRes?.access_token) {
-                      const repoUrl = `https://github.com/${owner}/${name}.git`
-                      const baseBranch = repoMetaJson.base_branch || 'main'
-                      const branchName = repoMetaJson.current_branch || generateBranchName('agent-task', sessionId)
+                    if (!recloneToken) {
+                      const msg =
+                        'message' in recloneGh
+                          ? recloneGh.message
+                          : 'GitHub is not connected. Open Settings and connect GitHub.'
+                      const payload = {
+                        error: 'Cannot re-clone repository',
+                        details: msg,
+                        category: 'user-action' as const,
+                        retryable: false,
+                      }
+                      await stream.writeSSE({ event: 'error', data: JSON.stringify(payload) })
+                      await persistChatErrorMessage(stub, doUrl, msg, 'user-action', false, {
+                        label: 'Open Settings',
+                        href: SETTINGS_PATH,
+                      })
+                      return
+                    }
 
-                      let cloneOk = false
+                    const repoUrl = `https://github.com/${owner}/${name}.git`
+                    const baseBranch = repoMetaJson.base_branch || 'main'
+                    const branchName = repoMetaJson.current_branch || generateBranchName('agent-task', sessionId)
+
+                    let recloneOk = false
+                    let lastRecloneErr: unknown
+                    try {
+                      await newSandbox.commands.run(
+                        `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${recloneToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
+                        { timeoutMs: 120_000 },
+                      )
+                      recloneOk = true
+                    } catch (e) {
+                      lastRecloneErr = e
+                      await newSandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
+                    }
+
+                    if (!recloneOk) {
+                      let allowPublicFallback = false
                       try {
-                        await newSandbox.commands.run(
-                          `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${githubToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                          { timeoutMs: 60000 },
-                        )
-                        cloneOk = true
+                        const repoInfo = await fetch(`https://api.github.com/repos/${owner}/${name}`, {
+                          headers: {
+                            Authorization: `Bearer ${recloneToken}`,
+                            Accept: 'application/vnd.github+json',
+                            'User-Agent': 'Ship',
+                          },
+                          signal: AbortSignal.timeout(10_000),
+                        })
+                        if (repoInfo.ok) {
+                          const j = (await repoInfo.json()) as { private?: boolean }
+                          allowPublicFallback = j.private !== true
+                        }
                       } catch {
-                        // Auth clone failed — retry without auth (public repo fallback)
-                        await newSandbox.commands.run(`rm -rf ${repoPath}`).catch(() => {})
+                        allowPublicFallback = false
+                      }
+
+                      if (allowPublicFallback) {
                         try {
                           await newSandbox.commands.run(
                             `GIT_TERMINAL_PROMPT=0 git clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                            { timeoutMs: 60000 },
+                            { timeoutMs: 120_000 },
                           )
-                          cloneOk = true
-                        } catch { /* both failed */ }
+                          recloneOk = true
+                        } catch {
+                          recloneOk = false
+                        }
                       }
-                      if (cloneOk) {
-                        await newSandbox.commands.run(`cd ${repoPath} && git config user.name "${gitUserName.replace(/"/g, '\\"')}"`)
-                        await newSandbox.commands.run(`cd ${repoPath} && git config user.email "${gitUserEmail.replace(/"/g, '\\"')}"`)
 
-                        await newSandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
-                        await newSandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
-
-                        await stub.fetch(
-                          new Request(`${doUrl}/meta`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ repo_url: repoUrl, current_branch: branchName, base_branch: baseBranch, repo_path: repoPath }),
-                          }),
+                      if (!recloneOk) {
+                        const cmdErr = lastRecloneErr as { stderr?: string; stdout?: string }
+                        const baseMsg =
+                          'Could not re-clone the repository after reconnecting the sandbox. Check GitHub access in Settings and try again.'
+                        const detailText = cloneFailureDetails(cmdErr, baseMsg)
+                        const lower = detailText.toLowerCase()
+                        const isAuth =
+                          lower.includes('403') ||
+                          lower.includes('authentication failed') ||
+                          lower.includes('could not read from remote') ||
+                          lower.includes('repository not found') ||
+                          lower.includes('access denied')
+                        const payload = {
+                          error: 'Failed to re-clone repository',
+                          details: detailText,
+                          category: (isAuth ? 'user-action' : 'persistent') as 'user-action' | 'persistent',
+                          retryable: !isAuth,
+                        }
+                        await stream.writeSSE({ event: 'error', data: JSON.stringify(payload) })
+                        await persistChatErrorMessage(
+                          stub,
+                          doUrl,
+                          detailText,
+                          payload.category,
+                          payload.retryable,
+                          isAuth ? { label: 'GitHub settings', href: SETTINGS_PATH } : undefined,
                         )
+                        return
                       }
                     }
+
+                    await newSandbox.commands.run(`cd ${repoPath} && git config user.name "${gitUserName.replace(/"/g, '\\"')}"`)
+                    await newSandbox.commands.run(`cd ${repoPath} && git config user.email "${gitUserEmail.replace(/"/g, '\\"')}"`)
+
+                    await newSandbox.commands.run(`cd ${repoPath} && git checkout ${baseBranch}`)
+                    await newSandbox.commands.run(`cd ${repoPath} && git checkout -b ${branchName}`)
+
+                    await stub.fetch(
+                      new Request(`${doUrl}/meta`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          repo_url: repoUrl,
+                          current_branch: branchName,
+                          base_branch: baseBranch,
+                          repo_path: repoPath,
+                        }),
+                      }),
+                    )
                   }
                 }
 

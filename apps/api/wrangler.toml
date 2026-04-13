@@ -35,6 +35,9 @@ ENVIRONMENT = "development"
 # API_SECRET: Internal API authentication between web and API services
 #   Set with: wrangler secret put API_SECRET
 #   Generate with: openssl rand -hex 32
+#
+# GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET: Same OAuth app as the web app — used to refresh user GitHub tokens for private repo clone
+#   Set with: wrangler secret put GITHUB_CLIENT_ID && wrangler secret put GITHUB_CLIENT_SECRET
 
 # Production Environment
 [env.production]

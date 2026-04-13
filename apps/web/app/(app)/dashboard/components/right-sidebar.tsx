@@ -209,6 +209,7 @@ function TabContent({
           sessionId={data.sessionId}
           sandboxStatus={desktopSandboxStatus}
           sandboxId={sandbox?.sandboxId ?? undefined}
+          connectionHint={data.terminalConnectionHint}
         />
       )
     case 'overview':
