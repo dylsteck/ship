@@ -20,7 +20,8 @@ export function Message({ role, children, className }: MessageProps) {
   if (role === 'user') {
     return (
       <div className={cn('py-3', className)}>
-        <div className="w-full rounded-full border border-border/50 bg-secondary/30 text-secondary-foreground px-4 py-2">
+        {/* md+: pill shape; mobile: slightly squarer corners so it reads cleaner on narrow screens */}
+        <div className="w-full rounded-2xl border border-border/50 bg-secondary/30 text-secondary-foreground px-4 py-2 md:rounded-full">
           <div className="text-sm">{children}</div>
         </div>
       </div>
