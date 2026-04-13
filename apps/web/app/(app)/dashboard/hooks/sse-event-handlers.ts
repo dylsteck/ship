@@ -146,6 +146,7 @@ export function handleSessionError(
   ctx.setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
   ctx.setIsStreaming(false)
   ctx.setStreamingStatus('')
+  ctx.clearStreamingStatusSteps()
   ctx.streamingMessageRef.current = null
 }
 
@@ -188,6 +189,7 @@ export function handleGenericError(
   })
   ctx.setIsStreaming(false)
   ctx.setStreamingStatus('')
+  ctx.clearStreamingStatusSteps()
   ctx.streamingMessageRef.current = null
 }
 

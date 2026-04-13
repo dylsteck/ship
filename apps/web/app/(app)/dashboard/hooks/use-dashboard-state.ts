@@ -146,9 +146,13 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
             }
             if (!line.startsWith('data: ')) continue
             try {
-              const rawData = JSON.parse(line.slice(6))
+              const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
               if (!rawData.type && currentEventType) rawData.type = currentEventType
-              const eventType = rawData?.type ?? currentEventType ?? 'unknown'
+              if (!rawData.type && typeof rawData.error === 'string') {
+                rawData.type = 'error'
+              }
+              const eventType: string =
+                typeof rawData.type === 'string' ? rawData.type : currentEventType || 'unknown'
               if (isAgentHarnessEvent(eventType, rawData)) {
                 eventsStore.addEvent(sessionId, {
                   id: crypto.randomUUID(),

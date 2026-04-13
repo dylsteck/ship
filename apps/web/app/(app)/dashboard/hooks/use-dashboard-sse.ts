@@ -265,9 +265,13 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             if (line.startsWith('data: ')) {
               try {
                 resetStallTimer()
-                const rawData = JSON.parse(line.slice(6))
+                const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
                 if (!rawData.type && currentEventType) {
                   rawData.type = currentEventType
+                }
+                // Hono may omit `event:`; infer error so we don't skip chat handling when parseSSEEvent would return null
+                if (!rawData.type && typeof rawData.error === 'string') {
+                  rawData.type = 'error'
                 }
                 const event = parseSSEEvent(rawData)
 
@@ -489,6 +493,50 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   const processStreamEventForSession = useCallback(
     (sessionId: string, event: { type: string; [k: string]: unknown }) => {
       if (!streamingMessageRef.current) {
+        const hasCompletedAssistant = messagesRef.current.some(
+          (m) => m.role === 'assistant' && (m.content || m.toolInvocations?.length),
+        )
+        const accumulateSetupStepsRef = { current: !hasCompletedAssistant }
+        const ctxEarly: SSEHandlerContext = {
+          setMessages,
+          setIsStreaming,
+          setTotalCost,
+          setLastStepCost,
+          setSessionTodos,
+          setFileDiffs,
+          setAgentUrl,
+          setSessionTitle,
+          setSessionInfo,
+          setAgentSessionId,
+          setStreamStartTime,
+          setStreamingStatus,
+          accumulateSetupStepsRef,
+          streamingStatusStepsRef,
+          clearStreamingStatusSteps,
+          streamingMessageRef,
+          assistantTextRef,
+          reasoningRef,
+          targetSessionId: sessionId,
+        }
+        if (event.type === 'error') {
+          const errEvt = event as {
+            error?: string
+            details?: string
+            retryable?: boolean
+            attempt?: number
+            category?: string
+          }
+          if (!(errEvt.retryable && typeof errEvt.attempt === 'number')) {
+            handleGenericError(errEvt.error, ctxEarly, errEvt.details, actionForChatErrorPayload(errEvt))
+            sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+          }
+          return
+        }
+        if (event.type === 'session.error') {
+          handleSessionError((event as { properties?: { error?: Parameters<typeof handleSessionError>[0] } }).properties?.error, ctxEarly)
+          sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+          return
+        }
         const isStreamingEvent = [
           'status',
           'session.status',
@@ -699,8 +747,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             }
             if (line.startsWith('data: ')) {
               try {
-                const rawData = JSON.parse(line.slice(6))
+                const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
                 if (!rawData.type && currentEventType) rawData.type = currentEventType
+                if (!rawData.type && typeof rawData.error === 'string') {
+                  rawData.type = 'error'
+                }
                 const event = parseSSEEvent(rawData)
 
                 // Only capture raw events from agent harness (exclude sandbox-ready, heartbeat, etc.)
