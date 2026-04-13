@@ -7,6 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "deploy:prod": "wrangler deploy --env production",
+    "lint": "eslint \"src/**/*.ts\"",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,7 +21,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260317.1",
+    "eslint": "^9.39.4",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.1",
     "wrangler": "^4.76.0"
   }
 }

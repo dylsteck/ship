@@ -8,11 +8,15 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "lint:eslint": "eslint . --max-warnings 500",
     "type-check": "turbo type-check",
     "deploy": "concurrently -n vercel,wrangler \"vercel\" \"cd apps/api && npx wrangler deploy\"",
     "deploy:prod": "concurrently -n vercel,wrangler \"vercel --prod\" \"cd apps/api && npx wrangler deploy --env production\""
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "eslint": "^9.21.0",
+    "eslint-config-next": "^16.2.1",
     "concurrently": "^9.1.2",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
