@@ -36,4 +36,6 @@ export interface SessionPanelData {
   sessionInfo: SessionInfo | null
   messages: import('@/lib/ai-elements-adapter').UIMessage[]
   sandboxStatus?: string
+  /** Shown in Terminal tab when chat has a recent setup/git error */
+  terminalConnectionHint?: string
 }

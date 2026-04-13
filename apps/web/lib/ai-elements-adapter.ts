@@ -47,6 +47,8 @@ export interface UIMessage {
   retryable?: boolean
   /** Raw error message before formatting (shown in Details when formatted would mask it) */
   rawErrorMessage?: string
+  /** Optional primary action (e.g. open Settings) for user-action errors */
+  errorAction?: { label: string; href: string }
   // Wall-clock elapsed time in ms (set when streaming completes)
   elapsed?: number
   // Plan items from PlanPart events
@@ -256,6 +258,7 @@ export function createErrorMessage(
   category: UIMessage['errorCategory'] = 'persistent',
   retryable = false,
   rawErrorMessage?: string,
+  errorAction?: UIMessage['errorAction'],
 ): UIMessage {
   return {
     id: `error-${Date.now()}`,
@@ -265,6 +268,7 @@ export function createErrorMessage(
     errorCategory: category,
     retryable,
     rawErrorMessage,
+    ...(errorAction && { errorAction }),
     createdAt: new Date(),
   }
 }
@@ -339,6 +343,17 @@ export function classifyError(errorMessage: string): {
   retryable: boolean
 } {
   const lower = errorMessage.toLowerCase()
+
+  if (
+    (lower.includes('clone') || lower.includes('repository') || lower.includes('git')) &&
+    (lower.includes('403') ||
+      lower.includes('private') ||
+      lower.includes('access denied') ||
+      lower.includes('authentication failed') ||
+      lower.includes('could not read from remote'))
+  ) {
+    return { category: 'user-action', retryable: false }
+  }
 
   if (lower.includes('credit balance') || lower.includes('anthropic api')) {
     return { category: 'user-action', retryable: false }
@@ -463,10 +478,16 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
         for (const part of parts) {
           const partType = (part as { type: string }).type
           if (partType === 'error') {
-            const ep = part as unknown as { type: 'error'; category?: string; retryable?: boolean }
+            const ep = part as unknown as {
+              type: 'error'
+              category?: string
+              retryable?: boolean
+              action?: { label: string; href: string }
+            }
             uiMsg.type = 'error'
             uiMsg.errorCategory = (ep.category as UIMessage['errorCategory']) || 'persistent'
             uiMsg.retryable = ep.retryable ?? false
+            if (ep.action?.label && ep.action?.href) uiMsg.errorAction = ep.action
             continue
           }
           switch (part.type) {

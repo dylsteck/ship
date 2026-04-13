@@ -31,6 +31,13 @@ import {
 } from './sse-event-handlers'
 import type { useDashboardChat } from './use-dashboard-chat'
 
+const SETTINGS_ACTION = { label: 'Open Settings', href: '/settings' } as const
+
+function actionForChatErrorPayload(payload: { category?: string }): { label: string; href: string } | undefined {
+  if (payload.category === 'user-action') return SETTINGS_ACTION
+  return undefined
+}
+
 /** Compact params: chat context + mode ref. Avoids 20+ individual props. */
 export interface UseDashboardSSEParams {
   chat: ReturnType<typeof useDashboardChat>
@@ -215,12 +222,14 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
               ? errorData.details
               : mainError
           const { category, retryable } = classifyError(errorContent)
+          const errPayload = errorData as { category?: string }
+          const action = actionForChatErrorPayload(errPayload)
 
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
             return [
               ...filtered,
-              createErrorMessage(errorContent, category, retryable, errorContent),
+              createErrorMessage(errorContent, category, retryable, errorContent, action),
             ]
           })
 
@@ -378,11 +387,12 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                     break
 
                   case 'error': {
-                    const errEvt = event as {
+                    const errEvt = rawData as {
                       error?: string
                       details?: string
                       retryable?: boolean
                       attempt?: number
+                      category?: string
                     }
                     if (errEvt.retryable && typeof errEvt.attempt === 'number') {
                       // Intermediate retry — show as status, don't kill the stream
@@ -391,9 +401,10 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                       sessionStatusStore.update(targetSessionId, { status: retryMsg })
                     } else {
                       handleGenericError(
-                        (event as any).error,
+                        errEvt.error,
                         ctx,
-                        (event as any).details,
+                        errEvt.details,
+                        actionForChatErrorPayload(errEvt),
                       )
                       sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
                     }
@@ -538,12 +549,13 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             details?: string
             retryable?: boolean
             attempt?: number
+            category?: string
           }
           if (errEvt.retryable && typeof errEvt.attempt === 'number') {
             const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
             ctx.setStreamingStatus(retryMsg, accumulateSetupStepsRef.current)
           } else {
-            handleGenericError((event as any).error, ctx, (event as any).details)
+            handleGenericError(errEvt.error, ctx, errEvt.details, actionForChatErrorPayload(errEvt))
           }
           break
         }
@@ -800,7 +812,13 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                     sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
                     return
                   case 'error': {
-                    const errEvt = event as { error?: string; retryable?: boolean; attempt?: number }
+                    const errEvt = rawData as {
+                      error?: string
+                      details?: string
+                      retryable?: boolean
+                      attempt?: number
+                      category?: string
+                    }
                     if (errEvt.retryable && typeof errEvt.attempt === 'number') {
                       ensurePlaceholder()
                       const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
@@ -808,7 +826,12 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                       sessionStatusStore.update(sessionId, { status: retryMsg })
                     } else {
                       if (!placeholderAdded) setIsStreaming(false)
-                      handleGenericError((event as any).error, ctx)
+                      handleGenericError(
+                        errEvt.error,
+                        ctx,
+                        errEvt.details,
+                        actionForChatErrorPayload(errEvt),
+                      )
                       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
                       return
                     }
