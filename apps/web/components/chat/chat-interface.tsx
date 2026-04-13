@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { AIMessageList } from './ai-message-list'
 import { EnhancedPromptInput } from './enhanced-prompt-input'
+import { SessionMobileActivityStrip } from './session-mobile-activity-strip'
 import type { AgentStatus } from '@/components/session/status-indicator'
 import { useChatStream } from './use-chat-stream'
 
@@ -74,6 +75,7 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col bg-background">
+      <SessionMobileActivityStrip sessionId={sessionId} />
       {/* Message List */}
       <AIMessageList
         messages={messages}

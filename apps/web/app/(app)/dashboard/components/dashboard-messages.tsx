@@ -17,7 +17,7 @@ import { SubagentView, type SubagentViewState } from './subagent-view'
 import type { TodoItem } from '../types'
 import { formatAgentType } from './messages/helpers'
 import { MessageItem, MessagesEmptyState } from './messages'
-import { groupConsecutiveAssistants } from './dashboard-message-grouping'
+import { groupConsecutiveAssistants } from './messages/group-consecutive-assistants'
 import { AssistantRunBlock } from './assistant-run-block'
 
 interface DashboardMessagesProps {
