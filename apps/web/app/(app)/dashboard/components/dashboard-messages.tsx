@@ -1,15 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import {
-  Conversation,
-  ConversationScrollButton,
-  Message,
-  ThinkingBlock,
-  Loader,
-  SessionSetup,
-  Response,
-} from '@ship/ui'
+import { Conversation, ConversationScrollButton } from '@ship/ui'
 import type { UIMessage, ToolInvocation } from '@/lib/ai-elements-adapter'
 import { getStreamingStatus } from '@/lib/ai-elements-adapter'
 import {
@@ -25,220 +17,8 @@ import { SubagentView, type SubagentViewState } from './subagent-view'
 import type { TodoItem } from '../types'
 import { formatAgentType } from './messages/helpers'
 import { MessageItem, MessagesEmptyState } from './messages'
-import { MessageToolList } from './messages/tool-list'
-import { Markdown } from '@/components/chat/markdown'
-
-// ─── Message Grouping ──────────────────────────────────────────────
-
-type MessageGroup =
-  | { type: 'single'; message: UIMessage }
-  | { type: 'assistant-run'; messages: UIMessage[] }
-
-function groupConsecutiveAssistants(messages: UIMessage[]): MessageGroup[] {
-  const groups: MessageGroup[] = []
-  let run: UIMessage[] = []
-
-  const flushRun = () => {
-    if (run.length > 0) {
-      groups.push({ type: 'assistant-run', messages: [...run] })
-      run = []
-    }
-  }
-
-  for (const msg of messages) {
-    if (msg.role === 'assistant' && !msg.type) {
-      run.push(msg)
-    } else {
-      flushRun()
-      groups.push({ type: 'single', message: msg })
-    }
-  }
-  flushRun()
-  return groups
-}
-
-// ─── Assistant Run Block ────────────────────────────────────────────
-
-interface AssistantRunBlockProps {
-  messages: UIMessage[]
-  streamingMessageId: string | null
-  streamStartTime: number | null
-  streamingStatusSteps: string[]
-  statusLabel: string
-  sessionTodos: TodoItem[]
-  todoRenderedRef: React.MutableRefObject<boolean>
-  onSubagentNavigate: (tool: ToolInvocation) => void
-  /** Only show SessionSetup for the first assistant in the thread */
-  showSessionSetup: boolean
-  /** Only show persisted startupSteps on the first assistant block */
-  isFirstAssistantBlock: boolean
-}
-
-const AssistantRunBlock = React.memo(function AssistantRunBlock({
-  messages,
-  streamingMessageId,
-  streamingStatusSteps,
-  statusLabel,
-  sessionTodos,
-  todoRenderedRef,
-  onSubagentNavigate,
-  showSessionSetup,
-  isFirstAssistantBlock,
-}: AssistantRunBlockProps) {
-  const isGroupStreaming = messages.some((m) => m.id === streamingMessageId)
-
-  const lastMsg = messages[messages.length - 1]
-  const isLastEmpty =
-    !lastMsg.content && !lastMsg.toolInvocations?.length && !lastMsg.reasoning?.length
-
-  // Single empty streaming message → show loader or session setup (only on first message)
-  if (messages.length === 1 && isLastEmpty && isGroupStreaming) {
-    if (showSessionSetup && streamingStatusSteps.length > 0) {
-      return (
-        <Message role="assistant">
-          <SessionSetup steps={streamingStatusSteps} isStreaming />
-        </Message>
-      )
-    }
-    return (
-      <Message role="assistant">
-        <Loader message={statusLabel || 'Thinking...'} />
-      </Message>
-    )
-  }
-
-  // Filter out completely empty messages (unless they're the streaming target)
-  const substantiveMessages = React.useMemo(
-    () =>
-      messages.filter(
-        (m) =>
-          m.content ||
-          m.toolInvocations?.length ||
-          m.reasoning?.length ||
-          m.id === streamingMessageId,
-      ),
-    [messages, streamingMessageId],
-  )
-
-  // Memoize reasoning array — only recompute when tool invocations or reasoning actually change
-  const allReasoning = React.useMemo(
-    () => substantiveMessages.flatMap((m) => m.reasoning || []),
-    // Depend on the reasoning content, not the messages array reference
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [substantiveMessages.map((m) => m.reasoning?.join()).join()],
-  )
-
-  // Memoize tools — only recompute when tool invocations change
-  const allTools = React.useMemo(() => {
-    const allToolsRaw = substantiveMessages.flatMap((m) => m.toolInvocations || [])
-    const toolsByCallId = new Map<string, ToolInvocation>()
-    const toolOrder: string[] = []
-    for (const t of allToolsRaw) {
-      if (!toolsByCallId.has(t.toolCallId)) toolOrder.push(t.toolCallId)
-      toolsByCallId.set(t.toolCallId, t)
-    }
-    return toolOrder.map((id) => toolsByCallId.get(id)!)
-    // Depend on tool count + states, not array reference
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [substantiveMessages.map((m) => m.toolInvocations?.map((t) => `${t.toolCallId}:${t.state}`).join()).join()])
-
-  const allPlanItems = React.useMemo(() => {
-    const allPlanItemsRaw = substantiveMessages.flatMap((m) => m.planItems || [])
-    const planById = new Map(allPlanItemsRaw.map((p) => [p.id, p]))
-    return Array.from(planById.values())
-  }, [substantiveMessages])
-
-  const startupStepsMsg = React.useMemo(
-    () => substantiveMessages.find((m) => m.startupSteps?.length),
-    [substantiveMessages],
-  )
-
-  if (substantiveMessages.length === 0) return null
-
-  // Use only last message's content — parts are cumulative, last has full text
-  const textContent = substantiveMessages[substantiveMessages.length - 1]?.content ?? ''
-
-  const hasReasoning = allReasoning.length > 0
-  const hasTools = allTools.length > 0
-
-  return (
-    <Message role="assistant">
-      {isFirstAssistantBlock && startupStepsMsg?.startupSteps && (
-        <SessionSetup
-          steps={startupStepsMsg.startupSteps}
-          defaultOpen={false}
-          className="my-1"
-        />
-      )}
-
-      {(hasReasoning || hasTools) && (
-        <ThinkingBlock
-          reasoning={allReasoning}
-          isStreaming={isGroupStreaming}
-          duration={
-            substantiveMessages[substantiveMessages.length - 1]?.elapsed != null
-              ? Math.floor(substantiveMessages[substantiveMessages.length - 1]!.elapsed! / 1000)
-              : undefined
-          }
-        >
-          {hasTools && (
-            <MessageToolList
-              tools={allTools}
-              sessionTodos={sessionTodos}
-              todoRenderedRef={todoRenderedRef}
-              onSubagentNavigate={onSubagentNavigate}
-            />
-          )}
-        </ThinkingBlock>
-      )}
-
-      {allPlanItems.length > 0 && (
-        <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Plan
-          </div>
-          {allPlanItems.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-sm">
-              <span className="shrink-0 w-4 text-center">
-                {item.status === 'completed'
-                  ? '✓'
-                  : item.status === 'in_progress'
-                    ? '●'
-                    : item.status === 'cancelled'
-                      ? '✗'
-                      : '○'}
-              </span>
-              <span
-                className={
-                  item.status === 'completed'
-                    ? 'text-muted-foreground line-through'
-                    : item.status === 'in_progress'
-                      ? 'text-foreground font-medium'
-                      : item.status === 'cancelled'
-                        ? 'text-muted-foreground/50 line-through'
-                        : 'text-foreground'
-                }
-              >
-                {item.title}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {textContent && (
-        <div className={hasTools ? 'mt-4' : undefined}>
-          <Response>
-            <Markdown content={textContent} isAnimating={isGroupStreaming} />
-          </Response>
-        </div>
-      )}
-
-    </Message>
-  )
-})
-
-// ─── Dashboard Messages ─────────────────────────────────────────────
+import { groupConsecutiveAssistants } from './dashboard-message-grouping'
+import { AssistantRunBlock } from './assistant-run-block'
 
 interface DashboardMessagesProps {
   activeSessionId: string | null
@@ -294,6 +74,39 @@ export function DashboardMessages({
     }
   }, [messages, streamingMessageId, messageGroups])
 
+  const resolvedSubagent = React.useMemo(() => {
+    if (subagentStack.length === 0) return null
+    const stackTop = subagentStack[subagentStack.length - 1]!
+    const toolCallId = stackTop.toolCallId
+
+    let latestTool: ToolInvocation | null = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      const tools = msg?.toolInvocations ?? []
+      const found = tools.find((t) => t.toolCallId === toolCallId)
+      if (found) {
+        latestTool = found
+        break
+      }
+    }
+
+    if (!latestTool) return stackTop
+
+    const sessionId = extractSubagentSessionId(latestTool) || stackTop.sessionId
+    const resultText = getSubagentResultText(latestTool) || stackTop.resultText
+    const childTools = extractChildToolsFromResult(latestTool)
+    const toolStatus = mapToolState(latestTool.state)
+
+    return {
+      ...stackTop,
+      sessionId: sessionId || stackTop.sessionId,
+      resultText: resultText || stackTop.resultText,
+      childTools: childTools.length > 0 ? childTools : stackTop.childTools,
+      toolStatus,
+      duration: latestTool.duration ?? stackTop.duration,
+    }
+  }, [subagentStack, messages])
+
   if (!activeSessionId) return null
 
   todoRenderedRef.current = false
@@ -330,42 +143,6 @@ export function DashboardMessages({
   const handleSubagentBack = () => {
     setSubagentStack((prev) => prev.slice(0, -1))
   }
-
-  // When in subagent view, sync with latest tool data from parent messages.
-  // The tool may not have sessionId yet when user first clicks — it arrives via SSE later.
-  const resolvedSubagent = React.useMemo(() => {
-    if (subagentStack.length === 0) return null
-    const stackTop = subagentStack[subagentStack.length - 1]!
-    const toolCallId = stackTop.toolCallId
-
-    // Find the tool in messages (most up-to-date occurrence)
-    let latestTool: ToolInvocation | null = null
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      const tools = msg?.toolInvocations ?? []
-      const found = tools.find((t) => t.toolCallId === toolCallId)
-      if (found) {
-        latestTool = found
-        break
-      }
-    }
-
-    if (!latestTool) return stackTop
-
-    const sessionId = extractSubagentSessionId(latestTool) || stackTop.sessionId
-    const resultText = getSubagentResultText(latestTool) || stackTop.resultText
-    const childTools = extractChildToolsFromResult(latestTool)
-    const toolStatus = mapToolState(latestTool.state)
-
-    return {
-      ...stackTop,
-      sessionId: sessionId || stackTop.sessionId,
-      resultText: resultText || stackTop.resultText,
-      childTools: childTools.length > 0 ? childTools : stackTop.childTools,
-      toolStatus,
-      duration: latestTool.duration ?? stackTop.duration,
-    }
-  }, [subagentStack, messages])
 
   if (resolvedSubagent) {
     return (
@@ -410,7 +187,6 @@ export function DashboardMessages({
                 key={group.messages[0].id}
                 messages={group.messages}
                 streamingMessageId={streamingMessageId}
-                streamStartTime={streamStartTime}
                 streamingStatusSteps={streamingStatusSteps}
                 statusLabel={statusLabel}
                 sessionTodos={sessionTodos}

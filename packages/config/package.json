@@ -2,5 +2,8 @@
   "name": "@ship/config",
   "version": "0.0.0",
   "private": true,
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "lint": "echo '@ship/config: no eslint'"
+  }
 }
