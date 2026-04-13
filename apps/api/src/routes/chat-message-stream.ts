@@ -13,7 +13,7 @@ import {
 import { EventTranslatorState } from '../lib/event-translator'
 import { getDefaultAgentId } from '../lib/agent-registry'
 import { executeWithRetry, classifyError, sanitizeError, safeErrorForLog } from '../lib/error-handler'
-import { generateBranchName } from '../lib/git-workflow'
+import { cloneGitHubRepoWithStrategies, generateBranchName } from '../lib/git-workflow'
 import { generateSessionTitle } from '../lib/generate-session-title'
 import { buildAgentEnvVars } from '../lib/chat-helpers'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
@@ -366,10 +366,11 @@ export async function handleChatMessageStream(c: Context<{ Bindings: Env }>) {
             let cloneSucceeded = false
             let lastAuthErr: unknown
             try {
-              await sandbox.commands.run(
-                `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${githubToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                { timeoutMs: 120_000 },
-              )
+              await cloneGitHubRepoWithStrategies(sandbox, repoOwner, repoName, repoPath, githubToken, {
+                timeoutMs: 120_000,
+                depth: 1,
+                singleBranch: true,
+              })
               cloneSucceeded = true
             } catch (e) {
               lastAuthErr = e
@@ -678,10 +679,11 @@ export async function handleChatMessageStream(c: Context<{ Bindings: Env }>) {
                     let recloneOk = false
                     let lastRecloneErr: unknown
                     try {
-                      await newSandbox.commands.run(
-                        `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer ${recloneToken}" clone --depth 1 --single-branch ${repoUrl} ${repoPath}`,
-                        { timeoutMs: 120_000 },
-                      )
+                      await cloneGitHubRepoWithStrategies(newSandbox, owner, name, repoPath, recloneToken, {
+                        timeoutMs: 120_000,
+                        depth: 1,
+                        singleBranch: true,
+                      })
                       recloneOk = true
                     } catch (e) {
                       lastRecloneErr = e

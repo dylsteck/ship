@@ -13,6 +13,85 @@
 
 import type { Sandbox } from '@e2b/code-interpreter'
 
+/** Parse https://github.com/owner/repo(.git) into owner + repo name */
+export function parseGitHubHttpsRepo(repoUrl: string): { owner: string; repo: string } | null {
+  try {
+    const withGit = repoUrl.endsWith('.git') ? repoUrl : `${repoUrl}.git`
+    const u = new URL(withGit)
+    if (u.hostname !== 'github.com') return null
+    const seg = u.pathname.replace(/^\//, '').replace(/\.git$/i, '').split('/').filter(Boolean)
+    if (seg.length < 2) return null
+    return { owner: seg[0]!, repo: seg[1]! }
+  } catch {
+    return null
+  }
+}
+
+export interface CloneGitHubRepoOptions {
+  timeoutMs?: number
+  depth?: number
+  singleBranch?: boolean
+}
+
+/**
+ * Clone github.com/{owner}/{repo} using several HTTPS auth strategies.
+ * GitHub OAuth / PAT auth over HTTPS is most reliable with x-access-token in the URL;
+ * Bearer via http.extraHeader fails on some git versions or sandboxes.
+ * Token is passed as GITHUB_CLONE_TOKEN in the environment to avoid shell quoting bugs.
+ */
+export async function cloneGitHubRepoWithStrategies(
+  sandbox: Sandbox,
+  owner: string,
+  repo: string,
+  destPath: string,
+  token: string,
+  options?: CloneGitHubRepoOptions,
+): Promise<void> {
+  const depth = options?.depth ?? 1
+  const singleBranch = options?.singleBranch !== false
+  const timeoutMs = options?.timeoutMs ?? 120_000
+  const singleFlag = singleBranch ? '--single-branch ' : ''
+  const dest = destPath
+  const o = owner.trim()
+  const r = repo.replace(/\.git$/i, '').trim()
+
+  const attempts: { name: string; cmd: string }[] = [
+    {
+      name: 'x-access-token-in-url',
+      cmd: `GIT_TERMINAL_PROMPT=0 git clone --depth ${depth} ${singleFlag}"https://x-access-token:\${GITHUB_CLONE_TOKEN}@github.com/${o}/${r}.git" "${dest}"`,
+    },
+    {
+      name: 'oauth2-in-url',
+      cmd: `GIT_TERMINAL_PROMPT=0 git clone --depth ${depth} ${singleFlag}"https://oauth2:\${GITHUB_CLONE_TOKEN}@github.com/${o}/${r}.git" "${dest}"`,
+    },
+    {
+      name: 'token-userinfo-github',
+      cmd: `GIT_TERMINAL_PROMPT=0 git clone --depth ${depth} ${singleFlag}"https://\${GITHUB_CLONE_TOKEN}@github.com/${o}/${r}.git" "${dest}"`,
+    },
+    {
+      name: 'bearer-extraHeader',
+      cmd: `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer \${GITHUB_CLONE_TOKEN}" clone --depth ${depth} ${singleFlag}"https://github.com/${o}/${r}.git" "${dest}"`,
+    },
+  ]
+
+  let lastErr: unknown
+  for (const a of attempts) {
+    try {
+      await sandbox.commands.run(a.cmd, {
+        timeoutMs,
+        envs: { GITHUB_CLONE_TOKEN: token },
+      })
+      console.log(`[git-workflow] GitHub clone succeeded (${a.name}) ${o}/${r}`)
+      return
+    } catch (e) {
+      lastErr = e
+      console.warn(`[git-workflow] GitHub clone attempt ${a.name} failed:`, e instanceof Error ? e.message : String(e))
+      await sandbox.commands.run(`rm -rf "${dest}"`).catch(() => {})
+    }
+  }
+  throw lastErr
+}
+
 /**
  * Git workflow error types
  */
@@ -83,10 +162,16 @@ export async function cloneRepo(sandbox: Sandbox, repoUrl: string, token: string
   const repoPath = '/home/user/repo'
 
   try {
-    // Use http.extraHeader to pass token (avoids embedding token in URL)
+    const gh = parseGitHubHttpsRepo(repoUrl)
+    if (gh) {
+      await cloneGitHubRepoWithStrategies(sandbox, gh.owner, gh.repo, repoPath, token)
+      return repoPath
+    }
+
     const url = repoUrl.endsWith('.git') ? repoUrl : `${repoUrl}.git`
     const result = await sandbox.commands.run(
-      `git -c http.extraHeader="Authorization: Bearer ${token}" clone ${url} ${repoPath}`,
+      `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer \${GITHUB_CLONE_TOKEN}" clone ${url} ${repoPath}`,
+      { envs: { GITHUB_CLONE_TOKEN: token } },
     )
 
     if (result.error) {
@@ -286,9 +371,11 @@ export async function pushBranch(
     // Update remote URL with token for authentication
     let authUrl = remoteUrl
     if (remoteUrl.startsWith('https://github.com/')) {
-      authUrl = remoteUrl.replace('https://github.com/', `https://${token}@github.com/`)
+      const enc = encodeURIComponent(token)
+      authUrl = remoteUrl.replace('https://github.com/', `https://x-access-token:${enc}@github.com/`)
     } else if (remoteUrl.startsWith('https://') && !remoteUrl.includes('@')) {
-      authUrl = remoteUrl.replace('https://', `https://${token}@`)
+      const enc = encodeURIComponent(token)
+      authUrl = remoteUrl.replace('https://', `https://x-access-token:${enc}@`)
     }
 
     // Set remote URL temporarily for this push
