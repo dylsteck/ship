@@ -29,19 +29,13 @@ pnpm type-check   # Type check only
 
 ### Deployment
 
-Both the **Next.js web app** and the **API** deploy to **Cloudflare Workers** using [OpenNext](https://opennext.js.org/cloudflare) for the frontend and Wrangler for the API.
+The **API** runs on **Cloudflare Workers** (Wrangler). The **Next.js web app** (`apps/web`) is deployed as a **Docker** image (Next [standalone](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) output), e.g. on [Coolify](https://coolify.io/docs/applications/nextjs).
 
-#### Web App (Next.js) — OpenNext + Wrangler
+#### Web App (Next.js) — Docker / Coolify
 
-From `apps/web` (see [Cloudflare Next.js guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/)):
-
-```bash
-cd apps/web
-pnpm preview   # Build + local Workers runtime (workerd)
-pnpm deploy    # Build + deploy the web Worker
-```
-
-Set the same env vars as local dev (`apps/web/.env.example`) in the Cloudflare dashboard or Workers Builds (including `NEXT_PUBLIC_*` and server-only vars used at build time).
+- **Dockerfile:** `apps/web/Dockerfile` (build context: **repository root**).
+- **Port:** `3000` (set **Ports Exposes** to `3000` in Coolify).
+- **Env:** Same variables as `apps/web/.env.example` (set in Coolify; pass build args for `NEXT_PUBLIC_*` / `API_BASE_URL` if needed at build time).
 
 #### API (Cloudflare Worker) — Wrangler
 

@@ -12,13 +12,13 @@ Complete guide for deploying Ship to production.
 
 Before deploying, ensure these are set. Session creation and API calls will fail in production if any critical vars are missing.
 
-### Web App (Cloudflare Workers / `apps/web`)
+### Web App (Docker / Coolify / `apps/web`)
 
 | Variable | Required | What it does | How to set |
 |----------|----------|--------------|------------|
-| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Cloudflare Dashboard → Workers & Pages → your web Worker → Settings → Variables, or [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) build vars |
+| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Coolify → your app → Environment Variables (and build-time args if you bake `NEXT_PUBLIC_*` at build) |
 | `API_BASE_URL` | Alternative | Same as above; used if `NEXT_PUBLIC_API_URL` is unset. | Same |
-| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | e.g. `https://ship-web.your-subdomain.workers.dev` or your custom domain |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | Your public web URL (e.g. `https://app.example.com`) |
 | `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | From GitHub OAuth app settings |
 | `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | Same |
 | `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `openssl rand -hex 32` |
@@ -114,28 +114,21 @@ npx wrangler deploy
    npx wrangler tail --env production
    ```
 
-## Deploy Next.js Web App (Cloudflare Workers)
+## Deploy Next.js Web App (Docker / Coolify)
 
-The web app uses [OpenNext](https://opennext.js.org/cloudflare) with [`@opennextjs/cloudflare`](https://www.npmjs.com/package/@opennextjs/cloudflare), following the [Cloudflare Next.js guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/).
+The web app builds with **`output: 'standalone'`** and ships in **`apps/web/Dockerfile`**. See [Coolify — Next.js](https://coolify.io/docs/applications/nextjs).
 
-1. **Install and authenticate** (once): `pnpm install` at the repo root; `npx wrangler login`.
+1. **Create a new resource** in Coolify → **Dockerfile** build pack (or equivalent).
 
-2. **Deploy from `apps/web`:**
-   ```bash
-   cd apps/web
-   pnpm deploy
-   ```
-   This runs `opennextjs-cloudflare build` then deploys the Worker defined in `wrangler.jsonc`.
+2. **Point Coolify at this repo** and set:
+   - **Build context:** repository **root** (not `apps/web` alone — the monorepo needs `packages/*` and `pnpm-workspace.yaml`).
+   - **Dockerfile path:** `apps/web/Dockerfile`.
 
-3. **Environment variables:** Add everything from `apps/web/.env.example` in the Cloudflare dashboard for the **web** Worker (or in Workers Builds [build variables](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)). `NEXT_PUBLIC_*` and other vars used at build time must be present for the build step.
+3. **Ports:** expose **`3000`** (Coolify “Ports Exposes” → `3000`).
 
-4. **Preview locally in Workers runtime:**
-   ```bash
-   cd apps/web
-   pnpm preview
-   ```
+4. **Environment variables:** Add everything from `apps/web/.env.example`. For `NEXT_PUBLIC_*` and any value that must be fixed at **build** time, configure Coolify **build arguments** to match the `ARG` lines in `apps/web/Dockerfile` (`API_BASE_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`), or rely on runtime-only env if your build does not need to inline those values.
 
-**Note:** `pnpm dev` still uses the Next.js dev server (Node); use `pnpm preview` to validate behavior in `workerd` before production.
+5. **API CORS:** Ensure `ALLOWED_ORIGINS` on the Cloudflare API Worker includes your **exact** public web origin (scheme + host, no trailing slash unless you use one consistently).
 
 ## Post-Deployment Checklist
 
@@ -171,7 +164,7 @@ API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
 ### 4. Test Production Deployment
 
 1. **Test Authentication:**
-   - Visit your production web URL (e.g. `https://ship-web.your-subdomain.workers.dev` or your custom domain)
+   - Visit your production web URL (Coolify hostname or custom domain)
    - Click "Sign in with GitHub"
    - Complete OAuth flow
    - Verify you're logged in
@@ -191,7 +184,7 @@ API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
    - Create a new session from the homepage
    - Navigate to the session (click it in the sidebar)
    - Reload the page — the session should still appear
-   - If you see "Session not found", check `NEXT_PUBLIC_API_URL` / `API_BASE_URL` on the web Worker and `ALLOWED_ORIGINS` on the API Worker
+   - If you see "Session not found", check `NEXT_PUBLIC_API_URL` / `API_BASE_URL` on the web container and `ALLOWED_ORIGINS` on the API Worker
 
 ## Staging Environment (Optional)
 
@@ -239,7 +232,7 @@ name = "ship-api-production"
 vars = { ENVIRONMENT = "production" }
 ```
 
-**Web App (Cloudflare Worker in `apps/web`):**
+**Web App (Docker / Coolify — `apps/web`):**
 ```env
 ENVIRONMENT=production
 API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
@@ -348,20 +341,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-  deploy-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-      - run: pnpm install
-      - run: cd apps/web && pnpm deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  # deploy-web:
+  #   Build and push apps/web Docker image (Coolify or your registry), or use Coolify Git deploy.
 ```
 
 ## Monitoring & Logs
@@ -424,7 +405,7 @@ npx wrangler rollback --env production
 - [ ] Production database ID is correct
 - [ ] OAuth callback URLs updated for production
 - [ ] CORS configured correctly
-- [ ] Environment variables set for both Workers (web + API) in Cloudflare
+- [ ] Environment variables set for the web container (Coolify) and secrets for the API Worker (Wrangler)
 - [ ] Session secret is strong (32+ characters)
 - [ ] API secret is different from session secret
 
@@ -439,8 +420,8 @@ After deployment:
 
 ## Reference
 
-- [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
+- [Coolify — Next.js](https://coolify.io/docs/applications/nextjs)
+- [Next.js — Docker (standalone)](https://github.com/vercel/next.js/blob/canary/examples/with-docker/Dockerfile)
+- [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/) (API)
 - [Wrangler CLI Docs](https://developers.cloudflare.com/workers/wrangler/)
 - [D1 Database Docs](https://developers.cloudflare.com/d1/)
-- [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare)
-- [Cloudflare Workers — Next.js](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/)

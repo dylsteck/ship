@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
-import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare'
 
 const config: NextConfig = {
+  output: 'standalone',
   transpilePackages: ['@ship/ui'],
   env: {
     NEXT_PUBLIC_API_URL:
@@ -12,5 +12,3 @@ const config: NextConfig = {
 }
 
 export default config
-
-initOpenNextCloudflareForDev()

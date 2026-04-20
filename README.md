@@ -218,16 +218,16 @@ ship/
 
 ## Deployment
 
-From the repo root:
+**API** (Cloudflare Worker) from the repo root:
 
 ```bash
-pnpm deploy        # Preview deploy (web + API)
-pnpm deploy:prod  # Production deploy (web + API)
+pnpm deploy        # default / preview Worker
+pnpm deploy:prod   # production Worker (see apps/api/wrangler.toml)
 ```
 
-### Manual commands
+**Web** (Next.js) is meant to run in **Docker** (see `apps/web/Dockerfile`), for example on [Coolify](https://coolify.io/docs/applications/nextjs). Build context must be the **repository root** so `packages/*` workspace deps resolve.
 
-#### Cloudflare Worker (API)
+### Manual commands — Cloudflare Worker (API)
 
 ```bash
 cd apps/api
@@ -248,14 +248,11 @@ npx wrangler secret put SESSION_SECRET --env production  # Must match web app
 npx wrangler deploy --env production
 ```
 
-### Cloudflare Workers (Web)
-
-The Next.js app in `apps/web` uses `@opennextjs/cloudflare` and deploys as a Worker (`pnpm deploy` from `apps/web`). Configure env vars in Cloudflare (same as `apps/web/.env.example`), including `NEXT_PUBLIC_APP_URL` for OAuth callbacks.
-
 ### Checklist
 
 - [ ] API Worker deployed with prod D1 + secrets
-- [ ] Web Worker deployed (`cd apps/web && pnpm deploy`) with env vars
+- [ ] Web app deployed (Docker/Coolify) with env vars from `apps/web/.env.example`
+- [ ] `ALLOWED_ORIGINS` on the API includes your web app URL
 - [ ] Production GitHub OAuth App (callback = prod web URL)
 - [ ] Test: sign in, create session, chat with agent
 

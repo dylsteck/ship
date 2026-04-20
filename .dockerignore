@@ -1,0 +1,8 @@
+# Context is repo root when building apps/web/Dockerfile in Coolify
+node_modules
+**/.next
+**/.turbo
+.open-next
+.git
+apps/api
+e2b
