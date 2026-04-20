@@ -248,18 +248,15 @@ npx wrangler secret put SESSION_SECRET --env production  # Must match web app
 npx wrangler deploy --env production
 ```
 
-### Vercel (Web)
+### Cloudflare Workers (Web)
 
-1. Import repo at [vercel.com/new](https://vercel.com/new)
-2. **Root Directory**: `apps/web`
-3. Add env vars: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `API_BASE_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`
-4. Create a **separate** GitHub OAuth App for production URLs
+The Next.js app in `apps/web` uses `@opennextjs/cloudflare` and deploys as a Worker (`pnpm deploy` from `apps/web`). Configure env vars in Cloudflare (same as `apps/web/.env.example`), including `NEXT_PUBLIC_APP_URL` for OAuth callbacks.
 
 ### Checklist
 
-- [ ] Worker deployed with prod D1 + secrets
-- [ ] Vercel project with `apps/web` root
-- [ ] Production GitHub OAuth App (callback = prod URL)
+- [ ] API Worker deployed with prod D1 + secrets
+- [ ] Web Worker deployed (`cd apps/web && pnpm deploy`) with env vars
+- [ ] Production GitHub OAuth App (callback = prod web URL)
 - [ ] Test: sign in, create session, chat with agent
 
 ---

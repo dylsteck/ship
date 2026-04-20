@@ -12,13 +12,13 @@ Complete guide for deploying Ship to production.
 
 Before deploying, ensure these are set. Session creation and API calls will fail in production if any critical vars are missing.
 
-### Web App (Vercel / `apps/web`)
+### Web App (Cloudflare Workers / `apps/web`)
 
 | Variable | Required | What it does | How to set |
 |----------|----------|--------------|------------|
-| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Vercel Dashboard → Project → Settings → Environment Variables |
+| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Cloudflare Dashboard → Workers & Pages → your web Worker → Settings → Variables, or [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) build vars |
 | `API_BASE_URL` | Alternative | Same as above; used if `NEXT_PUBLIC_API_URL` is unset. | Same |
-| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | e.g. `https://your-app.vercel.app` |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | e.g. `https://ship-web.your-subdomain.workers.dev` or your custom domain |
 | `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | From GitHub OAuth app settings |
 | `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | Same |
 | `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `openssl rand -hex 32` |
@@ -75,7 +75,7 @@ cd apps/api
 # Required secrets (use --env production for production Worker)
 npx wrangler secret put API_SECRET --env production
 npx wrangler secret put E2B_API_KEY --env production
-npx wrangler secret put ALLOWED_ORIGINS --env production  # e.g. https://your-app.vercel.app
+npx wrangler secret put ALLOWED_ORIGINS --env production  # e.g. https://your-web.workers.dev or your custom domain
 
 # Optional secrets (if using these features)
 npx wrangler secret put ANTHROPIC_API_KEY --env production
@@ -114,53 +114,28 @@ npx wrangler deploy
    npx wrangler tail --env production
    ```
 
-## Deploy Next.js Web App
+## Deploy Next.js Web App (Cloudflare Workers)
 
-### Option 1: Deploy to Vercel (Recommended)
+The web app uses [OpenNext](https://opennext.js.org/cloudflare) with [`@opennextjs/cloudflare`](https://www.npmjs.com/package/@opennextjs/cloudflare), following the [Cloudflare Next.js guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/).
 
-1. **Connect Repository:**
-   - Go to [vercel.com](https://vercel.com)
-   - Click "Add New Project"
-   - Import your GitHub repository
+1. **Install and authenticate** (once): `pnpm install` at the repo root; `npx wrangler login`.
 
-2. **Configure Project:**
-   - **Root Directory:** Set to `apps/web`
-   - **Framework Preset:** Next.js (auto-detected)
-   - **Build Command:** `pnpm build` (or leave default)
-   - **Output Directory:** `.next` (default)
-
-3. **Set Environment Variables:**
-   Add all variables from `apps/web/.env.example`. **Critical for session creation:**
+2. **Deploy from `apps/web`:**
+   ```bash
+   cd apps/web
+   pnpm deploy
    ```
-   NEXT_PUBLIC_API_URL=https://ship-api-production.your-subdomain.workers.dev
-   API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
-   NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
-   GITHUB_CLIENT_ID=your-production-github-client-id
-   GITHUB_CLIENT_SECRET=your-production-github-client-secret
-   SESSION_SECRET=your-production-session-secret
-   LINEAR_CLIENT_ID=your-linear-client-id (optional)
-   LINEAR_CLIENT_SECRET=your-linear-client-secret (optional)
+   This runs `opennextjs-cloudflare build` then deploys the Worker defined in `wrangler.jsonc`.
+
+3. **Environment variables:** Add everything from `apps/web/.env.example` in the Cloudflare dashboard for the **web** Worker (or in Workers Builds [build variables](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)). `NEXT_PUBLIC_*` and other vars used at build time must be present for the build step.
+
+4. **Preview locally in Workers runtime:**
+   ```bash
+   cd apps/web
+   pnpm preview
    ```
 
-4. **Deploy:**
-   - Click "Deploy"
-   - Vercel will build and deploy automatically
-
-### Option 2: Deploy to Cloudflare Pages
-
-```bash
-cd apps/web
-
-# Build the app
-pnpm build
-
-# Deploy to Cloudflare Pages
-npx wrangler pages deploy .next --project-name=ship-web
-```
-
-Set environment variables in Cloudflare Dashboard:
-- Go to Pages → Your Project → Settings → Environment Variables
-- Add all variables from `.env.example`
+**Note:** `pnpm dev` still uses the Next.js dev server (Node); use `pnpm preview` to validate behavior in `workerd` before production.
 
 ## Post-Deployment Checklist
 
@@ -168,13 +143,13 @@ Set environment variables in Cloudflare Dashboard:
 
 1. Go to [github.com/settings/developers](https://github.com/settings/developers)
 2. Edit your OAuth App
-3. Update **Authorization callback URL** to:
+3. Update **Authorization callback URL** to your deployed web URL, for example:
    ```
-   https://your-app.vercel.app/api/auth/github/callback
+   https://your-web-host.example.com/api/auth/github/callback
    ```
-4. Update **Homepage URL** to:
+4. Update **Homepage URL** to the same origin (no path), for example:
    ```
-   https://your-app.vercel.app
+   https://your-web-host.example.com
    ```
 
 ### 2. Update Linear OAuth App (if using)
@@ -183,7 +158,7 @@ Set environment variables in Cloudflare Dashboard:
 2. Edit your OAuth app
 3. Update **Redirect URL** to:
    ```
-   https://your-app.vercel.app/api/auth/linear/callback
+   https://your-web-host.example.com/api/auth/linear/callback
    ```
 
 ### 3. Update Web App Environment Variables
@@ -196,7 +171,7 @@ API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
 ### 4. Test Production Deployment
 
 1. **Test Authentication:**
-   - Visit `https://your-app.vercel.app`
+   - Visit your production web URL (e.g. `https://ship-web.your-subdomain.workers.dev` or your custom domain)
    - Click "Sign in with GitHub"
    - Complete OAuth flow
    - Verify you're logged in
@@ -216,7 +191,7 @@ API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
    - Create a new session from the homepage
    - Navigate to the session (click it in the sidebar)
    - Reload the page — the session should still appear
-   - If you see "Session not found", check `NEXT_PUBLIC_API_URL` / `API_BASE_URL` in Vercel and `ALLOWED_ORIGINS` in Cloudflare
+   - If you see "Session not found", check `NEXT_PUBLIC_API_URL` / `API_BASE_URL` on the web Worker and `ALLOWED_ORIGINS` on the API Worker
 
 ## Staging Environment (Optional)
 
@@ -264,11 +239,11 @@ name = "ship-api-production"
 vars = { ENVIRONMENT = "production" }
 ```
 
-**Web App (Vercel/Cloudflare Pages):**
+**Web App (Cloudflare Worker in `apps/web`):**
 ```env
 ENVIRONMENT=production
 API_BASE_URL=https://ship-api-production.your-subdomain.workers.dev
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+NEXT_PUBLIC_APP_URL=https://your-web-host.example.com
 ```
 
 ### Staging Environment Variables
@@ -284,7 +259,7 @@ vars = { ENVIRONMENT = "staging" }
 ```env
 ENVIRONMENT=staging
 API_BASE_URL=https://ship-api-staging.your-subdomain.workers.dev
-NEXT_PUBLIC_APP_URL=https://your-app-staging.vercel.app
+NEXT_PUBLIC_APP_URL=https://your-staging-web-host.example.com
 ```
 
 ## Troubleshooting
@@ -384,8 +359,9 @@ jobs:
         with:
           node-version: 20
       - run: pnpm install
-      - run: cd apps/web && pnpm build
-      # Add Vercel deployment step here
+      - run: cd apps/web && pnpm deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 ```
 
 ## Monitoring & Logs
@@ -448,7 +424,7 @@ npx wrangler rollback --env production
 - [ ] Production database ID is correct
 - [ ] OAuth callback URLs updated for production
 - [ ] CORS configured correctly
-- [ ] Environment variables set in Vercel/Cloudflare Pages
+- [ ] Environment variables set for both Workers (web + API) in Cloudflare
 - [ ] Session secret is strong (32+ characters)
 - [ ] API secret is different from session secret
 
@@ -466,4 +442,5 @@ After deployment:
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
 - [Wrangler CLI Docs](https://developers.cloudflare.com/workers/wrangler/)
 - [D1 Database Docs](https://developers.cloudflare.com/d1/)
-- [Vercel Deployment Docs](https://vercel.com/docs)
+- [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare)
+- [Cloudflare Workers — Next.js](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/)

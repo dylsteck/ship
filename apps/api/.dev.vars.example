@@ -24,7 +24,8 @@ OPENAI_API_KEY=sk-...
 
 # Allowed CORS Origins (comma-separated)
 # In production, set via: wrangler secret put ALLOWED_ORIGINS --env production
-ALLOWED_ORIGINS=http://localhost:3000
+# Optional patterns: *.vercel.app (scoped to VERCEL_PROJECT_NAME), *.workers.dev (any workers.dev origin)
+ALLOWED_ORIGINS=[REDACTED]
 
 # Login restriction (optional) - when true, only ALLOWED_USER_ID can log in
 # Default: off. Set to "true" to enable.

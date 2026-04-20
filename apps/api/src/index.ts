@@ -40,6 +40,11 @@ app.use(
         }
       }
 
+      // Cloudflare Workers preview / default hostnames (*.workers.dev) when explicitly allowed
+      if (allowedSet.has('*.workers.dev') && origin.endsWith('.workers.dev')) {
+        return origin
+      }
+
       return undefined
     },
     credentials: true,
