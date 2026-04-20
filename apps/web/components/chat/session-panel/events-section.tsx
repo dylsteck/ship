@@ -6,18 +6,33 @@ import { useEventsStore, eventsStore, type RawEvent } from '@/app/(app)/dashboar
 
 type EventCategory = 'all' | 'messages' | 'status' | 'errors'
 
-function getEventStyle(type: string): { dot: string; text: string } {
-  if (type === 'done' || type === 'session.idle')
-    return { dot: 'bg-green-500', text: 'text-green-400' }
-  if (type.startsWith('message.'))
-    return { dot: 'bg-blue-500', text: 'text-blue-400' }
-  if (type === 'error' || type === 'session.error')
-    return { dot: 'bg-red-500', text: 'text-red-400' }
-  if (type.startsWith('permission.') || type.startsWith('question.'))
-    return { dot: 'bg-purple-500', text: 'text-purple-400' }
-  if (type === 'status' || type === 'session.status' || type === 'heartbeat' || type === 'server.heartbeat')
-    return { dot: 'bg-yellow-500', text: 'text-yellow-400' }
-  return { dot: 'bg-muted-foreground/40', text: 'text-muted-foreground/60' }
+function getEventDotColor(type: string): string {
+  if (type === 'done' || type === 'session.idle') return 'bg-emerald-400'
+  if (type.startsWith('message.')) return 'bg-blue-400'
+  if (type === 'error' || type === 'session.error') return 'bg-red-400'
+  if (type.startsWith('permission.') || type.startsWith('question.')) return 'bg-purple-400'
+  if (type === 'status' || type === 'session.status' || type === 'heartbeat' || type === 'server.heartbeat') return 'bg-amber-400'
+  return 'bg-muted-foreground/30'
+}
+
+/** Friendly short label for event types */
+function getEventLabel(type: string): string {
+  switch (type) {
+    case 'message.part.updated': return 'Part Updated'
+    case 'message.created': return 'Message Created'
+    case 'message.updated': return 'Message Updated'
+    case 'message.completed': return 'Message Done'
+    case 'session.status': return 'Status'
+    case 'session.idle': return 'Idle'
+    case 'session.error': return 'Error'
+    case 'server.heartbeat': return 'Heartbeat'
+    case 'heartbeat': return 'Heartbeat'
+    case 'status': return 'Status'
+    case 'done': return 'Done'
+    case 'error': return 'Error'
+    case 'agent-session': return 'Agent Session'
+    default: return type
+  }
 }
 
 function getEventCategory(type: string): EventCategory {
@@ -47,9 +62,8 @@ function extractPreview(payload: unknown): string | null {
     const content = typeof p.content === 'string' ? p.content.slice(0, 80) : null
     return content ? `${p.role}: ${content}` : p.role as string
   }
-  if (typeof p.toolName === 'string') return `Tool: ${p.toolName}`
+  if (typeof p.toolName === 'string') return p.toolName as string
   if (typeof p.name === 'string') return p.name as string
-  // For message.part.updated, extract from nested properties
   if (typeof p.properties === 'object' && p.properties) {
     const props = p.properties as Record<string, unknown>
     if (typeof props.part === 'object' && props.part) {
@@ -79,12 +93,11 @@ function DetailRow({ label, value, mono = false }: { label: string; value: strin
   )
 }
 
-/** Renders structured payload detail — no horizontal scroll, clean key/value pairs */
+/** Renders structured payload detail */
 function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: string }) {
   if (!payload || typeof payload !== 'object') return null
   const p = payload as Record<string, unknown>
 
-  // message.part.updated — show part type, delta, and content preview
   if (eventType === 'message.part.updated' && typeof p.properties === 'object' && p.properties) {
     const props = p.properties as Record<string, unknown>
     const part = typeof props.part === 'object' && props.part ? props.part as Record<string, unknown> : null
@@ -97,7 +110,7 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
         {delta && (
           <div className="py-1">
             <span className="text-[10px] text-muted-foreground/50 block mb-1">Delta</span>
-            <p className="text-[11px] text-foreground/60 leading-relaxed bg-muted/15 rounded-md px-2.5 py-2 break-words border border-border/10">
+            <p className="text-[11px] text-foreground/60 leading-relaxed bg-muted/10 rounded px-2 py-1.5 break-words">
               {delta}
             </p>
           </div>
@@ -105,7 +118,7 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
         {typeof part?.text === 'string' && part.text.length > 0 && !delta && (
           <div className="py-1">
             <span className="text-[10px] text-muted-foreground/50 block mb-1">Content</span>
-            <p className="text-[11px] text-foreground/60 leading-relaxed bg-muted/15 rounded-md px-2.5 py-2 break-words border border-border/10 max-h-32 overflow-y-auto">
+            <p className="text-[11px] text-foreground/60 leading-relaxed bg-muted/10 rounded px-2 py-1.5 break-words max-h-32 overflow-y-auto">
               {String(part.text)}
             </p>
           </div>
@@ -114,7 +127,6 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
     )
   }
 
-  // Tool-related events
   if (typeof p.toolName === 'string') {
     return (
       <div className="space-y-0.5">
@@ -122,7 +134,7 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
         {p.args != null && typeof p.args === 'object' && (
           <div className="py-1">
             <span className="text-[10px] text-muted-foreground/50 block mb-1">Args</span>
-            <pre className="text-[10px] font-mono text-muted-foreground/60 bg-muted/15 rounded-md px-2.5 py-2 max-h-40 overflow-y-auto leading-relaxed border border-border/10 whitespace-pre-wrap break-all">
+            <pre className="text-[10px] font-mono text-muted-foreground/60 bg-muted/10 rounded px-2 py-1.5 max-h-40 overflow-y-auto leading-relaxed whitespace-pre-wrap break-all">
               {JSON.stringify(p.args, null, 2)}
             </pre>
           </div>
@@ -130,7 +142,7 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
         {(typeof p.result === 'string' || (p.result != null && typeof p.result === 'object')) && (
           <div className="py-1">
             <span className="text-[10px] text-muted-foreground/50 block mb-1">Result</span>
-            <pre className="text-[10px] font-mono text-muted-foreground/60 bg-muted/15 rounded-md px-2.5 py-2 max-h-40 overflow-y-auto leading-relaxed border border-border/10 whitespace-pre-wrap break-all">
+            <pre className="text-[10px] font-mono text-muted-foreground/60 bg-muted/10 rounded px-2 py-1.5 max-h-40 overflow-y-auto leading-relaxed whitespace-pre-wrap break-all">
               {typeof p.result === 'string' ? p.result : JSON.stringify(p.result, null, 2)}
             </pre>
           </div>
@@ -139,7 +151,6 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
     )
   }
 
-  // Message events with role
   if (typeof p.role === 'string') {
     return (
       <div className="space-y-0.5">
@@ -147,7 +158,7 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
         {typeof p.content === 'string' && p.content && (
           <div className="py-1">
             <span className="text-[10px] text-muted-foreground/50 block mb-1">Content</span>
-            <p className="text-[11px] text-foreground/60 leading-relaxed bg-muted/15 rounded-md px-2.5 py-2 break-words border border-border/10 max-h-40 overflow-y-auto">
+            <p className="text-[11px] text-foreground/60 leading-relaxed bg-muted/10 rounded px-2 py-1.5 break-words max-h-40 overflow-y-auto">
               {p.content as string}
             </p>
           </div>
@@ -156,25 +167,22 @@ function PayloadDetail({ payload, eventType }: { payload: unknown; eventType: st
     )
   }
 
-  // Error events
   if (typeof p.error === 'string') {
     return (
       <div className="py-1">
-        <p className="text-[11px] text-red-400 leading-relaxed bg-red-500/5 rounded-md px-2.5 py-2 break-words border border-red-500/10">
+        <p className="text-[11px] text-red-400/80 leading-relaxed bg-red-500/5 rounded px-2 py-1.5 break-words">
           {p.error as string}
         </p>
       </div>
     )
   }
 
-  // Status events with simple status string
   if (typeof p.status === 'string' && Object.keys(p).length <= 3) {
     return <DetailRow label="Status" value={p.status as string} />
   }
 
-  // Fallback: pretty-print but with wrapping, no x-scroll
   return (
-    <pre className="text-[10px] font-mono text-muted-foreground/60 bg-muted/15 rounded-md px-2.5 py-2 max-h-48 overflow-y-auto leading-relaxed border border-border/10 whitespace-pre-wrap break-all">
+    <pre className="text-[10px] font-mono text-muted-foreground/60 bg-muted/10 rounded px-2 py-1.5 max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap break-all">
       {JSON.stringify(payload, null, 2)}
     </pre>
   )
@@ -193,59 +201,55 @@ function getPartType(event: RawEvent): string | null {
 }
 
 const PART_TYPE_STYLES: Record<string, string> = {
-  reasoning: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  tool: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  text: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  'tool-invocation': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  'tool-result': 'bg-green-500/10 text-green-400 border-green-500/20',
-  source: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
-  file: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  reasoning: 'text-purple-400/70 border-purple-500/15',
+  tool: 'text-amber-400/70 border-amber-500/15',
+  text: 'text-blue-400/70 border-blue-500/15',
+  'tool-invocation': 'text-amber-400/70 border-amber-500/15',
+  'tool-result': 'text-emerald-400/70 border-emerald-500/15',
+  source: 'text-cyan-400/70 border-cyan-500/15',
+  file: 'text-orange-400/70 border-orange-500/15',
 }
 
 function EventRow({ event }: { event: RawEvent }) {
   const [expanded, setExpanded] = useState(false)
-  const style = getEventStyle(event.type)
+  const dotColor = getEventDotColor(event.type)
+  const label = getEventLabel(event.type)
   const preview = useMemo(() => extractPreview(event.payload), [event.payload])
   const partType = useMemo(() => getPartType(event), [event])
 
   return (
-    <div
-      className={cn(
-        'rounded-md transition-colors',
-        expanded ? 'bg-muted/10' : 'hover:bg-muted/8',
-      )}
-    >
+    <div className={cn('rounded transition-colors', expanded && 'bg-muted/8')}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2.5 w-full px-3 py-2 text-left"
+        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-left group"
       >
-        <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', style.dot)} />
-        <span className={cn('text-[11px] font-mono font-medium shrink-0', style.text)}>
-          {event.type}
+        <span className={cn('w-1 h-1 rounded-full shrink-0', dotColor)} />
+        <span className="text-[11px] text-muted-foreground/70 shrink-0">
+          {label}
         </span>
         {partType && (
           <Badge
             variant="outline"
             className={cn(
-              'text-[9px] h-4 px-1.5 font-mono font-normal border',
-              PART_TYPE_STYLES[partType] || 'bg-muted/20 text-muted-foreground/60 border-border/20',
+              'text-[9px] h-[18px] px-1.5 font-mono font-normal border bg-transparent',
+              PART_TYPE_STYLES[partType] || 'text-muted-foreground/50 border-border/15',
             )}
           >
             {partType}
           </Badge>
         )}
         {!partType && preview && !expanded && (
-          <span className="text-[10px] text-muted-foreground/40 truncate flex-1 min-w-0">
+          <span className="text-[10px] text-muted-foreground/30 truncate flex-1 min-w-0">
             {preview}
           </span>
         )}
-        <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0 ml-auto">
+        <span className="text-[10px] text-muted-foreground/25 tabular-nums shrink-0 ml-auto">
           {formatRelativeTime(event.timestamp)}
         </span>
         <svg
           className={cn(
-            'size-3 text-muted-foreground/20 shrink-0 transition-transform duration-150',
-            expanded && 'rotate-90',
+            'size-2.5 text-muted-foreground/15 shrink-0 transition-transform duration-150 opacity-0 group-hover:opacity-100',
+            expanded && 'rotate-90 opacity-100',
           )}
           fill="none"
           stroke="currentColor"
@@ -257,8 +261,8 @@ function EventRow({ event }: { event: RawEvent }) {
       </button>
 
       {expanded && (
-        <div className="px-3 pb-2.5">
-          <div className="ml-4 pl-2.5 border-l border-border/15">
+        <div className="px-2.5 pb-2">
+          <div className="ml-3 pl-2 border-l border-border/10">
             <PayloadDetail payload={event.payload} eventType={event.type} />
           </div>
         </div>
@@ -300,15 +304,15 @@ export function EventsSection({ sessionId, messageCount = 0 }: { sessionId: stri
         className="flex items-center justify-between w-full py-1.5"
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Events</span>
+          <span className="text-xs font-medium text-muted-foreground/70">Events</span>
           {events.length > 0 && (
-            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-mono">
+            <span className="text-[10px] text-muted-foreground/40 font-mono tabular-nums">
               {events.length}
-            </Badge>
+            </span>
           )}
         </div>
         <svg
-          className={cn('size-3.5 text-muted-foreground/40 transition-transform duration-150', !collapsed && 'rotate-180')}
+          className={cn('size-3 text-muted-foreground/30 transition-transform duration-150', !collapsed && 'rotate-180')}
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
@@ -319,19 +323,19 @@ export function EventsSection({ sessionId, messageCount = 0 }: { sessionId: stri
       </button>
 
       {!collapsed && (
-        <div className="mt-2 space-y-2">
+        <div className="mt-1.5 space-y-1.5">
           {/* Filter tabs + actions */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-0.5 rounded-md border border-border/20 p-0.5">
+            <div className="flex items-center gap-0.5 p-0.5">
               {FILTER_TABS.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setFilter(tab.id)}
                   className={cn(
-                    'px-2 py-1 text-[10px] rounded-sm transition-colors',
+                    'px-2 py-0.5 text-[10px] rounded transition-colors',
                     filter === tab.id
-                      ? 'bg-muted text-foreground font-medium'
-                      : 'text-muted-foreground/50 hover:text-muted-foreground',
+                      ? 'text-foreground/80 bg-muted/30'
+                      : 'text-muted-foreground/35 hover:text-muted-foreground/60',
                   )}
                 >
                   {tab.label}
@@ -339,16 +343,16 @@ export function EventsSection({ sessionId, messageCount = 0 }: { sessionId: stri
               ))}
             </div>
             {events.length > 0 && (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={handleCopyAll}
-                  className="text-[10px] text-muted-foreground/40 hover:text-foreground transition-colors px-1.5 py-1 rounded-sm hover:bg-muted/30"
+                  className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors px-1.5 py-0.5 rounded"
                 >
                   Copy
                 </button>
                 <button
                   onClick={handleClear}
-                  className="text-[10px] text-muted-foreground/40 hover:text-foreground transition-colors px-1.5 py-1 rounded-sm hover:bg-muted/30"
+                  className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors px-1.5 py-0.5 rounded"
                 >
                   Clear
                 </button>
@@ -357,13 +361,13 @@ export function EventsSection({ sessionId, messageCount = 0 }: { sessionId: stri
           </div>
 
           {/* Event list */}
-          <div className="space-y-0.5">
+          <div className="space-y-px">
             {filteredEvents.length === 0 ? (
-              <div className="py-8 text-center">
-                <p className="text-xs text-muted-foreground/40">
+              <div className="py-6 text-center">
+                <p className="text-[11px] text-muted-foreground/30">
                   {events.length === 0
                     ? messageCount > 0
-                      ? 'No events yet — events stream during live sessions'
+                      ? 'Events stream during live sessions'
                       : 'No events yet'
                     : 'No matching events'}
                 </p>

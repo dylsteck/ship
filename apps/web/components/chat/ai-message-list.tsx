@@ -1,7 +1,17 @@
 'use client'
 
 import * as React from 'react'
-import { Message, Tool, SubagentTool, Response, Loader, ReasoningCollapsible, Conversation, ConversationScrollButton } from '@ship/ui'
+import {
+  Message,
+  Tool,
+  SubagentTool,
+  Response,
+  Loader,
+  ReasoningCollapsible,
+  Conversation,
+  ConversationScrollButton,
+  useIsMobile,
+} from '@ship/ui'
 import { ErrorMessage } from './error-message'
 import { Markdown } from './markdown'
 import { cn } from '@ship/ui'
@@ -46,6 +56,7 @@ function MessageListContent({
   className,
 }: AIMessageListProps) {
   const [sheetData, setSheetData] = React.useState<SubagentSheetData>({ isOpen: false, agentType: '', description: '' })
+  const isMobile = useIsMobile()
 
   const handleSubagentNavigate = React.useCallback((tool: ToolInvocation) => {
     const agentType = getSubagentType(tool) || String(tool.args?.subagent_type || 'Agent')
@@ -131,6 +142,7 @@ function MessageListContent({
                     duration={
                       msg.elapsed != null ? Math.floor(msg.elapsed / 1000) : undefined
                     }
+                    defaultOpenWhenDone={isMobile}
                   />
                 )}
 
@@ -173,6 +185,7 @@ function MessageListContent({
                           input={tool.args}
                           output={tool.result}
                           duration={tool.duration}
+                          layout={isMobile ? 'stacked' : 'default'}
                         />
                       )
                     })}

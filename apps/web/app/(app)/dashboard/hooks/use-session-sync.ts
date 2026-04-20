@@ -85,7 +85,7 @@ export function useSessionSync({
 
     // Match by id, or legacy format (e.g. "big-pickle" -> "opencode/big-pickle")
     const findModel = (id: string) =>
-      models.find((m) => m.id === id || m.id === `opencode/${id}`)
+      models.find((m) => m.id === id || m.id === `opencode/${id}` || m.id === `bankr/${id}`)
     const savedDefault = defaultModelId ? findModel(defaultModelId) : null
     const markedDefault = models.find((m) => m.isDefault)
     setSelectedModel(savedDefault || markedDefault || models[0])

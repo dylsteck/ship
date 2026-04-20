@@ -15,17 +15,15 @@ import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { cloneRepo, createBranch, commitChanges, pushBranch, generateBranchName } from '../lib/git-workflow'
 import { createGitHubClient, parseRepoUrl } from '../lib/github'
+import { getGitHubAccessTokenForUser } from '../lib/github-token'
 import { Sandbox } from '@e2b/code-interpreter'
 
 const git = new Hono<{ Bindings: Env }>()
 
-/** Look up the user's GitHub OAuth token from the D1 accounts table. */
-async function getGitHubToken(db: D1Database, userId: string): Promise<string | null> {
-  const row = await db
-    .prepare('SELECT access_token FROM accounts WHERE user_id = ? AND provider = ? LIMIT 1')
-    .bind(userId, 'github')
-    .first<{ access_token: string }>()
-  return row?.access_token ?? null
+/** Valid GitHub access token for git/API, with OAuth refresh when needed. */
+async function getGitHubToken(db: D1Database, env: Env, userId: string): Promise<string | null> {
+  const res = await getGitHubAccessTokenForUser(db, env, userId)
+  return res.token
 }
 
 /**
@@ -82,7 +80,7 @@ git.post('/clone', async (c) => {
       return c.json({ error: 'User ID not found in session' }, 401)
     }
 
-    const githubToken = await getGitHubToken(c.env.DB, userId)
+    const githubToken = await getGitHubToken(c.env.DB, c.env, userId)
     if (!githubToken) {
       return c.json({ error: 'GitHub token not found for user' }, 401)
     }
@@ -163,11 +161,29 @@ git.post('/commit', async (c) => {
       return c.json({ error: 'Session has no sandbox' }, 404)
     }
 
-    // Get user info from session meta (for git config)
+    // Get user info from session meta, then look up real name/email from DB
     const metaResponse = await doStub.fetch('http://do/meta')
     const meta = (await metaResponse.json()) as Record<string, string>
-    const userName = meta['user_name'] || 'Ship Agent'
-    const userEmail = meta['user_email'] || 'shipagent@dylansteck.com'
+    let userName = meta['user_name'] || 'Ship Agent'
+    let userEmail = meta['user_email'] || 'shipagent@dylansteck.com'
+
+    // Try to resolve real user identity from DB
+    const commitUserId = meta['userId'] || meta['user_id']
+    if (commitUserId && (userName === 'Ship Agent' || userEmail === 'shipagent@dylansteck.com')) {
+      try {
+        const userRow = await c.env.DB.prepare(
+          'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
+        )
+          .bind(commitUserId)
+          .first<{ name: string | null; email: string | null; username: string | null }>()
+        if (userRow) {
+          userName = userRow.name || userRow.username || userName
+          userEmail = userRow.email || userEmail
+        }
+      } catch {
+        /* ignore — keep fallback */
+      }
+    }
 
     // Connect to sandbox
     const sandbox = await Sandbox.connect(sandboxStatus.sandboxId, {
@@ -249,7 +265,7 @@ git.post('/push', async (c) => {
       return c.json({ error: 'User ID not found in session' }, 401)
     }
 
-    const githubToken = await getGitHubToken(c.env.DB, userId)
+    const githubToken = await getGitHubToken(c.env.DB, c.env, userId)
     if (!githubToken) {
       return c.json({ error: 'GitHub token not found for user' }, 401)
     }
@@ -324,7 +340,7 @@ git.post('/pr', async (c) => {
       return c.json({ error: 'User ID not found in session' }, 401)
     }
 
-    const githubToken = await getGitHubToken(c.env.DB, userId)
+    const githubToken = await getGitHubToken(c.env.DB, c.env, userId)
     if (!githubToken) {
       return c.json({ error: 'GitHub token not found for user' }, 401)
     }

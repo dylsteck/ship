@@ -31,6 +31,13 @@ import {
 } from './sse-event-handlers'
 import type { useDashboardChat } from './use-dashboard-chat'
 
+const SETTINGS_ACTION = { label: 'Open Settings', href: '/settings' } as const
+
+function actionForChatErrorPayload(payload: { category?: string }): { label: string; href: string } | undefined {
+  if (payload.category === 'user-action') return SETTINGS_ACTION
+  return undefined
+}
+
 /** Compact params: chat context + mode ref. Avoids 20+ individual props. */
 export interface UseDashboardSSEParams {
   chat: ReturnType<typeof useDashboardChat>
@@ -70,11 +77,16 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   const isStreamingRef = useRef(isStreaming)
   isStreamingRef.current = isStreaming
 
-  // Debounced flush: batch rapid text deltas into a single React render per animation frame
-  const flushRafRef = useRef<number | null>(null)
+  // Throttled flush: batch rapid text deltas into a single React render.
+  // Uses a 33ms minimum interval (~30fps) instead of rAF (~60fps) to reduce
+  // markdown re-parsing overhead in Streamdown during streaming.
+  const FLUSH_INTERVAL_MS = 33
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastFlushTimeRef = useRef(0)
 
   const doFlush = useCallback(() => {
-    flushRafRef.current = null
+    flushTimerRef.current = null
+    lastFlushTimeRef.current = performance.now()
     const msgId = streamingMessageRef.current
     if (!msgId) return
     const text = assistantTextRef.current
@@ -92,8 +104,16 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   }, [setMessages, streamingMessageRef, assistantTextRef, reasoningRef])
 
   const scheduleFlush = useCallback(() => {
-    if (flushRafRef.current != null) return // already scheduled
-    flushRafRef.current = requestAnimationFrame(doFlush)
+    if (flushTimerRef.current != null) return // already scheduled
+    const elapsed = performance.now() - lastFlushTimeRef.current
+    if (elapsed >= FLUSH_INTERVAL_MS) {
+      // First chunk after idle — flush immediately for low latency
+      doFlush()
+    } else {
+      // Rapid subsequent chunks — batch until next interval
+      const delay = FLUSH_INTERVAL_MS - elapsed
+      flushTimerRef.current = setTimeout(doFlush, delay)
+    }
   }, [doFlush])
 
   const handleSend = useCallback(
@@ -202,12 +222,14 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
               ? errorData.details
               : mainError
           const { category, retryable } = classifyError(errorContent)
+          const errPayload = errorData as { category?: string }
+          const action = actionForChatErrorPayload(errPayload)
 
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
             return [
               ...filtered,
-              createErrorMessage(errorContent, category, retryable, errorContent),
+              createErrorMessage(errorContent, category, retryable, errorContent, action),
             ]
           })
 
@@ -243,9 +265,13 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             if (line.startsWith('data: ')) {
               try {
                 resetStallTimer()
-                const rawData = JSON.parse(line.slice(6))
+                const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
                 if (!rawData.type && currentEventType) {
                   rawData.type = currentEventType
+                }
+                // Hono may omit `event:`; infer error so we don't skip chat handling when parseSSEEvent would return null
+                if (!rawData.type && typeof rawData.error === 'string') {
+                  rawData.type = 'error'
                 }
                 const event = parseSSEEvent(rawData)
 
@@ -348,8 +374,8 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                   case 'session.idle': {
                     if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
                     if (stallTimerId) { clearTimeout(stallTimerId); stallTimerId = null }
-                    // Cancel any pending debounced flush — done handler writes final state
-                    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null }
+                    // Cancel any pending throttled flush — done handler writes final state
+                    if (flushTimerRef.current != null) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
                     handleDoneOrIdle(ctx, streamStartTimeRef)
                     sessionStatusStore.update(targetSessionId, {
                       isRunning: false,
@@ -365,11 +391,12 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                     break
 
                   case 'error': {
-                    const errEvt = event as {
+                    const errEvt = rawData as {
                       error?: string
                       details?: string
                       retryable?: boolean
                       attempt?: number
+                      category?: string
                     }
                     if (errEvt.retryable && typeof errEvt.attempt === 'number') {
                       // Intermediate retry — show as status, don't kill the stream
@@ -378,9 +405,10 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                       sessionStatusStore.update(targetSessionId, { status: retryMsg })
                     } else {
                       handleGenericError(
-                        (event as any).error,
+                        errEvt.error,
                         ctx,
-                        (event as any).details,
+                        errEvt.details,
+                        actionForChatErrorPayload(errEvt),
                       )
                       sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
                     }
@@ -465,6 +493,50 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
   const processStreamEventForSession = useCallback(
     (sessionId: string, event: { type: string; [k: string]: unknown }) => {
       if (!streamingMessageRef.current) {
+        const hasCompletedAssistant = messagesRef.current.some(
+          (m) => m.role === 'assistant' && (m.content || m.toolInvocations?.length),
+        )
+        const accumulateSetupStepsRef = { current: !hasCompletedAssistant }
+        const ctxEarly: SSEHandlerContext = {
+          setMessages,
+          setIsStreaming,
+          setTotalCost,
+          setLastStepCost,
+          setSessionTodos,
+          setFileDiffs,
+          setAgentUrl,
+          setSessionTitle,
+          setSessionInfo,
+          setAgentSessionId,
+          setStreamStartTime,
+          setStreamingStatus,
+          accumulateSetupStepsRef,
+          streamingStatusStepsRef,
+          clearStreamingStatusSteps,
+          streamingMessageRef,
+          assistantTextRef,
+          reasoningRef,
+          targetSessionId: sessionId,
+        }
+        if (event.type === 'error') {
+          const errEvt = event as {
+            error?: string
+            details?: string
+            retryable?: boolean
+            attempt?: number
+            category?: string
+          }
+          if (!(errEvt.retryable && typeof errEvt.attempt === 'number')) {
+            handleGenericError(errEvt.error, ctxEarly, errEvt.details, actionForChatErrorPayload(errEvt))
+            sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+          }
+          return
+        }
+        if (event.type === 'session.error') {
+          handleSessionError((event as { properties?: { error?: Parameters<typeof handleSessionError>[0] } }).properties?.error, ctxEarly)
+          sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+          return
+        }
         const isStreamingEvent = [
           'status',
           'session.status',
@@ -525,12 +597,13 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             details?: string
             retryable?: boolean
             attempt?: number
+            category?: string
           }
           if (errEvt.retryable && typeof errEvt.attempt === 'number') {
             const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
             ctx.setStreamingStatus(retryMsg, accumulateSetupStepsRef.current)
           } else {
-            handleGenericError((event as any).error, ctx, (event as any).details)
+            handleGenericError(errEvt.error, ctx, errEvt.details, actionForChatErrorPayload(errEvt))
           }
           break
         }
@@ -674,8 +747,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
             }
             if (line.startsWith('data: ')) {
               try {
-                const rawData = JSON.parse(line.slice(6))
+                const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
                 if (!rawData.type && currentEventType) rawData.type = currentEventType
+                if (!rawData.type && typeof rawData.error === 'string') {
+                  rawData.type = 'error'
+                }
                 const event = parseSSEEvent(rawData)
 
                 // Only capture raw events from agent harness (exclude sandbox-ready, heartbeat, etc.)
@@ -694,7 +770,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                 switch (event.type) {
                   case 'session.idle':
                   case 'done':
-                    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null }
+                    if (flushTimerRef.current != null) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
                     if (!placeholderAdded) {
                       setIsStreaming(false)
                       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
@@ -787,7 +863,13 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                     sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
                     return
                   case 'error': {
-                    const errEvt = event as { error?: string; retryable?: boolean; attempt?: number }
+                    const errEvt = rawData as {
+                      error?: string
+                      details?: string
+                      retryable?: boolean
+                      attempt?: number
+                      category?: string
+                    }
                     if (errEvt.retryable && typeof errEvt.attempt === 'number') {
                       ensurePlaceholder()
                       const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
@@ -795,7 +877,12 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                       sessionStatusStore.update(sessionId, { status: retryMsg })
                     } else {
                       if (!placeholderAdded) setIsStreaming(false)
-                      handleGenericError((event as any).error, ctx)
+                      handleGenericError(
+                        errEvt.error,
+                        ctx,
+                        errEvt.details,
+                        actionForChatErrorPayload(errEvt),
+                      )
                       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
                       return
                     }

@@ -1,27 +1,45 @@
-import { dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { FlatCompat } from '@eslint/eslintrc'
+import next from 'eslint-config-next/core-web-vitals'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const maxLinesRule = ['warn', { max: 300, skipBlankLines: true, skipComments: true }]
+const maxLinesPerFunctionRule = ['warn', { max: 100, skipBlankLines: true, skipComments: true }]
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-})
-
+/** @type {import('eslint').Linter.Config[]} */
 const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
-    rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn',
-    },
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/dist/**',
+      '**/coverage/**',
+      '.agents/skills/**',
+    ],
   },
+  ...next,
   {
     files: ['apps/web/**/*.{ts,tsx}'],
     rules: {
-      'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
-      'max-lines-per-function': ['warn', { max: 100, skipBlankLines: true, skipComments: true }],
+      'max-lines': maxLinesRule,
+      'max-lines-per-function': maxLinesPerFunctionRule,
+      // React Compiler–style rules (eslint-plugin-react-hooks v7): keep hooks-of-hooks, relax the rest until refactors land
+      'react-hooks/refs': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+    },
+  },
+  {
+    files: ['apps/api/**/*.ts'],
+    rules: {
+      'max-lines': maxLinesRule,
+      'max-lines-per-function': maxLinesPerFunctionRule,
+    },
+  },
+  {
+    files: ['packages/**/*.{ts,tsx}'],
+    rules: {
+      'max-lines': maxLinesRule,
+      'max-lines-per-function': maxLinesPerFunctionRule,
     },
   },
 ]

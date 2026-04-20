@@ -30,6 +30,8 @@ export interface AgentConfig {
   extensions: string[] // agent-specific extensions
 }
 
+import { getBankrAgentModels } from './bankr'
+
 export const AGENTS: Record<string, AgentConfig> = {
   'claude-code': {
     id: 'claude-code',
@@ -60,15 +62,18 @@ export const AGENTS: Record<string, AgentConfig> = {
       { id: 'plan', label: 'Plan' },
     ],
     models: [
+      // OpenCode Zen (free)
       { id: 'opencode/big-pickle', name: 'Big Pickle', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 128000 },
-      { id: 'opencode/kimi-k2.5-free', name: 'Kimi K2.5 Free', provider: 'OpenCode Zen', contextWindow: 256000, maxTokens: 128000 },
       { id: 'opencode/glm-4.7-free', name: 'GLM 4.7 Free', provider: 'OpenCode Zen', contextWindow: 128000, maxTokens: 64000 },
       { id: 'opencode/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 32000 },
       { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 32000 },
       { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 64000 },
+      // Direct Anthropic
       { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'Anthropic' },
       { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic' },
       { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
+      // Bankr gateway (shown when Bankr is enabled)
+      ...getBankrAgentModels(),
     ],
     extensions: [],
   },

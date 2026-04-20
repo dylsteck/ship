@@ -237,6 +237,24 @@
   border-width: 0;
 }
 
+/* PWA Window Controls Overlay — only applies when installed as PWA */
+@media (display-mode: window-controls-overlay) {
+  body {
+    padding-top: env(titlebar-area-height, 0px);
+  }
+
+  .pwa-titlebar-drag {
+    position: fixed;
+    top: 0;
+    left: env(titlebar-area-x, 0px);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, 0px);
+    -webkit-app-region: drag;
+    app-region: drag;
+    z-index: 9999;
+  }
+}
+
 /* Mobile touch improvements */
 @media (max-width: 767px) {
   /* Prevent text selection on interactive elements during tap */
