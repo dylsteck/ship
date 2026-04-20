@@ -9,8 +9,8 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
-    "deploy": "concurrently -n vercel,wrangler \"vercel\" \"cd apps/api && npx wrangler deploy\"",
-    "deploy:prod": "concurrently -n vercel,wrangler \"vercel --prod\" \"cd apps/api && npx wrangler deploy --env production\""
+    "deploy": "concurrently -n web,api \"pnpm --filter web deploy\" \"pnpm --filter api deploy\"",
+    "deploy:prod": "concurrently -n web,api \"pnpm --filter web deploy:prod\" \"pnpm --filter api deploy:prod\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

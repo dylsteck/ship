@@ -29,16 +29,19 @@ pnpm type-check   # Type check only
 
 ### Deployment
 
-#### Web App (Next.js) — Vercel
+Both the **Next.js web app** and the **API** deploy to **Cloudflare Workers** using [OpenNext](https://opennext.js.org/cloudflare) for the frontend and Wrangler for the API.
 
-Deploy from the repository root:
+#### Web App (Next.js) — OpenNext + Wrangler
+
+From `apps/web` (see [Cloudflare Next.js guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/)):
 
 ```bash
-vercel             # Preview deploy
-vercel --prod      # Production deploy
+cd apps/web
+pnpm preview   # Build + local Workers runtime (workerd)
+pnpm deploy    # Build + deploy the web Worker
 ```
 
-The Vercel project is configured to build `apps/web`.
+Set the same env vars as local dev (`apps/web/.env.example`) in the Cloudflare dashboard or Workers Builds (including `NEXT_PUBLIC_*` and server-only vars used at build time).
 
 #### API (Cloudflare Worker) — Wrangler
 

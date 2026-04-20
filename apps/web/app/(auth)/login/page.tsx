@@ -1,10 +1,17 @@
+import { redirect } from 'next/navigation'
 import { Button } from '@ship/ui'
+import { getSession } from '@/lib/session'
 
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
+  const session = await getSession()
+  if (session?.userId) {
+    redirect('/dashboard')
+  }
+
   const params = await searchParams
   const error = params.error
 
