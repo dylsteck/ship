@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { Tool, SubagentTool, TodoProgress } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import type { ToolInvocation } from '@/lib/ai-elements-adapter'
@@ -21,7 +22,7 @@ interface MessageToolListProps {
   onSubagentNavigate: (tool: ToolInvocation) => void
 }
 
-export function MessageToolList({
+export const MessageToolList = React.memo(function MessageToolList({
   tools,
   sessionTodos,
   todoRenderedRef,
@@ -80,4 +81,4 @@ export function MessageToolList({
       })}
     </div>
   )
-}
+})

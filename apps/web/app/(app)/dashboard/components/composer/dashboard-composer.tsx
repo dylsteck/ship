@@ -48,7 +48,7 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
 
           {activeSessionId ? (
             /* Session follow-up: slim single-line pill */
-            <div className="flex flex-col rounded-[20px] border border-border/40 bg-card/95 backdrop-blur-sm shadow-md focus-within:border-border/60 focus-within:shadow-lg px-3 min-h-[40px] py-[10px]">
+            <div className="flex flex-col rounded-2xl border border-border/40 bg-card/95 backdrop-blur-sm shadow-md focus-within:border-border/60 focus-within:shadow-lg px-3 min-h-[40px] py-[10px]">
               <div className="flex-1 min-w-0">
                 <ComposerTextarea />
               </div>
@@ -67,7 +67,7 @@ export function DashboardComposer({ context, compactLayout = false }: DashboardC
             </div>
           ) : (
             /* Home: full multi-line composer card */
-            <div className="rounded-3xl border overflow-hidden transition-all bg-card border-border/50 focus-within:ring-2 focus-within:ring-foreground/10">
+            <div className="rounded-2xl border overflow-hidden transition-all bg-card border-border/50 focus-within:ring-2 focus-within:ring-foreground/10">
               {/* Textarea */}
               <div className="px-3 pt-3">
                 <ComposerTextarea />

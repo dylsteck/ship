@@ -131,6 +131,26 @@ sessions.post('/', async (c) => {
           await doStub.setSessionMeta('agent_type', input.agentType)
         }
         await doStub.setSessionMeta('base_branch', input.baseBranch || 'main')
+
+        // Store user name/email for git commit attribution
+        try {
+          const userRow = await c.env.DB.prepare(
+            'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
+          )
+            .bind(input.userId)
+            .first<{ name: string | null; email: string | null; username: string | null }>()
+          if (userRow) {
+            if (userRow.name || userRow.username) {
+              await doStub.setSessionMeta('user_name', userRow.name || userRow.username!)
+            }
+            if (userRow.email) {
+              await doStub.setSessionMeta('user_email', userRow.email)
+            }
+          }
+        } catch {
+          /* ignore — git commits will fall back to Ship Agent */
+        }
+
         await doStub.setSessionMeta('sandbox_status', 'provisioning')
 
         // Sandbox provision

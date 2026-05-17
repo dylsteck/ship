@@ -121,7 +121,7 @@ const customComponents: Components = {
 
 export const Markdown = memo(function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
   return (
-    <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed', className)}>
+    <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed [contain:layout_style]', className)}>
       <Streamdown
         plugins={PLUGINS}
         components={customComponents}

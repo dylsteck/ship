@@ -105,6 +105,7 @@ export function MessageItem({
           retryable={message.retryable || false}
           onRetry={message.retryable ? onRetry : undefined}
           rawMessage={message.rawErrorMessage}
+          action={message.errorAction}
         />
       </div>
     )

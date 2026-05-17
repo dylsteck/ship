@@ -371,7 +371,7 @@ The translator tracks state: `textAccumulator`, `reasoningAccumulator`, `toolCal
 - **TypeScript**: Strict mode enabled. Exhaustive switch cases narrow to `never` in default branches.
 - **Module system**: ESM
 - **Formatting**: Prettier (`pnpm format`)
-- **Linting**: ESLint with Next.js config
+- **Linting**: ESLint at the repo root (`eslint.config.mjs`) plus per-package configs where needed. Run `pnpm lint` (Turbo runs each workspace’s `lint` script). Rules include **`max-lines`** (300, excluding blanks/comments) and **`max-lines-per-function`** (100) for `apps/web`, `apps/api`, and `packages/*`. Prefer smaller, composable modules instead of growing past these limits.
 - **Package manager**: `pnpm` (not npm or yarn)
 - **Path aliases**: `@/` for web app imports (e.g., `@/lib/sse-types`)
 - **Exports**: Prefer named exports over default exports
@@ -382,6 +382,11 @@ The translator tracks state: `textAccumulator`, `reasoningAccumulator`, `toolCal
   - Functions: under ~100 lines
   - If a file exceeds these limits, break it into smaller focused modules
 - **API routes**: `app/api/` (web) or `src/routes/` (api worker)
+- **Chat route layout (Worker)**: `chat.ts` wires the app; the main POST/SSE handler is **`chat-message-stream.ts`** (`handleChatMessageStream`); subscribe/stop/messages/tasks/git/question routes are in **`chat-auxiliary-routes.ts`**; shared timeouts and error persistence helpers live in **`chat-session-helpers.ts`**.
+
+### Composition & file size
+
+Keep UI and hooks **small and composable** (atomic-style building blocks, clear boundaries). When a component or hook grows past the lint thresholds, split by responsibility (presentational vs state, subcomponents, pure helpers) rather than disabling rules.
 
 ## Environment Variables
 

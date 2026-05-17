@@ -212,9 +212,72 @@ export function isResultJsonBlob(tool: ToolInvocation): boolean {
   }
   if (typeof tool.result === 'string') {
     const s = tool.result.trim()
-    return (s.startsWith('{') && s.includes('"')) || (s.startsWith('[') && s.includes('"'))
+    if ((s.startsWith('{') || s.startsWith('[')) && s.includes('"')) {
+      // Try to parse — if it has readable content inside, it's not a blob
+      try {
+        const parsed = JSON.parse(s) as Record<string, unknown>
+        for (const key of ['content', 'text', 'output', 'message', 'summary']) {
+          if (typeof parsed[key] === 'string' && parsed[key].trim().length > 0) return false
+        }
+      } catch {
+        // Can't parse — treat as blob
+      }
+      return true
+    }
   }
   return false
+}
+
+/**
+ * Extract readable text from a result value (object or string).
+ * Handles JSON strings that wrap an `output` or similar field.
+ */
+function extractReadableText(value: unknown): string | null {
+  if (!value) return null
+
+  // If it's an object, look for common human-readable keys
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>
+    for (const key of ['content', 'text', 'output', 'message', 'summary']) {
+      if (typeof obj[key] === 'string' && obj[key].trim().length > 0) {
+        return cleanResultText(obj[key])
+      }
+    }
+    return null
+  }
+
+  // If it's a string, try to parse as JSON and extract readable fields
+  if (typeof value === 'string') {
+    const str = value.trim()
+    if (str.startsWith('{') || str.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(str) as Record<string, unknown>
+        const nested = extractReadableText(parsed)
+        if (nested) return nested
+      } catch {
+        // Not valid JSON — fall through to return as-is
+      }
+    }
+    return cleanResultText(str)
+  }
+
+  return String(value)
+}
+
+/**
+ * Clean up result text — handle escaped newlines, strip XML-like wrapper tags
+ */
+function cleanResultText(text: string): string {
+  let cleaned = text
+  // Replace literal \n with actual newlines (common in JSON-encoded output)
+  if (cleaned.includes('\\n')) {
+    cleaned = cleaned.replace(/\\n/g, '\n')
+  }
+  // Strip common wrapper tags like <task_result>...</task_result>
+  cleaned = cleaned.replace(/<\/?task_result>/g, '')
+  // Strip leading "task_id: ..." line if present (internal metadata)
+  cleaned = cleaned.replace(/^task_id:\s*\S+\s*(\(.*?\))?\s*\n*/m, '')
+  return cleaned.trim()
 }
 
 /**
@@ -222,22 +285,5 @@ export function isResultJsonBlob(tool: ToolInvocation): boolean {
  */
 export function getSubagentResultText(tool: ToolInvocation): string | null {
   if (!tool.result) return null
-
-  if (typeof tool.result === 'string') {
-    return tool.result
-  }
-
-  if (typeof tool.result === 'object') {
-    const result = tool.result as Record<string, unknown>
-    // Common patterns: { content, text, output, message, summary }
-    if (typeof result.content === 'string') return result.content
-    if (typeof result.text === 'string') return result.text
-    if (typeof result.output === 'string') return result.output
-    if (typeof result.message === 'string') return result.message
-    if (typeof result.summary === 'string') return result.summary
-    // Fallback: stringify
-    return JSON.stringify(tool.result, null, 2)
-  }
-
-  return String(tool.result)
+  return extractReadableText(tool.result)
 }

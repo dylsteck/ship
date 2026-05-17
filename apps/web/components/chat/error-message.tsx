@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Button } from '@ship/ui'
 
 /**
@@ -18,6 +19,8 @@ export interface ErrorMessageProps {
   onRetry?: () => void
   /** Raw error before formatting; shown in Details when formatted would mask it */
   rawMessage?: string
+  /** Primary action (e.g. open Settings) */
+  action?: { label: string; href: string }
 }
 
 /**
@@ -70,6 +73,17 @@ function formatErrorMessage(message: string): string {
     return 'Network error. Please check your connection.'
   }
 
+  if (
+    lower.includes('clone') ||
+    lower.includes('repository') ||
+    lower.includes('git http') ||
+    lower.includes('remote: repository not found')
+  ) {
+    if (lower.includes('403') || lower.includes('access denied') || lower.includes('private')) {
+      return 'Cannot access this repository. Connect GitHub in Settings and ensure your account can clone it, then try again.'
+    }
+  }
+
   if (formatted.length > 300) {
     formatted = formatted.slice(0, 300) + '...'
   }
@@ -89,6 +103,7 @@ export function ErrorMessage({
   retryable,
   onRetry,
   rawMessage,
+  action,
 }: ErrorMessageProps) {
   const formattedMessage = formatErrorMessage(message)
   const wouldMask = rawMessage && formattedMessage !== rawMessage && formattedMessage.length < 100
@@ -108,6 +123,14 @@ export function ErrorMessage({
               Retry
             </button>
           )}
+          {action && (
+            <Link
+              href={action.href}
+              className="text-primary hover:text-primary/80 font-medium ml-1 underline underline-offset-2"
+            >
+              {action.label}
+            </Link>
+          )}
         </div>
         {wouldMask && rawMessage && <ErrorDetails rawMessage={rawMessage} />}
       </div>
@@ -126,6 +149,16 @@ export function ErrorMessage({
             <p className="text-sm font-medium text-blue-900 dark:text-blue-200">Action Required</p>
             <p className="text-sm text-foreground mt-1">{formattedMessage}</p>
             {wouldMask && rawMessage && <ErrorDetails rawMessage={rawMessage} />}
+            {action && (
+              <div className="mt-2">
+                <Link
+                  href={action.href}
+                  className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  {action.label}
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -150,6 +183,16 @@ export function ErrorMessage({
               <Button variant="outline" size="sm" onClick={onRetry}>
                 Retry
               </Button>
+            </div>
+          )}
+          {action && (
+            <div className="mt-2">
+              <Link
+                href={action.href}
+                className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+              >
+                {action.label}
+              </Link>
             </div>
           )}
         </div>

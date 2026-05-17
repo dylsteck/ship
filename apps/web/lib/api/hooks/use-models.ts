@@ -5,17 +5,22 @@ import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
 import type { ModelInfo, DefaultModelResponse } from '../types'
 
-// Provider display order - OpenCode Zen first
-const PROVIDER_ORDER = ['OpenCode Zen', 'Anthropic', 'OpenAI', 'Google', 'Other']
+// Provider display order - OpenCode Zen first, Bankr before direct providers
+const PROVIDER_ORDER = ['OpenCode Zen', 'Bankr', 'Anthropic', 'OpenAI', 'Google', 'Other']
 
 /**
  * Hook to fetch available AI models
+ * When userId is provided, conditionally includes Bankr models based on user preference
  */
-export function useModels() {
-  const { data, error, isLoading, mutate } = useSWR<ModelInfo[]>(apiUrl('/models/available'), fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 60000, // Cache for 1 minute
-  })
+export function useModels(userId?: string) {
+  const { data, error, isLoading, mutate } = useSWR<ModelInfo[]>(
+    apiUrl('/models/available', userId ? { userId } : undefined),
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000, // Cache for 1 minute
+    },
+  )
 
   // Group models by provider with guaranteed order
   const groupedByProvider = (() => {
@@ -170,6 +175,46 @@ export function useSetDefaultModel() {
 
   return {
     setDefaultModel: trigger,
+    isSetting: isMutating,
+    error,
+  }
+}
+
+/**
+ * Hook to fetch user's Bankr preference
+ */
+export function useBankrEnabled(userId: string | undefined) {
+  const { data, error, isLoading, mutate } = useSWR<{ enabled: boolean }>(
+    userId ? apiUrl('/models/bankr', { userId }) : null,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+
+  return {
+    bankrEnabled: data?.enabled ?? false,
+    isLoading,
+    isError: !!error,
+    error,
+    mutate,
+  }
+}
+
+/**
+ * Mutation hook to toggle Bankr on/off
+ */
+export function useSetBankrEnabled() {
+  const { trigger, isMutating, error } = useSWRMutation(
+    'set-bankr-enabled',
+    async (_key: string, { arg }: { arg: { userId: string; enabled: boolean } }) => {
+      return post<{ userId: string; enabled: boolean }, { success: boolean; enabled: boolean }>(
+        apiUrl('/models/bankr'),
+        { userId: arg.userId, enabled: arg.enabled },
+      )
+    },
+  )
+
+  return {
+    setBankrEnabled: trigger,
     isSetting: isMutating,
     error,
   }

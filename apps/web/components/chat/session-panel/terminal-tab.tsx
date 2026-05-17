@@ -9,6 +9,8 @@ interface TerminalTabProps {
   sessionId?: string
   sandboxStatus?: string | null
   sandboxId?: string | null
+  /** Explains why the terminal may be unavailable (e.g. clone/setup error) */
+  connectionHint?: string
 }
 
 function TerminalPlaceholder({ message, showSpinner }: { message: string; showSpinner?: boolean }) {
@@ -27,7 +29,7 @@ function TerminalPlaceholder({ message, showSpinner }: { message: string; showSp
 const RETRY_INTERVAL = 5000
 const CONNECTION_TIMEOUT_MS = 15000
 
-export function TerminalTab({ sessionId, sandboxStatus, sandboxId }: TerminalTabProps) {
+export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHint }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<import('@xterm/xterm').Terminal | null>(null)
   const fitRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null)
@@ -262,8 +264,12 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId }: TerminalTab
         : hasNoSandbox
           ? 'Sandbox unavailable — send a message to start the session'
           : connectionFailed
-            ? 'Connection failed — send a message to restart the session'
-            : 'Terminal unavailable'
+            ? connectionHint
+              ? `Connection failed — ${connectionHint}`
+              : 'Connection failed — fix any errors in the chat (e.g. GitHub access), then send a message to retry.'
+            : connectionHint
+              ? `Terminal unavailable — ${connectionHint}`
+              : 'Terminal unavailable'
     return <TerminalPlaceholder message={message} showSpinner={isProvisioning} />
   }
 

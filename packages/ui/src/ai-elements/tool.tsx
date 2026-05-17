@@ -25,6 +25,10 @@ interface ToolProps {
   isSubagent?: boolean
   /** When true, renders as flat list item (no bg/border) for use inside ThinkingBlock */
   compact?: boolean
+  /**
+   * `stacked`: name/summary on first row, status/duration on second (narrow screens / agent activity).
+   */
+  layout?: 'default' | 'stacked'
 }
 
 // ============ Tool Icons ============
@@ -175,6 +179,7 @@ export function Tool({
   onClick,
   isSubagent,
   compact = false,
+  layout = 'default',
 }: ToolProps) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [showFullOutput, setShowFullOutput] = React.useState(false)
@@ -208,6 +213,15 @@ export function Tool({
           : `${duration}ms`
       : null
 
+  const statusLabel =
+    status === 'pending'
+      ? 'Pending'
+      : status === 'in_progress'
+        ? 'Running'
+        : status === 'completed'
+          ? 'Done'
+          : 'Failed'
+
   return (
     <CollapsiblePrimitive.Root open={isOpen} onOpenChange={isSubagent ? undefined : setIsOpen}>
       <div
@@ -216,17 +230,39 @@ export function Tool({
       >
         <CollapsiblePrimitive.Trigger
           className={cn(
-            'w-full flex items-center gap-2 py-1 -mx-1 px-1 rounded transition-colors text-left',
+            'w-full flex py-1 -mx-1 px-1 rounded transition-colors text-left',
+            layout === 'stacked' ? 'flex-col items-stretch gap-0.5' : 'items-center gap-2',
             compact ? 'hover:bg-muted/20' : 'hover:bg-muted/40',
             isSubagent && 'pointer-events-none',
           )}
         >
-          <ToolIcon name={name} />
-          <span className="text-sm font-medium text-foreground/90 shrink-0">{name}</span>
-          {inputSummary && (
-            <span className="text-xs text-muted-foreground/50 truncate font-mono">{inputSummary}</span>
-          )}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className={cn('flex min-w-0 items-center gap-2', layout === 'stacked' && 'w-full')}>
+            <ToolIcon name={name} />
+            <span className="text-sm font-medium text-foreground/90 shrink-0">{name}</span>
+            {inputSummary && (
+              <span className="text-xs text-muted-foreground/50 truncate font-mono min-w-0">{inputSummary}</span>
+            )}
+          </div>
+          <div
+            className={cn(
+              'flex items-center gap-2 shrink-0',
+              layout === 'default' && 'ml-auto',
+              layout === 'stacked' && 'w-full justify-between pl-6',
+            )}
+          >
+            {layout === 'stacked' && (
+              <span
+                className={cn(
+                  'text-[10px] font-medium uppercase tracking-wide',
+                  status === 'failed' && 'text-destructive',
+                  status === 'in_progress' && 'text-blue-500',
+                  status === 'completed' && 'text-muted-foreground/70',
+                  status === 'pending' && 'text-muted-foreground/50',
+                )}
+              >
+                {statusLabel}
+              </span>
+            )}
             {durationLabel && (
               <span className="text-xs text-muted-foreground/60">{durationLabel}</span>
             )}

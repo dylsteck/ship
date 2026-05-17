@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
+  "scripts": {
+    "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings 500"
+  },
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
@@ -31,6 +34,8 @@
   "devDependencies": {
     "@types/react": "^19.2.9",
     "@types/react-dom": "^19.2.3",
-    "typescript": "^5.9.3"
+    "eslint": "^9.39.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.1"
   }
 }

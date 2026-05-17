@@ -17,6 +17,7 @@ import {
 } from 'sandbox-agent'
 import type { Sandbox } from '@e2b/code-interpreter'
 import { getAgent, getDefaultAgentId, type AgentConfig } from './agent-registry'
+import { getBankrOpenCodeProvider } from './bankr'
 
 function generateToken(): string {
   const array = new Uint8Array(24)
@@ -116,11 +117,17 @@ async function syncSharedMcpConfigs(client: SandboxAgent, workingDir: string): P
  *
  * Replaces startOpenCodeServer() from e2b.ts
  */
+export interface SandboxAgentOptions {
+  bankrEnabled?: boolean
+  bankrApiKey?: string
+}
+
 export async function startSandboxAgentServer(
   sandbox: Sandbox,
   sandboxId: string,
   agentType: string,
   envVars: Record<string, string>,
+  options?: SandboxAgentOptions,
 ): Promise<{ url: string; token: string }> {
   const agentConfig = getAgent(agentType) || getAgent(getDefaultAgentId())!
   const sandboxToken = generateToken()
@@ -191,6 +198,40 @@ export async function startSandboxAgentServer(
     }
   } else {
     console.log(`[sandbox-agent:${sandboxId}] Agent ${agentConfig.sandboxAgentName} already installed`)
+  }
+
+  // Step 3.5: Merge Bankr provider into ~/.config/opencode/opencode.json if enabled
+  // Important: do not replace the whole file — OpenCode Zen and other providers rely on
+  // the existing merged config; overwriting with only `provider.bankr` breaks opencode/* models.
+  if (options?.bankrEnabled && options?.bankrApiKey) {
+    console.log(`[sandbox-agent:${sandboxId}] Step 3.5: Merging Bankr provider into opencode.json...`)
+    const bankrProvider = getBankrOpenCodeProvider('{env:BANKR_API_KEY}')
+    const bankrConfigB64 = btoa(JSON.stringify(bankrProvider))
+    const mergeOpencodeConfig = `const fs=require("fs"),path=require("path"),os=require("os");const p=path.join(os.homedir(),".config/opencode/opencode.json");const bankr=JSON.parse(Buffer.from(process.env.BANKR_CONFIG_B64,"base64").toString());let j={};try{j=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}j.provider=j.provider||{};j.provider.bankr=bankr;fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j));`
+    try {
+      await sandbox.commands.run(`mkdir -p ~/.config/opencode && node -e '${mergeOpencodeConfig}'`, {
+        timeoutMs: 10000,
+        envs: { BANKR_CONFIG_B64: bankrConfigB64 },
+      })
+      envVars.BANKR_API_KEY = options.bankrApiKey
+      console.log(`[sandbox-agent:${sandboxId}] Bankr provider merged into opencode.json`)
+    } catch (err) {
+      console.warn(`[sandbox-agent:${sandboxId}] Failed to merge Bankr config: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // Step 3.6: Configure git to use GITHUB_TOKEN for HTTPS auth so the agent can push
+  if (envVars.GITHUB_TOKEN) {
+    console.log(`[sandbox-agent:${sandboxId}] Configuring git credential helper for GITHUB_TOKEN...`)
+    try {
+      await sandbox.commands.run(
+        `git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=\${GITHUB_TOKEN}"; }; f'`,
+        { timeoutMs: 5000 },
+      )
+    } catch (err) {
+      console.warn(`[sandbox-agent:${sandboxId}] Failed to configure git credentials: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    envVars.GIT_TERMINAL_PROMPT = '0'
   }
 
   // Step 4: Start sandbox-agent server

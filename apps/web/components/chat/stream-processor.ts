@@ -132,9 +132,12 @@ export function parseSSELines(
     }
     if (line.startsWith('data: ')) {
       try {
-        const data = JSON.parse(line.slice(6))
+        const data = JSON.parse(line.slice(6)) as Record<string, unknown>
         if (!data.type && currentEventType) {
           data.type = currentEventType
+        }
+        if (!data.type && typeof data.error === 'string') {
+          data.type = 'error'
         }
         onEvent(data)
       } catch {

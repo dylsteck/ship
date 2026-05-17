@@ -5,6 +5,9 @@
   "license": "MIT",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "lint": "echo '@ship/types: no eslint (types only)'"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./*": "./src/*.ts"

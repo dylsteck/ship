@@ -64,6 +64,11 @@ interface ReasoningCollapsibleProps {
   isStreaming?: boolean
   duration?: number
   className?: string
+  /**
+   * When true, keeps the block expanded after streaming ends (mobile session view —
+   * matches “always see thinking” without an extra tap).
+   */
+  defaultOpenWhenDone?: boolean
 }
 
 function ThoughtBrieflyBlock({ content }: { content: string }) {
@@ -79,18 +84,19 @@ export function ReasoningCollapsible({
   isStreaming = false,
   duration,
   className,
+  defaultOpenWhenDone = false,
 }: ReasoningCollapsibleProps) {
-  const [open, setOpen] = React.useState(isStreaming)
+  const [open, setOpen] = React.useState(isStreaming || defaultOpenWhenDone)
   const prevStreamingRef = React.useRef(isStreaming)
 
   React.useEffect(() => {
     if (isStreaming) {
       setOpen(true)
     } else if (prevStreamingRef.current) {
-      setOpen(false)
+      setOpen(defaultOpenWhenDone)
     }
     prevStreamingRef.current = isStreaming
-  }, [isStreaming])
+  }, [isStreaming, defaultOpenWhenDone])
 
   const chunks: string[] = React.useMemo(() => {
     if (reasoning !== undefined) {

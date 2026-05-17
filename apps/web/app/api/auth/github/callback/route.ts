@@ -21,11 +21,16 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const tokens = await github.validateAuthorizationCode(code)
+    const accessToken = tokens.accessToken()
+    const refreshToken = tokens.hasRefreshToken() ? tokens.refreshToken() : null
+    const expiresAtSec = tokens.accessTokenExpiresAt()
+      ? Math.floor(tokens.accessTokenExpiresAt().getTime() / 1000)
+      : null
 
     // Fetch GitHub user
     const githubUserResponse = await fetch('https://api.github.com/user', {
       headers: {
-        Authorization: `Bearer ${tokens.accessToken()}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     })
 
@@ -45,7 +50,7 @@ export async function GET(request: Request): Promise<Response> {
     if (!email) {
       const emailsResponse = await fetch('https://api.github.com/user/emails', {
         headers: {
-          Authorization: `Bearer ${tokens.accessToken()}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       })
 
@@ -104,7 +109,9 @@ export async function GET(request: Request): Promise<Response> {
       body: JSON.stringify({
         userId,
         providerAccountId: githubUser.id.toString(),
-        accessToken: tokens.accessToken(),
+        accessToken,
+        refreshToken: refreshToken ?? undefined,
+        expiresAt: expiresAtSec ?? undefined,
         tokenType: 'Bearer',
         scope: 'repo,read:user,user:email',
       }),

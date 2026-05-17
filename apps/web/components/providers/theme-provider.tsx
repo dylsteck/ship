@@ -1,6 +1,7 @@
 'use client'
 
 import { ThemeProvider as NextThemesProvider } from 'next-themes'
+import { ThemeColorSync } from './theme-color-sync'
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +10,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       defaultTheme="system"
       disableTransitionOnChange
     >
+      <ThemeColorSync />
       {children}
     </NextThemesProvider>
   )

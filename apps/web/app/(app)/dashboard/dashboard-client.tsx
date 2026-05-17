@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
-import { useModels, useDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
+import { useModels, useDefaultModel, useAgentDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
 import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
 import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks/use-sessions'
@@ -129,7 +129,7 @@ export function DashboardClient({
   const { models, isLoading: modelsLoading } = useModels()
   const { agents, isLoading: agentsLoading } = useAgents()
   const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-  const { defaultModelId, isLoading: defaultModelLoading } = useDefaultModel(userId)
+  const { defaultModelId: globalDefaultModelId, isLoading: globalDefaultModelLoading } = useDefaultModel(userId)
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
@@ -259,6 +259,12 @@ export function DashboardClient({
     },
   })
 
+  // Fetch agent-specific default model (must be after state is initialized)
+  const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading } = useAgentDefaultModel(userId, state.selectedAgent?.id)
+  // Prefer agent-specific default over global default
+  const defaultModelId = agentDefaultModelId || globalDefaultModelId
+  const defaultModelLoading = globalDefaultModelLoading || agentDefaultModelLoading
+
   const derived = useDashboardDerived({
     chat,
     state,
@@ -348,6 +354,24 @@ export function DashboardClient({
     state.setSelectedModel,
   ])
 
+  const terminalConnectionHint = (() => {
+    for (let i = chat.messages.length - 1; i >= 0; i--) {
+      const m = chat.messages[i]!
+      if (m.type !== 'error') continue
+      const t = `${m.content} ${m.rawErrorMessage || ''}`.toLowerCase()
+      if (
+        t.includes('clone') ||
+        t.includes('repository') ||
+        t.includes('sandbox') ||
+        t.includes('git') ||
+        t.includes('github')
+      ) {
+        return 'A setup or git error occurred. Fix it using the message above, then send another chat message — the terminal connects after the sandbox is ready.'
+      }
+    }
+    return undefined
+  })()
+
   const rightSidebarData: SessionPanelData | null = chat.activeSessionId
     ? {
         sessionId: chat.activeSessionId,
@@ -381,12 +405,13 @@ export function DashboardClient({
         sessionInfo: chat.sessionInfo,
         messages: chat.messages,
         sandboxStatus: chat.sandboxStatus ?? undefined,
+        terminalConnectionHint,
       }
     : null
 
   return (
     <DashboardLayout
-      defaultOpen={!chat.activeSessionId}
+      defaultOpen={false}
       sidebarProps={{
         sessions: chat.localSessions,
         user,

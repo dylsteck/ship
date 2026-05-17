@@ -78,8 +78,8 @@ export function DeleteAllSessionsCard({ userId }: DeleteAllSessionsCardProps) {
         </div>
       )}
       {success && (
-        <div className="mt-2 rounded-md bg-emerald-500/10 px-3 py-1.5">
-          <p className="text-xs text-emerald-600">{success}</p>
+        <div className="mt-2 px-3 py-1.5">
+          <p className="text-xs text-emerald-500">{success}</p>
         </div>
       )}
     </div>

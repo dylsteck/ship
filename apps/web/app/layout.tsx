@@ -13,11 +13,17 @@ export const metadata: Metadata = {
   },
 }
 
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  viewportFit: 'cover',
+export function generateViewport(): Viewport {
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    viewportFit: 'cover',
+    themeColor: [
+      { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+      { media: '(prefers-color-scheme: dark)', color: '#0d0d0d' },
+    ],
+  }
 }
 
 export default function RootLayout({
@@ -28,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        <div className="pwa-titlebar-drag" />
         <ThemeProvider>
           <SWRProvider>{children}</SWRProvider>
         </ThemeProvider>
