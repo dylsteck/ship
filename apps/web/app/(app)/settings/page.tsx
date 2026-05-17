@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, type ChatSession } from '@/lib/api'
+import { fetchSessions, type ChatSession } from '@/lib/api/server'
 import { SettingsClient } from './settings-client'
 
 export default async function SettingsPage() {

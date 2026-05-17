@@ -12,7 +12,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@ship/ui'
-import type { ChatSession } from '@/lib/api'
+import type { ChatSession } from '@/lib/api/server'
 
 interface ChatSearchCommandProps {
   open: boolean

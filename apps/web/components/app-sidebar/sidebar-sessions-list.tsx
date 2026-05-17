@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { ChatSession } from '@/lib/api'
+import type { ChatSession } from '@/lib/api/server'
 import { cn } from '@ship/ui/utils'
 import { getSessionDisplayTitle } from '@/lib/session-display'
 import { formatRelativeTime } from './utils'

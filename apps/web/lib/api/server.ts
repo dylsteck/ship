@@ -9,6 +9,9 @@
 import { cookies } from 'next/headers'
 import { API_URL } from '@/lib/config'
 import { getApiToken } from './client'
+import type { Message, RawEvent } from './chat-types'
+
+export type { Message, MessagePart, RawEvent } from './chat-types'
 
 const API_SECRET = typeof process !== 'undefined' ? process.env?.API_SECRET : undefined
 
@@ -124,39 +127,6 @@ export async function deleteSession(id: string): Promise<void> {
   }
 }
 
-// Message types for chat - aligned with message-list.tsx
-export interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  parts?: string // JSON string of tool parts from API
-  createdAt: number
-  // Message type fields
-  type?: 'error' | 'pr-notification'
-  errorCategory?: 'transient' | 'persistent' | 'user-action' | 'fatal'
-  retryable?: boolean
-  // AI Elements data - persisted from streaming
-  inlineTools?: Array<{
-    name: string
-    status: 'pending' | 'in_progress' | 'completed' | 'failed'
-    input: Record<string, unknown>
-    output?: unknown
-    duration?: number
-  }>
-  reasoningBlocks?: Array<{
-    text: string
-  }>
-}
-
-export interface MessagePart {
-  type: 'text' | 'tool-call' | 'tool-result'
-  content?: string
-  toolName?: string
-  toolInput?: unknown
-  toolOutput?: unknown
-  state?: 'pending' | 'running' | 'complete' | 'error'
-}
-
 /**
  * Get chat messages with pagination
  */
@@ -178,14 +148,6 @@ export async function getChatMessages(
   }
 
   return res.json()
-}
-
-/** Raw event for Overview inspector */
-export interface RawEvent {
-  id: string
-  type: string
-  timestamp: number
-  payload: unknown
 }
 
 /**

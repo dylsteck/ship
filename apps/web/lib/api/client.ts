@@ -18,6 +18,15 @@ export function getApiToken(): string | null {
   return _apiToken
 }
 
+/**
+ * Headers for browser chat/API fetches after `setApiToken(sessionJwt)` (no `next/headers`).
+ */
+export function chatFetchHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
+  if (_apiToken) headers.Authorization = `Bearer ${_apiToken}`
+  return headers
+}
+
 function authHeaders(extra?: HeadersInit): HeadersInit {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (_apiToken) headers['Authorization'] = `Bearer ${_apiToken}`

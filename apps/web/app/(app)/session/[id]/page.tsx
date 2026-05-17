@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, getSession, getChatMessages, type ChatSession } from '@/lib/api'
+import { fetchSessions, getSession, getChatMessages, type ChatSession } from '@/lib/api/server'
 import { mapApiMessagesToUI } from '@/lib/ai-elements-adapter'
 import { DashboardClient } from '../../dashboard/dashboard-client'
 import { SessionLoadingFallback } from '@/components/session/session-loading-fallback'

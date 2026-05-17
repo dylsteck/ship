@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatSession } from '@/lib/api/server'
-import { sendChatMessage } from '@/lib/api/server'
+import { sendChatMessage } from '@/lib/api/chat-client'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { isAgentHarnessEvent } from '@/lib/sse-types'
 import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } from '@/lib/api/types'

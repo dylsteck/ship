@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, type ChatSession } from '@/lib/api'
+import { fetchSessions, type ChatSession } from '@/lib/api/server'
 import { DashboardClient } from './(app)/dashboard/dashboard-client'
 
 export default async function HomePage() {
