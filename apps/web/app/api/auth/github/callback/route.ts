@@ -1,3 +1,4 @@
+import { API_URL } from '@/lib/config'
 import { github } from '@/lib/github'
 import { createSession } from '@/lib/session'
 import { cookies } from 'next/headers'
@@ -62,7 +63,7 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     // Upsert user via API
-    const apiResponse = await fetch(`${process.env.API_BASE_URL}/users/upsert`, {
+    const apiResponse = await fetch(`${API_URL}/users/upsert`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -100,7 +101,7 @@ export async function GET(request: Request): Promise<Response> {
     const { userId, isNewUser } = await apiResponse.json()
 
     // Store GitHub account with access token for repo access
-    await fetch(`${process.env.API_BASE_URL}/accounts/github`, {
+    await fetch(`${API_URL}/accounts/github`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
