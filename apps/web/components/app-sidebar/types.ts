@@ -1,4 +1,4 @@
-import type { ChatSession } from '@/lib/api'
+import type { ChatSession } from '@/lib/api/server'
 
 export interface User {
   id: string

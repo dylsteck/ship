@@ -5,11 +5,7 @@ import { useSWRConfig } from 'swr'
 import { Button } from '@ship/ui'
 import { useDeleteAllSessions } from '@/lib/api/hooks/use-sessions'
 
-interface DeleteAllSessionsCardProps {
-  userId: string
-}
-
-export function DeleteAllSessionsCard({ userId }: DeleteAllSessionsCardProps) {
+export function DeleteAllSessionsCard() {
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -19,7 +15,7 @@ export function DeleteAllSessionsCard({ userId }: DeleteAllSessionsCardProps) {
   const handleConfirm = async () => {
     try {
       setError(null)
-      const result = await deleteAllSessions({ userId })
+      const result = await deleteAllSessions()
       setConfirming(false)
       mutate((key: unknown) => typeof key === 'string' && key.includes('/sessions'), undefined, { revalidate: true })
       setSuccess(`Deleted ${result?.deletedCount ?? 0} session${result?.deletedCount === 1 ? '' : 's'}`)

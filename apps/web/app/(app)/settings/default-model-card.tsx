@@ -15,17 +15,16 @@ import { useSetDefaultModel, useDefaultModel } from '@/lib/api/hooks/use-models'
 import type { ModelInfo } from '@/lib/api/types'
 
 interface DefaultModelCardProps {
-  userId: string
   models: ModelInfo[]
   defaultModelId: string | null
 }
 
-export function DefaultModelCard({ userId, models, defaultModelId }: DefaultModelCardProps) {
+export function DefaultModelCard({ models, defaultModelId }: DefaultModelCardProps) {
   const [selected, setSelected] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false)
   const { setDefaultModel, isSetting } = useSetDefaultModel()
-  const { mutate } = useDefaultModel(userId)
+  const { mutate } = useDefaultModel(true)
 
   useEffect(() => {
     if (defaultModelId && !selected) {
@@ -39,7 +38,7 @@ export function DefaultModelCard({ userId, models, defaultModelId }: DefaultMode
     try {
       setSaveSuccess(false)
       setError(null)
-      await setDefaultModel({ userId, modelId: selected })
+      await setDefaultModel({ modelId: selected })
       mutate()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)

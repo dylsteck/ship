@@ -107,7 +107,9 @@ ship/
 │           │   ├── sandbox-agent.ts    # sandbox-agent SDK wrapper (with pre-install detection)
 │           │   ├── agent-registry.ts   # Agent config registry
 │           │   ├── event-translator.ts # UniversalEvent → Ship SSE translator
-│           │   └── e2b.ts              # E2B sandbox management (custom template support)
+│           │   ├── e2b.ts              # E2B sandbox management (custom template support)
+│           │   ├── session-authorization.ts # JWT user id + D1 session ownership
+│           │   └── api-schemas.ts      # Zod + parseJsonBody for route bodies
 │           ├── durable-objects/
 │           │   └── session.ts          # Session Durable Object
 │           └── env.d.ts                # Environment type definitions
@@ -335,6 +337,10 @@ The API is a Cloudflare Worker (`apps/api/`) with Hono routing.
 | `routes/sandbox.ts` | Sandbox lifecycle management |
 | `routes/models.ts` | Available model listing |
 | `routes/git.ts` | Git operations (diff, commit, PR creation) |
+| `routes/users.ts` | `GET /users/me` (JWT), `GET /users/:id` (self or service), `POST /users/upsert` (service only) |
+| `middleware/auth.ts` | Bearer parsing: session JWT → `authKind: 'user'` + `userId`, or `API_SECRET` → `authKind: 'service'` |
+| `lib/session-authorization.ts` | `requireJwtUserId`, `requireSessionOwner` — user-scoped routes must use the session JWT, not `API_SECRET` alone |
+| `lib/api-schemas.ts` | Zod request bodies + `parseJsonBody` (shape validation; auth remains separate) |
 | `lib/sandbox-agent.ts` | SDK wrapper around `sandbox-agent` npm package. Handles server startup in E2B, client connection (cached), session create/resume/prompt/cancel. |
 | `lib/event-translator.ts` | Stateful `EventTranslatorState` class. One instance per streaming session. |
 | `lib/agent-registry.ts` | Agent config definitions and lookup functions. |
@@ -366,6 +372,13 @@ The API is a Cloudflare Worker (`apps/api/`) with Hono routing.
 
 The translator tracks state: `textAccumulator`, `reasoningAccumulator`, `toolCallMap` (Map of itemId → tool state), `partCounter` for synthetic IDs, and `hasChanges` flag for file-modifying tools.
 
+### Worker authentication and API clients
+
+- **`API_SECRET` (`authKind: 'service'`)** — Trusted server-to-server only (for example OAuth `POST /users/upsert` and `POST /accounts/github` from the Next.js app). It does **not** identify an end user; user-scoped routes must not authorize on this token alone.
+- **Session JWT (`authKind: 'user'`)** — The web app forwards the encrypted session cookie as `Authorization: Bearer <jwt>` from `apps/web/lib/api/server.ts` (SSR) and via `setApiToken` + SWR on the client. The Worker sets `userId` from the JWT. Prefer **`GET /users/me`** and JWT-scoped routes **without** embedding `userId` in URLs or bodies.
+- **`requireSessionOwner`** — Mutations on chat sessions verify `chat_sessions.user_id` in D1 against the JWT subject.
+- **Zod (`lib/api-schemas.ts`)** — Shared `parseJsonBody` + schemas for shape validation. **Authorization is explicit** (JWT vs service + ownership checks), not inferred from validated fields.
+
 ## Code Style & Conventions
 
 - **TypeScript**: Strict mode enabled. Exhaustive switch cases narrow to `never` in default branches.
@@ -387,6 +400,14 @@ The translator tracks state: `textAccumulator`, `reasoningAccumulator`, `toolCal
 ### Composition & file size
 
 Keep UI and hooks **small and composable** (atomic-style building blocks, clear boundaries). When a component or hook grows past the lint thresholds, split by responsibility (presentational vs state, subcomponents, pure helpers) rather than disabling rules.
+
+### TSDoc and public APIs
+
+Use **TSDoc** (`/** ... */`) on **exported** symbols that are non-obvious: middleware, auth helpers, shared parsers (`parseJsonBody`), route entrypoints, and cross-package types. Summarize behavior, `@param` / `@returns` where it helps, and `@remarks` for security or invariants (for example “identity comes from JWT, not the body”). Avoid noisy comments on self-explanatory private code.
+
+### React: effects and data flow
+
+Follow [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect): **derive state during render** when it is fully determined by props or existing state; handle user actions in **event handlers**; use **`key`** to reset UI when switching entities; reserve **`useEffect` for synchronization** with external systems (subscriptions, timers, third-party widgets, non-React data sources). Prefer **SWR** (or similar) for server data instead of manual `fetch` + `useEffect` when a hook already exists—for example connector settings use `useConnectors` / mutations rather than one-off effects.
 
 ## Environment Variables
 

@@ -7,16 +7,16 @@ import type { ChatSession } from '../server'
 import type { CreateSessionParams, SandboxStatus } from '../types'
 
 /**
- * Hook to fetch all sessions for a user
- * @param userId - User ID (undefined to disable fetch)
- * @param options - Optional SWR config (e.g. refreshInterval when on homepage)
+ * Hook to fetch all sessions for the logged-in user (JWT in `Authorization`).
+ *
+ * @param fetchEnabled - When `true`, runs the request. Identity always comes from the JWT, not the URL.
  */
 export function useSessions(
-  userId: string | undefined,
+  fetchEnabled: boolean | undefined,
   options?: { refreshInterval?: number; revalidateOnFocus?: boolean },
 ) {
   const { data, error, isLoading, mutate } = useSWR<ChatSession[]>(
-    userId ? apiUrl('/sessions', { userId }) : null,
+    fetchEnabled ? apiUrl('/sessions') : null,
     fetcher,
     {
       refreshInterval: options?.refreshInterval,
@@ -39,7 +39,7 @@ export function useSessions(
 export function useSession(sessionId: string | undefined) {
   const { data, error, isLoading, mutate } = useSWR<ChatSession>(
     sessionId ? apiUrl(`/sessions/${sessionId}`) : null,
-    fetcher
+    fetcher,
   )
 
   return {
@@ -61,7 +61,7 @@ export function useSandboxStatus(sessionId: string | undefined) {
     {
       refreshInterval: 5000, // Poll every 5 seconds until ready
       revalidateOnFocus: false,
-    }
+    },
   )
 
   return {
@@ -82,7 +82,7 @@ export function useCreateSession() {
     'create-session',
     async (_key: string, { arg }: { arg: CreateSessionParams }) => {
       return post<CreateSessionParams, ChatSession>(apiUrl('/sessions'), arg)
-    }
+    },
   )
 
   return {
@@ -100,7 +100,7 @@ export function useDeleteSession() {
     'delete-session',
     async (_key: string, { arg }: { arg: { sessionId: string } }) => {
       return del(apiUrl(`/sessions/${arg.sessionId}`))
-    }
+    },
   )
 
   return {
@@ -111,14 +111,14 @@ export function useDeleteSession() {
 }
 
 /**
- * Mutation hook to delete all sessions for a user
+ * Mutation hook to delete all sessions for the authenticated user
  */
 export function useDeleteAllSessions() {
   const { trigger, isMutating, error } = useSWRMutation(
     'delete-all-sessions',
-    async (_key: string, { arg }: { arg: { userId: string } }) => {
-      return del<{ success: boolean; deletedCount: number }>(apiUrl('/sessions', { userId: arg.userId }))
-    }
+    async () => {
+      return del<{ success: boolean; deletedCount: number }>(apiUrl('/sessions'))
+    },
   )
 
   return {
@@ -136,7 +136,7 @@ export function useProvisionSandbox() {
     'provision-sandbox',
     async (_key: string, { arg }: { arg: { sessionId: string } }) => {
       return post<{ sessionId: string }, unknown>(apiUrl('/sandbox'), { sessionId: arg.sessionId })
-    }
+    },
   )
 
   return {
@@ -147,14 +147,14 @@ export function useProvisionSandbox() {
 }
 
 /**
- * Mutation hook to retry a failed session operation
+ * Mutation hook to retry a failed session operation (unpause agent in DO)
  */
 export function useRetrySession() {
   const { trigger, isMutating, error } = useSWRMutation(
     'retry-session',
     async (_key: string, { arg }: { arg: { sessionId: string } }) => {
-      return post<{}, ChatSession>(apiUrl(`/sessions/${arg.sessionId}/retry`), {})
-    }
+      return post<{}, ChatSession>(apiUrl(`/chat/${arg.sessionId}/retry`), {})
+    },
   )
 
   return {

@@ -18,6 +18,8 @@ export {
   useModels,
   useDefaultModel,
   useSetDefaultModel,
+  useAgentDefaultModel,
+  useSetAgentDefaultModel,
   useBankrEnabled,
   useSetBankrEnabled,
 } from './use-models'

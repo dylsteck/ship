@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
+import { requireJwtUserId } from '../lib/session-authorization'
 
-const connectors = new Hono<{ Bindings: Env }>()
+const connectors = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**
  * Connector types
@@ -38,16 +39,15 @@ async function isGitHubTokenValid(accessToken: string): Promise<boolean> {
 
 /**
  * GET /connectors
- * List all connectors with enabled status
- * Query param: userId (required)
+ * List all connectors with enabled status (JWT user).
  */
 connectors.get('/', async (c) => {
   try {
-    const userId = c.req.query('userId')
-
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     const connectorNames: ConnectorName[] = ['github']
     const statuses: ConnectorStatus[] = []
@@ -104,16 +104,15 @@ connectors.get('/', async (c) => {
 /**
  * GET /connectors/:name/status
  * Get connector connection and enabled status
- * Query param: userId (required)
  */
 connectors.get('/:name/status', async (c) => {
   try {
     const name = c.req.param('name') as ConnectorName
-    const userId = c.req.query('userId')
-
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     if (name !== 'github') {
       return c.json({ error: 'Invalid connector name' }, 400)
@@ -148,17 +147,15 @@ connectors.get('/:name/status', async (c) => {
 /**
  * POST /connectors/:name/enable
  * Enable connector
- * Body: { userId }
  */
 connectors.post('/:name/enable', async (c) => {
   try {
     const name = c.req.param('name') as ConnectorName
-    const body = await c.req.json()
-    const { userId } = body
-
-    if (!userId) {
-      return c.json({ error: 'userId is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     if (name !== 'github') {
       return c.json({ error: 'Invalid connector name' }, 400)
@@ -183,17 +180,15 @@ connectors.post('/:name/enable', async (c) => {
 /**
  * POST /connectors/:name/disable
  * Disable connector
- * Body: { userId }
  */
 connectors.post('/:name/disable', async (c) => {
   try {
     const name = c.req.param('name') as ConnectorName
-    const body = await c.req.json()
-    const { userId } = body
-
-    if (!userId) {
-      return c.json({ error: 'userId is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     if (name !== 'github') {
       return c.json({ error: 'Invalid connector name' }, 400)

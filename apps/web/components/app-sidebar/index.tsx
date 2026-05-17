@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { useDeleteSession, type ChatSession } from '@/lib/api'
+import { useDeleteSession } from '@/lib/api'
+import type { ChatSession } from '@/lib/api/server'
 import { Sidebar, useSidebar, useIsMobile } from '@ship/ui'
 import { ChatSearchCommand } from '../chat-search-command'
 import { SidebarHeaderSection } from './sidebar-header'

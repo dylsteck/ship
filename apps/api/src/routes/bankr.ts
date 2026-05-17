@@ -1,13 +1,16 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
-import { bankrChatCompletion, bankrMessages } from '../lib/bankr'
+import { bankrChatCompletion, bankrMessages, isUserBankrEnabled } from '../lib/bankr'
+import { requireJwtUserId } from '../lib/session-authorization'
+import { bankrChatBodySchema, bankrMessagesBodySchema, parseJsonBody } from '../lib/api-schemas'
 
-const bankr = new Hono<{ Bindings: Env }>()
+const bankr = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**
- * POST /bankr/chat
- * Proxy to Bankr OpenAI-compatible chat completions.
- * Body: { model, messages, stream?, max_tokens? }
+ * `POST /bankr/chat` — proxy to Bankr OpenAI-compatible chat completions.
+ *
+ * @remarks
+ * Requires a session JWT and the caller's `use_bankr` preference. Uses the deployment `BANKR_API_KEY`.
  */
 bankr.post('/chat', async (c) => {
   const apiKey = c.env.BANKR_API_KEY
@@ -15,15 +18,17 @@ bankr.post('/chat', async (c) => {
     return c.json({ error: 'BANKR_API_KEY not configured' }, 500)
   }
 
-  const body = await c.req.json<{
-    model: string
-    messages: Array<{ role: string; content: string }>
-    stream?: boolean
-    max_tokens?: number
-  }>()
+  const userIdOrRes = requireJwtUserId(c)
+  if (typeof userIdOrRes !== 'string') {
+    return userIdOrRes
+  }
+  if (!(await isUserBankrEnabled(c.env.DB, userIdOrRes))) {
+    return c.json({ error: 'Bankr is not enabled for this account' }, 403)
+  }
 
-  if (!body.model || !body.messages) {
-    return c.json({ error: 'model and messages are required' }, 400)
+  const body = await parseJsonBody(c, bankrChatBodySchema)
+  if (body instanceof Response) {
+    return body
   }
 
   const res = await bankrChatCompletion({ apiKey, ...body })
@@ -48,9 +53,10 @@ bankr.post('/chat', async (c) => {
 })
 
 /**
- * POST /bankr/messages
- * Proxy to Bankr Anthropic-compatible messages.
- * Body: { model, messages, system?, stream?, max_tokens? }
+ * `POST /bankr/messages` — proxy to Bankr Anthropic-compatible messages.
+ *
+ * @remarks
+ * Same auth and preference rules as `POST /bankr/chat`.
  */
 bankr.post('/messages', async (c) => {
   const apiKey = c.env.BANKR_API_KEY
@@ -58,16 +64,17 @@ bankr.post('/messages', async (c) => {
     return c.json({ error: 'BANKR_API_KEY not configured' }, 500)
   }
 
-  const body = await c.req.json<{
-    model: string
-    messages: Array<{ role: string; content: string }>
-    system?: string
-    stream?: boolean
-    max_tokens?: number
-  }>()
+  const userIdOrRes = requireJwtUserId(c)
+  if (typeof userIdOrRes !== 'string') {
+    return userIdOrRes
+  }
+  if (!(await isUserBankrEnabled(c.env.DB, userIdOrRes))) {
+    return c.json({ error: 'Bankr is not enabled for this account' }, 403)
+  }
 
-  if (!body.model || !body.messages) {
-    return c.json({ error: 'model and messages are required' }, 400)
+  const body = await parseJsonBody(c, bankrMessagesBodySchema)
+  if (body instanceof Response) {
+    return body
   }
 
   const res = await bankrMessages({ apiKey, ...body })

@@ -15,7 +15,6 @@ import { useSetDefaultRepo, useDefaultRepo } from '@/lib/api/hooks/use-default-r
 import type { GitHubRepo } from '@/lib/api/types'
 
 interface DefaultRepoCardProps {
-  userId: string
   repos: GitHubRepo[]
   reposLoading: boolean
   reposLoadMore: () => void
@@ -25,7 +24,6 @@ interface DefaultRepoCardProps {
 }
 
 export function DefaultRepoCard({
-  userId,
   repos,
   reposLoading,
   reposLoadMore,
@@ -37,7 +35,7 @@ export function DefaultRepoCard({
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false)
   const { setDefaultRepo, isSetting } = useSetDefaultRepo()
-  const { mutate } = useDefaultRepo(userId)
+  const { mutate } = useDefaultRepo(true)
 
   useEffect(() => {
     if (defaultRepoFullName && !selected) {
@@ -51,7 +49,7 @@ export function DefaultRepoCard({
     try {
       setSaveSuccess(false)
       setError(null)
-      await setDefaultRepo({ userId, repoFullName: selected })
+      await setDefaultRepo({ repoFullName: selected })
       mutate()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)

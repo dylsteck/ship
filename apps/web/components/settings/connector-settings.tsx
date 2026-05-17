@@ -1,56 +1,34 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { Button, Badge, cn } from '@ship/ui'
-import { fetcher, post, API_URL } from '@/lib/api/client'
+import { useConnectors, useEnableConnector, useDisableConnector } from '@/lib/api/hooks/use-connectors'
+import type { Connector } from '@/lib/api/types'
 
-interface ConnectorStatus {
-  name: 'github'
-  connected: boolean
-  enabled: boolean
-  tokenExpired?: boolean
-}
-
-export function ConnectorSettings({ userId }: { userId: string }) {
-  const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
-  const [loading, setLoading] = useState(true)
+export function ConnectorSettings() {
+  const { connectors, isLoading, mutate } = useConnectors(true)
+  const { enableConnector } = useEnableConnector()
+  const { disableConnector } = useDisableConnector()
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  useEffect(() => {
-    async function loadConnectors() {
-      try {
-        setLoading(true)
-        const data = await fetcher<{ connectors: ConnectorStatus[] }>(
-          `${API_URL}/connectors?userId=${userId}`,
-        )
-        setConnectors(data.connectors || [])
-      } catch (err) {
-        console.warn('Failed to fetch connectors:', err)
-        setConnectors([{ name: 'github', connected: false, enabled: false }])
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadConnectors()
-  }, [userId])
-
-  const handleToggle = (name: ConnectorStatus['name'], enabled: boolean) => {
+  const handleToggle = (name: string, nextEnabled: boolean) => {
     startTransition(async () => {
       try {
         setError(null)
-        await post<{ userId: string }, { success: boolean }>(
-          `${API_URL}/connectors/${name}/${enabled ? 'enable' : 'disable'}`,
-          { userId },
-        )
-        setConnectors((prev) => prev.map((c) => (c.name === name ? { ...c, enabled: !c.enabled } : c)))
+        if (nextEnabled) {
+          await enableConnector({ name })
+        } else {
+          await disableConnector({ name })
+        }
+        await mutate()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed')
       }
     })
   }
 
-  const handleConnect = (name: ConnectorStatus['name']) => {
+  const handleConnect = (name: Connector['name']) => {
     if (name === 'github') window.location.href = '/api/auth/github'
   }
 
@@ -59,7 +37,7 @@ export function ConnectorSettings({ userId }: { userId: string }) {
     github: 'Repository access and pull requests',
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="px-4 py-4 flex items-center gap-2 text-xs text-muted-foreground">
         <div className="w-3 h-3 border-2 border-muted border-t-foreground rounded-full animate-spin" />
@@ -68,6 +46,8 @@ export function ConnectorSettings({ userId }: { userId: string }) {
     )
   }
 
+  const list = connectors.length > 0 ? connectors : [{ name: 'github', connected: false, enabled: false }]
+
   return (
     <div className="divide-y divide-border">
       {error && (
@@ -75,11 +55,11 @@ export function ConnectorSettings({ userId }: { userId: string }) {
           <p className="text-xs text-destructive">{error}</p>
         </div>
       )}
-      {connectors.map((connector) => (
+      {list.map((connector) => (
         <div key={connector.name} className="px-4 py-4 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-foreground">{names[connector.name]}</p>
+              <p className="text-sm font-medium text-foreground">{names[connector.name] ?? connector.name}</p>
               {connector.tokenExpired ? (
                 <Badge variant="destructive" className="text-[9px] px-1.5 py-0">
                   Token Expired
@@ -93,31 +73,46 @@ export function ConnectorSettings({ userId }: { userId: string }) {
             <p className="text-xs text-muted-foreground mt-0.5">
               {connector.tokenExpired
                 ? 'Your token has expired. Re-connect to restore access.'
-                : descriptions[connector.name]}
+                : descriptions[connector.name] ?? ''}
             </p>
           </div>
           <div className="shrink-0">
             {connector.tokenExpired ? (
-              <Button size="sm" variant="outline" onClick={() => handleConnect(connector.name)} disabled={isPending} className="h-8 text-xs">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleConnect(connector.name)}
+                disabled={isPending}
+                className="h-8 text-xs"
+              >
                 Re-connect
               </Button>
             ) : connector.connected ? (
               <button
+                type="button"
                 onClick={() => handleToggle(connector.name, !connector.enabled)}
                 disabled={isPending}
                 className={cn(
                   'relative h-5 w-9 rounded-full transition-colors',
-                  connector.enabled ? 'bg-foreground' : 'bg-muted-foreground/30'
+                  connector.enabled ? 'bg-foreground' : 'bg-muted-foreground/30',
                 )}
                 aria-label={connector.enabled ? 'Disable' : 'Enable'}
               >
-                <span className={cn(
-                  'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-background shadow transition-transform',
-                  connector.enabled && 'translate-x-4'
-                )} />
+                <span
+                  className={cn(
+                    'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-background shadow transition-transform',
+                    connector.enabled && 'translate-x-4',
+                  )}
+                />
               </button>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => handleConnect(connector.name)} disabled={isPending} className="h-8 text-xs">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleConnect(connector.name)}
+                disabled={isPending}
+                className="h-8 text-xs"
+              >
                 Connect
               </Button>
             )}

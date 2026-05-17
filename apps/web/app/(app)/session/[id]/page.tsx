@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, getSession, getChatMessages, type ChatSession } from '@/lib/api'
+import { fetchSessions, getSession, getChatMessages, type ChatSession } from '@/lib/api/server'
 import { mapApiMessagesToUI } from '@/lib/ai-elements-adapter'
 import { DashboardClient } from '../../dashboard/dashboard-client'
 import { SessionLoadingFallback } from '@/components/session/session-loading-fallback'
@@ -18,7 +18,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
 
   let sessions: ChatSession[] = []
   try {
-    sessions = await fetchSessions(session.userId)
+    sessions = await fetchSessions()
   } catch (error) {
     console.error('Failed to fetch sessions:', error)
   }
@@ -35,12 +35,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
   // If we can't find the session server-side, render a client fallback that retries
   if (!matchingSession || matchingSession.userId !== session.userId) {
     return (
-      <SessionLoadingFallback
-        sessionId={id}
-        userId={session.userId}
-        user={user}
-        apiToken={apiToken}
-      />
+      <SessionLoadingFallback sessionId={id} user={user} apiToken={apiToken} />
     )
   }
 
@@ -65,7 +60,6 @@ export default async function SessionPage({ params }: SessionPageProps) {
   return (
     <DashboardClient
       sessions={mergedSessions}
-      userId={session.userId}
       user={user}
       initialSessionId={id}
       initialMessages={initialMessages}

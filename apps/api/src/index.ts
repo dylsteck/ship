@@ -15,7 +15,7 @@ import terminal from './routes/terminal'
 import bankr from './routes/bankr'
 import type { Env } from './env.d'
 
-const app = new Hono<{ Bindings: Env; Variables: { userId?: string } }>()
+const app = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 // CORS middleware
 app.use(
@@ -69,6 +69,7 @@ app.use('/bankr/*', authMiddleware)
 
 // Rate limiting (after auth so userId is available)
 app.use('/chat/*', chatRateLimit)
+app.use('/bankr/*', chatRateLimit)
 app.post('/sessions', sessionRateLimit)
 
 // Routes

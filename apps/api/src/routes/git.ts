@@ -16,9 +16,10 @@ import type { Env } from '../env.d'
 import { cloneRepo, createBranch, commitChanges, pushBranch, generateBranchName } from '../lib/git-workflow'
 import { createGitHubClient, parseRepoUrl } from '../lib/github'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
+import { requireSessionOwner } from '../lib/session-authorization'
 import { Sandbox } from '@e2b/code-interpreter'
 
-const git = new Hono<{ Bindings: Env }>()
+const git = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /** Valid GitHub access token for git/API, with OAuth refresh when needed. */
 async function getGitHubToken(db: D1Database, env: Env, userId: string): Promise<string | null> {
@@ -54,6 +55,11 @@ git.post('/clone', async (c) => {
 
     if (!sessionId || !repoUrl) {
       return c.json({ error: 'sessionId and repoUrl are required' }, 400)
+    }
+
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
     }
 
     // Get SessionDO stub
@@ -144,6 +150,11 @@ git.post('/commit', async (c) => {
 
     if (!sessionId || !message) {
       return c.json({ error: 'sessionId and message are required' }, 400)
+    }
+
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
     }
 
     // Get SessionDO stub
@@ -240,6 +251,11 @@ git.post('/push', async (c) => {
       return c.json({ error: 'sessionId is required' }, 400)
     }
 
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
+    }
+
     // Get SessionDO stub
     const doId = c.env.SESSION_DO.idFromName(sessionId)
     const doStub = c.env.SESSION_DO.get(doId)
@@ -323,6 +339,11 @@ git.post('/pr', async (c) => {
 
     if (!sessionId || !title) {
       return c.json({ error: 'sessionId and title are required' }, 400)
+    }
+
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
     }
 
     // Get SessionDO stub

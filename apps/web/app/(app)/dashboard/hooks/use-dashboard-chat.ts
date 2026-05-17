@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useSyncExternalStore } from 'react'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
 import { getApiToken } from '@/lib/api/client'
-import { stopChatStream, getChatMessages, getChatEvents, type Message as APIMessage } from '@/lib/api/server'
+import { stopChatStream, getChatMessages, getChatEvents, type Message as APIMessage } from '@/lib/api/chat-client'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import {
   createErrorMessage,

@@ -23,11 +23,11 @@ export function useAgents() {
 }
 
 /**
- * Hook to fetch user's default agent
+ * Hook to fetch the JWT user's default agent preference.
  */
-export function useDefaultAgent(userId: string | undefined) {
+export function useDefaultAgent(fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<DefaultAgentResponse | null>(
-    userId ? apiUrl('/models/default-agent', { userId }) : null,
+    fetchEnabled ? apiUrl('/models/default-agent') : null,
     async (url: string) => {
       try {
         return await fetcher<DefaultAgentResponse>(url)
@@ -53,9 +53,8 @@ export function useDefaultAgent(userId: string | undefined) {
 export function useSetDefaultAgent() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-default-agent',
-    async (_key: string, { arg }: { arg: { userId: string; agentId: string } }) => {
-      return post<{ userId: string; agentId: string }, DefaultAgentResponse>(apiUrl('/models/default-agent'), {
-        userId: arg.userId,
+    async (_key: string, { arg }: { arg: { agentId: string } }) => {
+      return post<{ agentId: string }, DefaultAgentResponse>(apiUrl('/models/default-agent'), {
         agentId: arg.agentId,
       })
     },

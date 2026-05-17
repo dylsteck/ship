@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChatSession } from '@/lib/api/server'
-import { sendChatMessage } from '@/lib/api/server'
+import { sendChatMessage } from '@/lib/api/chat-client'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { isAgentHarnessEvent } from '@/lib/sse-types'
 import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } from '@/lib/api/types'
@@ -45,7 +45,6 @@ export interface UseDashboardStateParams {
   session: {
     createSession: (arg: CreateSessionParams) => Promise<ChatSession | undefined>
     deleteSession: (arg: { sessionId: string }) => Promise<unknown>
-    userId: string
     user: User
     mutateSessions?: () => void
     onSessionCreated?: (sessionId: string) => void
@@ -65,7 +64,7 @@ export interface UseDashboardStateParams {
 }
 
 export function useDashboardState({ chat, handleSend, processStreamEventForSession, session, data }: UseDashboardStateParams) {
-  const { createSession, deleteSession, userId, user, mutateSessions, onSessionCreated, onSessionDeleted } = session
+  const { createSession, deleteSession, user, mutateSessions, onSessionCreated, onSessionDeleted } = session
   const {
     repos,
     isCreating,
@@ -242,7 +241,6 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
         const initialTitle =
           trimmedPrompt.length > 60 ? `${trimmedPrompt.slice(0, 57)}...` : trimmedPrompt
         const newSession = await createSession({
-          userId,
           repoOwner: data.repoOwner,
           repoName: data.repoName,
           model: data.model || selectedModel?.id || 'opencode/big-pickle',
@@ -254,7 +252,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
         if (newSession) {
           const newSessionData: ChatSession = {
             id: newSession.id,
-            userId,
+            userId: user.id,
             repoOwner: data.repoOwner,
             repoName: data.repoName,
             status: 'active',
@@ -282,7 +280,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
         console.error('Failed to create session:', error)
       }
     },
-    [createSession, userId, selectedModel, selectedAgent, prompt, mode, chat, mutateSessions, onSessionCreated],
+    [createSession, user.id, selectedModel, selectedAgent, prompt, mode, chat, mutateSessions, onSessionCreated],
   )
 
   const handleSubmit = useCallback(() => {

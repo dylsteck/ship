@@ -17,11 +17,11 @@ interface ReposPageResponse {
  * Hook to fetch user's GitHub repositories with infinite scroll/pagination.
  * Loads first page on mount, then loadMore() fetches subsequent pages.
  */
-export function useGitHubRepos(userId: string | undefined) {
+export function useGitHubRepos(fetchEnabled: boolean | undefined) {
   const getKey = (pageIndex: number, previousPageData: ReposPageResponse | null) => {
-    if (!userId) return null
+    if (!fetchEnabled) return null
     if (pageIndex > 0 && previousPageData && !previousPageData.hasMore) return null
-    return apiUrl(`/accounts/github/repos/${userId}`, {
+    return apiUrl('/accounts/github/repos', {
       page: pageIndex + 1,
       per_page: REPOS_PER_PAGE,
     })
@@ -58,11 +58,11 @@ export function useGitHubRepos(userId: string | undefined) {
  * Hook with search/filter functionality for repos (client-side filter over paginated data)
  */
 export function useFilteredGitHubRepos(
-  userId: string | undefined,
-  searchQuery: string = ''
+  fetchEnabled: boolean | undefined,
+  searchQuery: string = '',
 ) {
   const { repos, isLoading, isLoadingMore, hasMore, loadMore, isError, error, mutate } =
-    useGitHubRepos(userId)
+    useGitHubRepos(fetchEnabled)
 
   const filteredRepos = searchQuery
     ? repos.filter(

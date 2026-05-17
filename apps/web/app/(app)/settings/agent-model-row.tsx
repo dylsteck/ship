@@ -15,14 +15,13 @@ import { useAgentDefaultModel, useSetAgentDefaultModel } from '@/lib/api/hooks/u
 import type { AgentInfo, ModelInfo } from '@/lib/api/types'
 
 interface AgentModelRowProps {
-  userId: string
   agent: AgentInfo
   allModels: ModelInfo[]
 }
 
-export function AgentModelRow({ userId, agent, allModels }: AgentModelRowProps) {
+export function AgentModelRow({ agent, allModels }: AgentModelRowProps) {
   const models = agent.models.length > 0 ? agent.models : allModels
-  const { defaultModelId, mutate } = useAgentDefaultModel(userId, agent.id)
+  const { defaultModelId, mutate } = useAgentDefaultModel(agent.id, true)
   const { setAgentDefaultModel, isSetting } = useSetAgentDefaultModel()
   const [selected, setSelected] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +39,7 @@ export function AgentModelRow({ userId, agent, allModels }: AgentModelRowProps) 
     try {
       setSaveSuccess(false)
       setError(null)
-      await setAgentDefaultModel({ userId, agentId: agent.id, modelId: selected })
+      await setAgentDefaultModel({ agentId: agent.id, modelId: selected })
       mutate()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)

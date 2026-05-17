@@ -141,3 +141,16 @@ export async function bankrMessages(options: BankrMessagesOptions): Promise<Resp
 export function toBankrModelId(shipModelId: string): string {
   return shipModelId.replace(/^bankr\//, '')
 }
+
+/** Whether the user has enabled the Bankr LLM gateway in preferences. */
+export async function isUserBankrEnabled(db: D1Database, userId: string): Promise<boolean> {
+  try {
+    const result = await db
+      .prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
+      .bind(userId, 'use_bankr')
+      .first<{ value: string }>()
+    return result?.value === 'true'
+  } catch {
+    return false
+  }
+}

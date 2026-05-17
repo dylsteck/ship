@@ -14,18 +14,17 @@ import { useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import type { AgentInfo } from '@/lib/api/types'
 
 interface DefaultAgentCardProps {
-  userId: string
   agents: AgentInfo[]
   defaultAgentId: string | null
   onAgentChange: (agentId: string) => void
 }
 
-export function DefaultAgentCard({ userId, agents, defaultAgentId, onAgentChange }: DefaultAgentCardProps) {
+export function DefaultAgentCard({ agents, defaultAgentId, onAgentChange }: DefaultAgentCardProps) {
   const [selected, setSelected] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false)
   const { setDefaultAgent, isSetting } = useSetDefaultAgent()
-  const { mutate } = useDefaultAgent(userId)
+  const { mutate } = useDefaultAgent(true)
 
   useEffect(() => {
     if (defaultAgentId && !selected) {
@@ -39,7 +38,7 @@ export function DefaultAgentCard({ userId, agents, defaultAgentId, onAgentChange
     try {
       setSaveSuccess(false)
       setError(null)
-      await setDefaultAgent({ userId, agentId: selected })
+      await setDefaultAgent({ agentId: selected })
       mutate()
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import { sendChatMessage, subscribeToChatStream } from '@/lib/api/server'
+import { sendChatMessage, subscribeToChatStream } from '@/lib/api/chat-client'
 import { postSessionSync } from '@/lib/session-sync-channel'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { isAgentHarnessEvent } from '@/lib/sse-types'

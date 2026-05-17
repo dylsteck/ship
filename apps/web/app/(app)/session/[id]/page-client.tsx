@@ -8,7 +8,8 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider } from '@ship/ui'
-import type { ChatSession, User } from '@/lib/api'
+import type { ChatSession } from '@/lib/api/server'
+import type { User } from '@/lib/api/types'
 import { API_URL } from '@/lib/config'
 
 interface SessionPageClientProps {

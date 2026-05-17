@@ -5,11 +5,11 @@ import { fetcher, apiUrl } from '../client'
 import type { User } from '../types'
 
 /**
- * Hook to fetch user information
+ * Hook to fetch the current user (`GET /users/me`, session JWT).
  */
-export function useUser(userId: string | undefined) {
+export function useUser(fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<User>(
-    userId ? apiUrl(`/users/${userId}`) : null,
+    fetchEnabled ? apiUrl('/users/me') : null,
     fetcher,
     {
       revalidateOnFocus: false,

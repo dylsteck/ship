@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { verifySession, getUser } from '@/lib/dal'
-import { fetchSessions, type ChatSession } from '@/lib/api'
+import { fetchSessions, type ChatSession } from '@/lib/api/server'
 import { DashboardClient } from './(app)/dashboard/dashboard-client'
 
 export default async function HomePage() {
@@ -11,7 +11,7 @@ export default async function HomePage() {
 
   let sessions: ChatSession[] = []
   try {
-    sessions = await fetchSessions(session.userId)
+    sessions = await fetchSessions()
   } catch (error) {
     console.error('Failed to fetch sessions:', error)
   }
@@ -21,7 +21,6 @@ export default async function HomePage() {
   return (
     <DashboardClient
       sessions={sessions}
-      userId={session.userId}
       user={user}
       initialSessionId={null}
       serverTimestamp={serverTimestamp}
