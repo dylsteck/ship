@@ -44,7 +44,7 @@ export interface ErrorEvent {
 }
 
 /**
- * Agent executor configuration.
+ * Agent executor configuration
  */
 export interface AgentExecutorConfig {
   sessionDO: SessionDO
@@ -53,8 +53,6 @@ export interface AgentExecutorConfig {
   repoUrl: string
   gitUser: GitUser
   sessionId?: string
-  /** Override the GitHub REST base URL (e.g. emulator base in dev). */
-  githubBaseUrl?: string
   onError?: (event: ErrorEvent) => void
   onStatus?: (status: string, details?: string) => void
 }
@@ -94,10 +92,7 @@ export class AgentExecutor {
   constructor(config: AgentExecutorConfig) {
     this.sessionDO = config.sessionDO
     this.sandbox = config.sandbox
-    this.githubClient = new GitHubClient(
-      config.githubToken,
-      config.githubBaseUrl ? { baseUrl: config.githubBaseUrl } : {},
-    )
+    this.githubClient = new GitHubClient(config.githubToken)
     this.repoUrl = config.repoUrl
     this.gitUser = config.gitUser
     this.onError = config.onError
