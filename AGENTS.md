@@ -11,7 +11,6 @@ Project-specific skills live in `.agents/skills/`. **Reference and use these ski
 | **agent-browser** | Browser automation — navigate, fill forms, click, screenshot, scrape, test web apps |
 | **ai-elements** | Create AI chat components in `packages/ui` following ai-elements patterns and shadcn/ui |
 | **dogfood** | Systematic QA — explore apps, find bugs/UX issues, produce reports with repro evidence |
-| **emulate-login** | Sign into Ship autonomously via the in-app GitHub emulator (local/dev only) |
 | **shadcn** | shadcn/ui components — add, search, fix, style, compose; use with `components.json` projects |
 
 ## Quick Start
@@ -446,8 +445,8 @@ Avoid noisy comments on self-explanatory private code; small private
 helpers can stay uncommented if their name is honest.
 
 When in doubt, look at `packages/agent/src/agent.ts`, `packages/sandbox/src/interface.ts`,
-`apps/api/src/lib/agent-chunks/*.ts`, `apps/web/lib/emulate/env.ts`, and
-`apps/web/lib/github.ts` for the in-repo style.
+`apps/api/src/lib/agent-chunks/*.ts`, and `apps/web/lib/github.ts` for the
+in-repo style.
 
 ### React: effects and data flow
 
@@ -495,16 +494,6 @@ E2B_API_KEY=...
 OPENAI_API_KEY=...        # optional (for OpenAI models)
 ALLOWED_ORIGINS=http://localhost:3000
 ```
-
-### Sentinel: `GITHUB_CLIENT_ID=emulate`
-
-Setting `GITHUB_CLIENT_ID=emulate` (in **both** `apps/web/.env.local` and
-`apps/api/.dev.vars`, and only when `NODE_ENV !== 'production'` /
-`ENVIRONMENT !== 'production'`) reroutes all GitHub OAuth + REST traffic to
-the in-app emulator at `${NEXT_PUBLIC_APP_URL}/emulate/github`. No new env
-vars are introduced — both layers reuse `GITHUB_CLIENT_ID` as the toggle and
-derive the URL from existing config (`NEXT_PUBLIC_APP_URL` on the web,
-`ALLOWED_ORIGINS` on the worker). See `.agents/skills/emulate-login/SKILL.md`.
 
 ## MCP Servers
 
