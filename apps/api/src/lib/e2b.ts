@@ -11,8 +11,11 @@
 
 import { Sandbox } from '@e2b/code-interpreter'
 
-// Custom E2B template with sandbox-agent pre-baked
-// Set after running `e2b template build` — falls back to default if empty
+/**
+ * Custom E2B template id pre-baked with common dev tooling
+ * (node, bun, jq, ripgrep, build-essential). Falls back to E2B's default
+ * image if empty. Build with `e2b template build` from `e2b/Dockerfile`.
+ */
 export const E2B_TEMPLATE_ID = 'n1exdf9kj7gpwk6810c9'
 
 // E2B API error types

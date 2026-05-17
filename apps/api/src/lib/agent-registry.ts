@@ -1,16 +1,23 @@
 /**
- * Agent Configuration Registry
+ * Agent + model registry exposed to the web app.
  *
- * Defines supported agents and their configuration for sandbox-agent.
- * Each agent maps to a sandbox-agent agent name and specifies
- * required env vars, modes, models, and extensions.
+ * Ship now runs a single in-worker agent harness (`@ship/agent`) with
+ * pluggable models. The "agent" entries below describe the UI-facing
+ * personas (modes + offered models) — they no longer correspond to a
+ * separate in-VM agent process.
+ *
+ * @packageDocumentation
  */
 
+import { getBankrAgentModels } from './bankr'
+
+/** UI label/identifier for an agent mode (e.g. `Build`, `Plan`). */
 export interface AgentMode {
   id: string
   label: string
 }
 
+/** Model entry shown in the model picker. */
 export interface AgentModel {
   id: string
   name: string
@@ -20,103 +27,66 @@ export interface AgentModel {
   maxTokens?: number
 }
 
+/** UI persona for the agent — drives the model picker + mode selector. */
 export interface AgentConfig {
   id: string
   name: string
-  sandboxAgentName: string // name used by sandbox-agent (e.g., 'claude', 'opencode', 'codex')
-  requiredEnvVars: string[] // e.g., ['ANTHROPIC_API_KEY']
-  modes: AgentMode[] // e.g., [{ id: 'agent', label: 'agent' }]
-  models: AgentModel[] // available models for this agent
-  extensions: string[] // agent-specific extensions
+  /** Env vars the model invocation requires. */
+  requiredEnvVars: string[]
+  modes: AgentMode[]
+  models: AgentModel[]
 }
 
-import { getBankrAgentModels } from './bankr'
-
+/** Registry of agent personas. Default is `ship`. */
 export const AGENTS: Record<string, AgentConfig> = {
-  'claude-code': {
-    id: 'claude-code',
-    name: 'Claude Code',
-    sandboxAgentName: 'claude',
+  ship: {
+    id: 'ship',
+    name: 'Ship',
     requiredEnvVars: ['ANTHROPIC_API_KEY'],
     modes: [
-      { id: 'default', label: 'default' },
-      { id: 'plan', label: 'Plan' },
-      { id: 'acceptEdits', label: 'Accept Edits' },
-    ],
-    models: [
-      { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'Anthropic', contextWindow: 200000, maxTokens: 32000 },
-      { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', contextWindow: 200000, maxTokens: 64000 },
-      { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic' },
-      { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'Anthropic' },
-      { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-    ],
-    extensions: [],
-  },
-  opencode: {
-    id: 'opencode',
-    name: 'OpenCode',
-    sandboxAgentName: 'opencode',
-    requiredEnvVars: [],
-    modes: [
-      { id: 'build', label: 'Build' },
+      { id: 'agent', label: 'Agent' },
       { id: 'plan', label: 'Plan' },
     ],
     models: [
-      // OpenCode Zen (free)
-      { id: 'opencode/big-pickle', name: 'Big Pickle', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 128000 },
-      { id: 'opencode/glm-4.7-free', name: 'GLM 4.7 Free', provider: 'OpenCode Zen', contextWindow: 128000, maxTokens: 64000 },
-      { id: 'opencode/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 32000 },
-      { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 32000 },
-      { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', provider: 'OpenCode Zen', contextWindow: 200000, maxTokens: 64000 },
-      // Direct Anthropic
-      { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'Anthropic' },
-      { id: 'anthropic/claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'Anthropic' },
-      { id: 'anthropic/claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-      // Bankr gateway (shown when Bankr is enabled)
+      {
+        id: 'anthropic/claude-3-7-sonnet-20250219',
+        name: 'Claude 3.7 Sonnet',
+        provider: 'Anthropic',
+        contextWindow: 200000,
+        maxTokens: 64000,
+      },
+      {
+        id: 'anthropic/claude-3-5-sonnet-20241022',
+        name: 'Claude 3.5 Sonnet',
+        provider: 'Anthropic',
+        contextWindow: 200000,
+        maxTokens: 8192,
+      },
+      {
+        id: 'anthropic/claude-3-5-haiku-20241022',
+        name: 'Claude 3.5 Haiku',
+        provider: 'Anthropic',
+        contextWindow: 200000,
+        maxTokens: 8192,
+      },
+      { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', contextWindow: 128000 },
+      { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI', contextWindow: 128000 },
       ...getBankrAgentModels(),
     ],
-    extensions: [],
-  },
-  codex: {
-    id: 'codex',
-    name: 'Codex',
-    sandboxAgentName: 'codex',
-    requiredEnvVars: ['OPENAI_API_KEY'],
-    modes: [
-      { id: 'full-access', label: 'Full Access' },
-      { id: 'read-only', label: 'Read Only' },
-    ],
-    models: [
-      { id: 'codex/default', name: 'Codex', provider: 'OpenAI' },
-    ],
-    extensions: [],
   },
 }
 
-/**
- * Get agent config by ID
- */
+/** Look up an agent persona by id. */
 export function getAgent(agentId: string): AgentConfig | undefined {
   return AGENTS[agentId]
 }
 
-/**
- * Get agent config by sandbox-agent name
- */
-export function getAgentBySandboxName(sandboxAgentName: string): AgentConfig | undefined {
-  return Object.values(AGENTS).find((a) => a.sandboxAgentName === sandboxAgentName)
-}
-
-/**
- * List all available agents
- */
+/** List every registered agent persona. */
 export function listAgents(): AgentConfig[] {
   return Object.values(AGENTS)
 }
 
-/**
- * Get the default agent ID
- */
+/** Default agent persona id surfaced to new sessions. */
 export function getDefaultAgentId(): string {
-  return 'opencode'
+  return 'ship'
 }

@@ -631,8 +631,12 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
-   * Get sandbox status
-   * Returns current status from session_meta
+   * Get sandbox status from session_meta.
+   *
+   * @remarks
+   * `sandboxAgentUrl` and `agentSessionId` are kept in the response shape for
+   * backwards compatibility with older frontend builds; both always return
+   * `null` now that the agent harness lives in the worker.
    */
   async getSandboxStatus(): Promise<{
     sandboxId: string | null
@@ -649,9 +653,9 @@ export class SessionDO extends DurableObject<Env> {
       sandboxId,
       status,
       ready: !!(sandboxId && (status === 'active' || status === 'ready')),
-      sandboxAgentUrl: meta['sandbox_agent_url'] || null,
-      agentSessionId: meta['agent_session_id'] || null,
-      agentType: meta['agent_type'] || null,
+      sandboxAgentUrl: null,
+      agentSessionId: null,
+      agentType: meta['agent_type'] || 'ship',
     }
   }
 
