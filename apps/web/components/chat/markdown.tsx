@@ -10,8 +10,22 @@ import type { Components } from 'react-markdown'
 interface MarkdownProps {
   content: string
   className?: string
+  /**
+   * `true` while the underlying message is still streaming. Drives both the
+   * Streamdown `mode` and the per-token fade-in animation so newly arrived
+   * tokens fade in instead of popping into place.
+   */
   isAnimating?: boolean
 }
+
+/**
+ * Fade-in animation applied to newly arrived tokens during streaming.
+ *
+ * Same constants as vercel-labs/open-agents — chosen to feel like a smooth
+ * stream rather than a series of punctual paints. Defined at module scope
+ * so React can memoize the component over `content` alone.
+ */
+const STREAMING_ANIMATION = { animation: 'fadeIn', duration: 250, easing: 'ease-out' } as const
 
 // Stable references — hoisted outside component to avoid re-creating on every render
 const PLUGINS = { code, mermaid } as never
@@ -125,8 +139,9 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
       <Streamdown
         plugins={PLUGINS}
         components={customComponents}
-        mode="streaming"
+        mode={isAnimating ? 'streaming' : 'static'}
         isAnimating={isAnimating}
+        animated={isAnimating ? STREAMING_ANIMATION : undefined}
       >
         {content}
       </Streamdown>
