@@ -11,6 +11,7 @@ Project-specific skills live in `.agents/skills/`. **Reference and use these ski
 | **agent-browser** | Browser automation — navigate, fill forms, click, screenshot, scrape, test web apps |
 | **ai-elements** | Create AI chat components in `packages/ui` following ai-elements patterns and shadcn/ui |
 | **dogfood** | Systematic QA — explore apps, find bugs/UX issues, produce reports with repro evidence |
+| **emulate-login** | Sign into Ship autonomously via the in-app GitHub emulator (local/dev only) |
 | **shadcn** | shadcn/ui components — add, search, fix, style, compose; use with `components.json` projects |
 
 ## Quick Start
@@ -430,7 +431,23 @@ Keep UI and hooks **small and composable** (atomic-style building blocks, clear 
 
 ### TSDoc and public APIs
 
-Use **TSDoc** (`/** ... */`) on **exported** symbols that are non-obvious: middleware, auth helpers, shared parsers (`parseJsonBody`), route entrypoints, and cross-package types. Summarize behavior, `@param` / `@returns` where it helps, and `@remarks` for security or invariants (for example “identity comes from JWT, not the body”). Avoid noisy comments on self-explanatory private code.
+**Use TSDoc** (`/** ... */`) on every **exported** symbol — types,
+interfaces, classes, functions, top-level constants. Tags we actually use:
+
+- `@param` for non-obvious arguments
+- `@returns` when the return needs context
+- `@remarks` for invariants and security notes (e.g. "identity comes from
+  the JWT, not the body")
+- `@example` for usage shapes that are easier shown than described
+- `@packageDocumentation` at the top of files that are themselves a small
+  cohesive unit (one of the chunk handlers, the env helper, etc.)
+
+Avoid noisy comments on self-explanatory private code; small private
+helpers can stay uncommented if their name is honest.
+
+When in doubt, look at `packages/agent/src/agent.ts`, `packages/sandbox/src/interface.ts`,
+`apps/api/src/lib/agent-chunks/*.ts`, `apps/web/lib/emulate/env.ts`, and
+`apps/web/lib/github.ts` for the in-repo style.
 
 ### React: effects and data flow
 
@@ -438,14 +455,34 @@ Follow [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need
 
 ## Environment Variables
 
-### Web App (`apps/web/.env`)
+### API URL conventions
+
+`apps/web` resolves the API base URL in this order, falling back so local dev
+"just works" without an `.env.local`:
+
+1. `NEXT_PUBLIC_API_URL` — explicit override (set this on every preview /
+   production deploy).
+2. `API_BASE_URL` — server-side override.
+3. `http://localhost:8787` — built-in fallback that matches `wrangler dev`'s
+   default port.
+
+So:
+
+| Environment | What you should set | What runs |
+|-------------|---------------------|-----------|
+| Local (`pnpm dev`) | nothing — defaults are correct | web → `localhost:8787` |
+| Dev / preview deploy | `NEXT_PUBLIC_API_URL=<dev-worker-url>` | web → dev worker |
+| Production | `NEXT_PUBLIC_API_URL=<prod-worker-url>` | web → prod worker |
+
+### Web App (`apps/web/.env.local`)
 
 ```env
-# Auth
-JWE_SECRET=...
-ENCRYPTION_KEY=...
-NEXT_PUBLIC_GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
+SESSION_SECRET=...
+API_SECRET=...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+# NEXT_PUBLIC_API_URL=  # leave unset locally; set on preview/prod deploys
 ```
 
 ### API Worker (`apps/api/.dev.vars`)
@@ -453,9 +490,21 @@ GITHUB_CLIENT_SECRET=...
 ```env
 ANTHROPIC_API_KEY=...
 API_SECRET=...
+SESSION_SECRET=...        # must match the web app
 E2B_API_KEY=...
-OPENAI_API_KEY=...         # Optional, for Codex agent
+OPENAI_API_KEY=...        # optional (for OpenAI models)
+ALLOWED_ORIGINS=http://localhost:3000
 ```
+
+### Sentinel: `GITHUB_CLIENT_ID=emulate`
+
+Setting `GITHUB_CLIENT_ID=emulate` (in **both** `apps/web/.env.local` and
+`apps/api/.dev.vars`, and only when `NODE_ENV !== 'production'` /
+`ENVIRONMENT !== 'production'`) reroutes all GitHub OAuth + REST traffic to
+the in-app emulator at `${NEXT_PUBLIC_APP_URL}/emulate/github`. No new env
+vars are introduced — both layers reuse `GITHUB_CLIENT_ID` as the toggle and
+derive the URL from existing config (`NEXT_PUBLIC_APP_URL` on the web,
+`ALLOWED_ORIGINS` on the worker). See `.agents/skills/emulate-login/SKILL.md`.
 
 ## MCP Servers
 

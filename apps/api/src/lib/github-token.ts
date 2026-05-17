@@ -3,6 +3,7 @@
  */
 
 import type { Env } from '../env.d'
+import { getGitHubOAuthBaseUrl } from './github-base-url'
 
 type AccountRow = {
   access_token: string | null
@@ -37,7 +38,7 @@ async function refreshGitHubAccessToken(
   body.set('grant_type', 'refresh_token')
   body.set('refresh_token', refreshToken)
 
-  const res = await fetch('https://github.com/login/oauth/access_token', {
+  const res = await fetch(`${getGitHubOAuthBaseUrl(env)}/login/oauth/access_token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
