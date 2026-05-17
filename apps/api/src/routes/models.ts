@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { listAgents, getDefaultAgentId } from '../lib/agent-registry'
-import { getBankrRouteModels } from '../lib/bankr'
+import { getBankrRouteModels, isUserBankrEnabled } from '../lib/bankr'
+import { requireJwtUserId, requireSessionOwner } from '../lib/session-authorization'
 
-const models = new Hono<{ Bindings: Env }>()
+const models = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 // Default model if no preference set - Big Pickle (via OpenCode Zen)
 // Format: opencode/<model-id> per OpenCode docs
@@ -98,52 +99,33 @@ function validateModelWithFallback(modelId: string): boolean {
 }
 
 /**
- * Check if user has Bankr enabled
- */
-async function isUserBankrEnabled(db: D1Database, userId: string): Promise<boolean> {
-  try {
-    const result = await db.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
-      .bind(userId, 'use_bankr')
-      .first<{ value: string }>()
-    return result?.value === 'true'
-  } catch {
-    return false
-  }
-}
-
-/**
  * GET /models/available
- * List all available models
- * Returns static list - OpenCode runs in sandbox so we can't query it from here
- * When Bankr is enabled (checked via userId query param), includes Bankr models
+ * List all available models (Bankr models included when enabled for the JWT user).
  */
 models.get('/available', async (c) => {
-  const userId = c.req.query('userId')
-
-  if (userId) {
-    const bankrEnabled = await isUserBankrEnabled(c.env.DB, userId)
-    if (bankrEnabled) {
-      // Bankr on: OpenCode Zen free models + Bankr models
-      const zenModels = FALLBACK_MODELS.filter((m) => m.provider === 'OpenCode Zen')
-      return c.json([...zenModels, ...BANKR_MODELS])
-    }
+  const userIdOrRes = requireJwtUserId(c)
+  if (typeof userIdOrRes !== 'string') {
+    return userIdOrRes
   }
-
+  const bankrEnabled = await isUserBankrEnabled(c.env.DB, userIdOrRes)
+  if (bankrEnabled) {
+    const zenModels = FALLBACK_MODELS.filter((m) => m.provider === 'OpenCode Zen')
+    return c.json([...zenModels, ...BANKR_MODELS])
+  }
   return c.json(FALLBACK_MODELS)
 })
 
 /**
  * GET /models/default
  * Get user's default model preference
- * Query param: userId (required)
  */
 models.get('/default', async (c) => {
   try {
-    const userId = c.req.query('userId')
-
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     // Check user_preferences table for default model
     const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
@@ -169,14 +151,19 @@ models.get('/default', async (c) => {
 /**
  * POST /models/default
  * Set user's default model preference
- * Body: { userId: string, model: string }
  */
 models.post('/default', async (c) => {
   try {
-    const { userId, model } = await c.req.json<{ userId: string; model: string }>()
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
 
-    if (!userId || !model) {
-      return c.json({ error: 'userId and model are required' }, 400)
+    const { model } = await c.req.json<{ model: string }>()
+
+    if (!model) {
+      return c.json({ error: 'model is required' }, 400)
     }
 
     // Validate model exists
@@ -209,6 +196,11 @@ models.post('/default', async (c) => {
 models.post('/sessions/:id', async (c) => {
   try {
     const sessionId = c.req.param('id')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
+    }
+
     const { model } = await c.req.json<{ model: string }>()
 
     if (!model) {
@@ -241,6 +233,10 @@ models.post('/sessions/:id', async (c) => {
 models.get('/sessions/:id', async (c) => {
   try {
     const sessionId = c.req.param('id')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
+    }
 
     // Get from SessionDO metadata
     const doId = c.env.SESSION_DO.idFromName(sessionId)
@@ -284,15 +280,14 @@ models.get('/agents', (c) => {
 /**
  * GET /models/default-agent
  * Get user's default agent preference
- * Query param: userId (required)
  */
 models.get('/default-agent', async (c) => {
   try {
-    const userId = c.req.query('userId')
-
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
       .bind(userId, 'default_agent')
@@ -310,14 +305,19 @@ models.get('/default-agent', async (c) => {
 /**
  * POST /models/default-agent
  * Set user's default agent preference
- * Body: { userId: string, agentId: string }
  */
 models.post('/default-agent', async (c) => {
   try {
-    const { userId, agentId } = await c.req.json<{ userId: string; agentId: string }>()
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
 
-    if (!userId || !agentId) {
-      return c.json({ error: 'userId and agentId are required' }, 400)
+    const { agentId } = await c.req.json<{ agentId: string }>()
+
+    if (!agentId) {
+      return c.json({ error: 'agentId is required' }, 400)
     }
 
     // Validate agent exists
@@ -344,15 +344,20 @@ models.post('/default-agent', async (c) => {
 /**
  * GET /models/default-agent-model
  * Get user's default model for a specific agent
- * Query params: userId (required), agentId (required)
+ * Query param: agentId (required)
  */
 models.get('/default-agent-model', async (c) => {
   try {
-    const userId = c.req.query('userId')
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
+
     const agentId = c.req.query('agentId')
 
-    if (!userId || !agentId) {
-      return c.json({ error: 'userId and agentId query parameters are required' }, 400)
+    if (!agentId) {
+      return c.json({ error: 'agentId query parameter is required' }, 400)
     }
 
     const result = await c.env.DB.prepare('SELECT value FROM user_preferences WHERE user_id = ? AND key = ?')
@@ -373,14 +378,19 @@ models.get('/default-agent-model', async (c) => {
 /**
  * POST /models/default-agent-model
  * Set user's default model for a specific agent
- * Body: { userId: string, agentId: string, model: string }
  */
 models.post('/default-agent-model', async (c) => {
   try {
-    const { userId, agentId, model } = await c.req.json<{ userId: string; agentId: string; model: string }>()
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
 
-    if (!userId || !agentId || !model) {
-      return c.json({ error: 'userId, agentId, and model are required' }, 400)
+    const { agentId, model } = await c.req.json<{ agentId: string; model: string }>()
+
+    if (!agentId || !model) {
+      return c.json({ error: 'agentId and model are required' }, 400)
     }
 
     // Validate agent exists
@@ -413,16 +423,15 @@ models.post('/default-agent-model', async (c) => {
 /**
  * GET /models/bankr
  * Get user's Bankr preference
- * Query param: userId (required)
  */
 models.get('/bankr', async (c) => {
   try {
-    const userId = c.req.query('userId')
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
 
-    const enabled = await isUserBankrEnabled(c.env.DB, userId)
+    const enabled = await isUserBankrEnabled(c.env.DB, userIdOrRes)
     return c.json({ enabled })
   } catch (error) {
     console.error('Error fetching Bankr preference:', error)
@@ -433,14 +442,19 @@ models.get('/bankr', async (c) => {
 /**
  * POST /models/bankr
  * Set user's Bankr preference
- * Body: { userId: string, enabled: boolean }
  */
 models.post('/bankr', async (c) => {
   try {
-    const { userId, enabled } = await c.req.json<{ userId: string; enabled: boolean }>()
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
 
-    if (!userId || typeof enabled !== 'boolean') {
-      return c.json({ error: 'userId and enabled (boolean) are required' }, 400)
+    const { enabled } = await c.req.json<{ enabled: boolean }>()
+
+    if (typeof enabled !== 'boolean') {
+      return c.json({ error: 'enabled (boolean) is required' }, 400)
     }
 
     if (enabled && !c.env.BANKR_API_KEY) {

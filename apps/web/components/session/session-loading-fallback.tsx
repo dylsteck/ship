@@ -10,26 +10,25 @@ import type { User } from '@/lib/api/types'
 
 interface SessionLoadingFallbackProps {
   sessionId: string
-  userId: string
   user: User
   apiToken?: string
 }
 
-export function SessionLoadingFallback({ sessionId, userId, user, apiToken }: SessionLoadingFallbackProps) {
+export function SessionLoadingFallback({ sessionId, user, apiToken }: SessionLoadingFallbackProps) {
   if (apiToken) setApiToken(apiToken)
   const { session, isError } = useSession(sessionId)
   const [timedOut, setTimedOut] = useState(false)
 
   useEffect(() => {
-    const timer = setTimeout(() => setTimedOut(true), 10000)
+    setTimedOut(false)
+    const timer = setTimeout(() => setTimedOut(true), 10_000)
     return () => clearTimeout(timer)
-  }, [])
+  }, [sessionId])
 
   if (session) {
     return (
       <DashboardClient
         sessions={[session]}
-        userId={userId}
         user={user}
         initialSessionId={sessionId}
         apiToken={apiToken}

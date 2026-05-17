@@ -9,8 +9,9 @@
 import { Hono } from 'hono'
 import { Sandbox } from '@e2b/code-interpreter'
 import type { Env } from '../env.d'
+import { requireSessionOwner } from '../lib/session-authorization'
 
-const terminal = new Hono<{ Bindings: Env }>()
+const terminal = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**
  * GET /terminal/:sessionId
@@ -21,6 +22,11 @@ terminal.get('/:sessionId', async (c) => {
 
   if (!sessionId) {
     return c.json({ error: 'sessionId is required' }, 400)
+  }
+
+  const gate = await requireSessionOwner(c, sessionId)
+  if (!gate.ok) {
+    return gate.response
   }
 
   const upgradeHeader = c.req.header('Upgrade')

@@ -11,7 +11,7 @@ export default async function HomePage() {
 
   let sessions: ChatSession[] = []
   try {
-    sessions = await fetchSessions(session.userId)
+    sessions = await fetchSessions()
   } catch (error) {
     console.error('Failed to fetch sessions:', error)
   }
@@ -21,7 +21,6 @@ export default async function HomePage() {
   return (
     <DashboardClient
       sessions={sessions}
-      userId={session.userId}
       user={user}
       initialSessionId={null}
       serverTimestamp={serverTimestamp}

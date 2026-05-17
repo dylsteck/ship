@@ -28,7 +28,6 @@ import { DeleteAllSessionsCard } from './delete-all-sessions-card'
 import { AgentModelRow } from './agent-model-row'
 
 interface SettingsClientProps {
-  userId: string
   user: User
   sidebarDefaultOpen: boolean
   sessions: ChatSession[]
@@ -76,37 +75,31 @@ function SidebarAutoClose() {
   return null
 }
 
-export function SettingsClient({ userId, user, sessions: initialSessions, apiToken, sidebarDefaultOpen }: SettingsClientProps) {
+export function SettingsClient({ user, sessions: initialSessions, apiToken, sidebarDefaultOpen }: SettingsClientProps) {
   if (apiToken) setApiToken(apiToken)
   const router = useRouter()
   const isMobile = useIsMobile()
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { sessions: swrSessions } = useSessions(userId, { revalidateOnFocus: true })
+  const { sessions: swrSessions } = useSessions(true, { revalidateOnFocus: true })
   const sessions = swrSessions.length > 0 ? swrSessions : initialSessions
 
   const { agents, isLoading: agentsLoading } = useAgents()
-  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-  const { bankrEnabled: bankrEnabledRemote, isLoading: bankrLoading, mutate: mutateBankr } = useBankrEnabled(userId)
+  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(true)
+  const { bankrEnabled: bankrEnabledRemote, isLoading: bankrLoading, mutate: mutateBankr } = useBankrEnabled(true)
   const { setBankrEnabled } = useSetBankrEnabled()
   const [bankrLocal, setBankrLocal] = useState<boolean | null>(null)
   const bankrEnabled = bankrLocal ?? bankrEnabledRemote
-  const { models: availableModels, isLoading: modelsLoading, mutate: mutateModels } = useModels(userId)
+  const { models: availableModels, isLoading: modelsLoading, mutate: mutateModels } = useModels(true)
 
-  // Sync remote → local when remote resolves
-  useEffect(() => {
-    if (!bankrLoading && bankrLocal === null) {
-      setBankrLocal(bankrEnabledRemote)
-    }
-  }, [bankrLoading, bankrEnabledRemote, bankrLocal])
   const {
     repos,
     isLoading: reposLoading,
     loadMore: reposLoadMore,
     hasMore: reposHasMore,
     isLoadingMore: reposLoadingMore,
-  } = useFilteredGitHubRepos(userId, '')
-  const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
+  } = useFilteredGitHubRepos(true, '')
+  const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(true)
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>('')
 
@@ -165,13 +158,11 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
           <TabsContent value="defaults" className="w-full self-stretch">
             <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
               <DefaultAgentCard
-                userId={userId}
                 agents={agents}
                 defaultAgentId={defaultAgentId}
                 onAgentChange={setSelectedAgentId}
               />
               <DefaultRepoCard
-                userId={userId}
                 repos={repos}
                 reposLoading={reposLoading}
                 reposLoadMore={reposLoadMore}
@@ -191,8 +182,9 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
                   onClick={() => {
                     const next = !bankrEnabled
                     setBankrLocal(next)
-                    setBankrEnabled({ userId, enabled: next })
+                    setBankrEnabled({ enabled: next })
                       .then(() => {
+                        setBankrLocal(null)
                         mutateBankr()
                         mutateModels()
                       })
@@ -215,7 +207,6 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
               {agents.map((agent) => (
                 <AgentModelRow
                   key={agent.id}
-                  userId={userId}
                   agent={agent}
                   allModels={availableModels}
                 />
@@ -229,7 +220,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
       <section className="mb-8">
         <h2 className="text-sm font-medium text-muted-foreground mb-3">Integrations</h2>
         <div className="rounded-lg border border-border overflow-hidden">
-          <ConnectorSettings userId={userId} />
+          <ConnectorSettings />
         </div>
       </section>
 
@@ -237,7 +228,7 @@ export function SettingsClient({ userId, user, sessions: initialSessions, apiTok
       <section>
         <h2 className="text-sm font-medium text-muted-foreground mb-3">Data</h2>
         <div className="rounded-lg border border-border overflow-hidden">
-          <DeleteAllSessionsCard userId={userId} />
+          <DeleteAllSessionsCard />
         </div>
       </section>
     </div>

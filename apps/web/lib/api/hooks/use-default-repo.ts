@@ -9,11 +9,11 @@ interface DefaultRepoResponse {
 }
 
 /**
- * Hook to fetch user's default repo
+ * Hook to fetch the JWT user's default repository preference.
  */
-export function useDefaultRepo(userId: string | undefined) {
+export function useDefaultRepo(fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<DefaultRepoResponse | null>(
-    userId ? apiUrl('/accounts/github/default-repo', { userId }) : null,
+    fetchEnabled ? apiUrl('/accounts/github/default-repo') : null,
     async (url: string) => {
       try {
         return await fetcher<DefaultRepoResponse>(url)
@@ -39,11 +39,8 @@ export function useDefaultRepo(userId: string | undefined) {
 export function useSetDefaultRepo() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-default-repo',
-    async (_key: string, { arg }: { arg: { userId: string; repoFullName: string } }) => {
-      return post<{ userId: string; repoFullName: string }, DefaultRepoResponse>(
-        apiUrl('/accounts/github/default-repo'),
-        arg,
-      )
+    async (_key: string, { arg }: { arg: { repoFullName: string } }) => {
+      return post<{ repoFullName: string }, DefaultRepoResponse>(apiUrl('/accounts/github/default-repo'), arg)
     },
   )
 

@@ -11,8 +11,10 @@
 
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
+import { requireSessionOwner } from '../lib/session-authorization'
+import { parseJsonBody, sandboxProvisionBodySchema } from '../lib/api-schemas'
 
-const sandbox = new Hono<{ Bindings: Env }>()
+const sandbox = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**
  * POST /sandbox
@@ -23,11 +25,15 @@ const sandbox = new Hono<{ Bindings: Env }>()
  */
 sandbox.post('/', async (c) => {
   try {
-    const body = await c.req.json<{ sessionId: string }>()
+    const body = await parseJsonBody(c, sandboxProvisionBodySchema)
+    if (body instanceof Response) {
+      return body
+    }
     const { sessionId } = body
 
-    if (!sessionId) {
-      return c.json({ error: 'sessionId is required' }, 400)
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) {
+      return gate.response
     }
 
     // Get SessionDO stub

@@ -9,10 +9,9 @@ interface CreateSessionDialogProps {
   isOpen: boolean
   onClose: () => void
   onCreate: (data: { repoOwner: string; repoName: string; model?: string }) => Promise<void>
-  userId: string
 }
 
-export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: CreateSessionDialogProps) {
+export function CreateSessionDialog({ isOpen, onClose, onCreate }: CreateSessionDialogProps) {
   const [selectedRepo, setSelectedRepo] = useState<string>('')
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +27,7 @@ export function CreateSessionDialog({ isOpen, onClose, onCreate, userId }: Creat
     loadMore: reposLoadMore,
     isError,
     mutate,
-  } = useFilteredGitHubRepos(isOpen ? userId : undefined, searchQuery)
+  } = useFilteredGitHubRepos(isOpen, searchQuery)
 
   const handleReposScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {

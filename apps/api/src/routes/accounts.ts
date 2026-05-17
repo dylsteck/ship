@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { Octokit } from '@octokit/rest'
+import { requireJwtUserId } from '../lib/session-authorization'
 
 // Account input type
 interface CreateAccountInput {
@@ -28,7 +29,7 @@ interface GitHubRepo {
   stargazers_count: number
 }
 
-const accounts = new Hono<{ Bindings: Env }>()
+const accounts = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**
  * POST /accounts/github
@@ -36,6 +37,10 @@ const accounts = new Hono<{ Bindings: Env }>()
  */
 accounts.post('/github', async (c) => {
   try {
+    if (c.get('authKind') !== 'service') {
+      return c.json({ error: 'Forbidden' }, 403)
+    }
+
     const input: CreateAccountInput = await c.req.json()
 
     // Validate required fields
@@ -101,15 +106,15 @@ accounts.post('/github', async (c) => {
 
 /**
  * GET /accounts/github/default-repo
- * Get user's default repository preference
- * Query param: userId (required)
+ * Get user's default repository preference (JWT user).
  */
 accounts.get('/github/default-repo', async (c) => {
   try {
-    const userId = c.req.query('userId')
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     const result = await c.env.DB.prepare(
       'SELECT value FROM user_preferences WHERE user_id = ? AND key = ?',
@@ -126,15 +131,20 @@ accounts.get('/github/default-repo', async (c) => {
 
 /**
  * POST /accounts/github/default-repo
- * Set user's default repository preference
- * Body: { userId: string, repoFullName: string }
+ * Set user's default repository preference (JWT user).
  */
 accounts.post('/github/default-repo', async (c) => {
   try {
-    const { userId, repoFullName } = await c.req.json<{ userId: string; repoFullName: string }>()
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
 
-    if (!userId || !repoFullName) {
-      return c.json({ error: 'userId and repoFullName are required' }, 400)
+    const { repoFullName } = await c.req.json<{ repoFullName: string }>()
+
+    if (!repoFullName) {
+      return c.json({ error: 'repoFullName is required' }, 400)
     }
 
     await c.env.DB.prepare(
@@ -156,13 +166,18 @@ const REPOS_CACHE_MAX_AGE = 300 // 5 minutes
 const REPOS_PER_PAGE = 50
 
 /**
- * GET /accounts/github/repos/:userId
- * Fetch user's GitHub repositories (paginated, cached)
+ * GET /accounts/github/repos
+ * Fetch the authenticated user's GitHub repositories (paginated, cached)
  * Query params: page (default 1), per_page (default 50, max 100)
  */
-accounts.get('/github/repos/:userId', async (c) => {
+accounts.get('/github/repos', async (c) => {
   try {
-    const userId = c.req.param('userId')
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
+
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
     const perPage = Math.min(100, Math.max(10, parseInt(c.req.query('per_page') || String(REPOS_PER_PAGE), 10)))
 

@@ -1,25 +1,36 @@
 /**
  * API client helpers for Ship web app
  *
- * These functions provide a clean interface for calling the Ship API
- * from Server Components and Server Actions.
+ * Server Components and Server Actions call the Ship API with the **session JWT**
+ * from the `session` cookie when available, so Worker routes can bind identity to the JWT.
+ * `API_SECRET` is only used when no session cookie is present (rare in SSR for logged-in pages).
  */
 
+import { cookies } from 'next/headers'
 import { API_URL } from '@/lib/config'
 import { getApiToken } from './client'
 
 const API_SECRET = typeof process !== 'undefined' ? process.env?.API_SECRET : undefined
 
-function serverAuthHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  // Server-side: use API_SECRET. Client-side: use session JWT from client token store.
+/**
+ * Builds `Authorization` and default headers for server-side API calls.
+ * Prefers the encrypted session JWT cookie over `API_SECRET`.
+ */
+async function serverAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
+  const cookieStore = await cookies()
+  const jwt = cookieStore.get('session')?.value
+  if (jwt) {
+    headers['Authorization'] = `Bearer ${jwt}`
+    return headers
+  }
   if (API_SECRET) {
     headers['Authorization'] = `Bearer ${API_SECRET}`
-  } else {
-    const clientToken = getApiToken()
-    if (clientToken) headers['Authorization'] = `Bearer ${clientToken}`
+    return headers
   }
-  return { ...headers, ...extra }
+  const clientToken = getApiToken()
+  if (clientToken) headers['Authorization'] = `Bearer ${clientToken}`
+  return headers
 }
 
 // Session types matching API response
@@ -39,17 +50,20 @@ export interface ChatSession {
 }
 
 export interface CreateSessionData {
-  userId: string
   repoOwner: string
   repoName: string
+  model?: string
+  agentType?: string
+  title?: string
+  baseBranch?: string
 }
 
 /**
- * Fetch all sessions for a user
+ * Fetch all sessions for the currently authenticated user (JWT from cookie).
  */
-export async function fetchSessions(userId: string): Promise<ChatSession[]> {
-  const res = await fetch(`${API_URL}/sessions?userId=${encodeURIComponent(userId)}`, {
-    headers: serverAuthHeaders(),
+export async function fetchSessions(): Promise<ChatSession[]> {
+  const res = await fetch(`${API_URL}/sessions`, {
+    headers: await serverAuthHeaders(),
     cache: 'no-store',
   })
 
@@ -61,12 +75,12 @@ export async function fetchSessions(userId: string): Promise<ChatSession[]> {
 }
 
 /**
- * Create a new session
+ * Create a new session for the authenticated user.
  */
 export async function createSession(data: CreateSessionData): Promise<ChatSession> {
   const res = await fetch(`${API_URL}/sessions`, {
     method: 'POST',
-    headers: serverAuthHeaders(),
+    headers: await serverAuthHeaders(),
     body: JSON.stringify(data),
   })
 
@@ -82,7 +96,7 @@ export async function createSession(data: CreateSessionData): Promise<ChatSessio
  */
 export async function getSession(id: string): Promise<ChatSession> {
   const res = await fetch(`${API_URL}/sessions/${encodeURIComponent(id)}`, {
-    headers: serverAuthHeaders(),
+    headers: await serverAuthHeaders(),
     cache: 'no-store',
   })
 
@@ -102,7 +116,7 @@ export async function getSession(id: string): Promise<ChatSession> {
 export async function deleteSession(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/sessions/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: serverAuthHeaders(),
+    headers: await serverAuthHeaders(),
   })
 
   if (!res.ok) {
@@ -155,7 +169,7 @@ export async function getChatMessages(
   if (options?.before) params.set('before', options.before)
 
   const res = await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/messages?${params}`, {
-    headers: serverAuthHeaders(),
+    headers: await serverAuthHeaders(),
     cache: 'no-store',
   })
 
@@ -179,7 +193,7 @@ export interface RawEvent {
  */
 export async function getChatEvents(sessionId: string): Promise<RawEvent[]> {
   const res = await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/events`, {
-    headers: serverAuthHeaders(),
+    headers: await serverAuthHeaders(),
     cache: 'no-store',
   })
 
@@ -199,7 +213,7 @@ export async function sendChatMessage(sessionId: string, content: string, mode?:
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: serverAuthHeaders({ Accept: 'text/event-stream' }),
+    headers: await serverAuthHeaders({ Accept: 'text/event-stream' }),
     body: JSON.stringify({ content, mode }),
     cache: 'no-store',
   })
@@ -213,7 +227,7 @@ export async function sendChatMessage(sessionId: string, content: string, mode?:
 export async function stopChatStream(sessionId: string): Promise<void> {
   await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/stop`, {
     method: 'POST',
-    headers: serverAuthHeaders(),
+    headers: await serverAuthHeaders(),
   })
 }
 
@@ -223,7 +237,7 @@ export async function stopChatStream(sessionId: string): Promise<void> {
  */
 export async function subscribeToChatStream(sessionId: string): Promise<Response> {
   const response = await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}/subscribe`, {
-    headers: serverAuthHeaders({ Accept: 'text/event-stream' }),
+    headers: await serverAuthHeaders({ Accept: 'text/event-stream' }),
     cache: 'no-store',
   })
   return response

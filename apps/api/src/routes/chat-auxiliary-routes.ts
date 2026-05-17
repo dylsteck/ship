@@ -4,13 +4,16 @@ import { connectToSandboxAgent, cancelAgent, subscribeToSessionEvents } from '..
 import { EventTranslatorState } from '../lib/event-translator'
 import { safeErrorForLog } from '../lib/error-handler'
 import { resumeAgentSessionWithTimeout } from './chat-session-helpers'
-import type { Env } from '../env.d'
+import type { AuthedEnv } from '../lib/session-authorization'
+import { requireSessionOwner } from '../lib/session-authorization'
 
 /** SSE proxies, DO passthrough, and agent question/permission helpers (everything except POST message stream). */
-export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
+export function registerChatAuxiliaryRoutes(app: Hono<AuthedEnv>) {
   // POST /chat/:sessionId/stop - Stop streaming
   app.post('/:sessionId/stop', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
 
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
@@ -33,6 +36,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
   // GET /chat/:sessionId/subscribe - SSE stream to resume an active agent session (e.g. after page reload)
   app.get('/:sessionId/subscribe', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
 
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
@@ -107,6 +112,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
   // GET /chat/:sessionId/subagent/:subagentSessionId/stream
   app.get('/:sessionId/subagent/:subagentSessionId/stream', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const subagentSessionId = c.req.param('subagentSessionId')
 
     const id = c.env.SESSION_DO.idFromName(sessionId)
@@ -176,6 +183,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.get('/:sessionId/events', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
     const response = await stub.fetch(new Request('https://do/events'))
@@ -184,6 +193,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.get('/:sessionId/messages', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const limit = c.req.query('limit')
     const before = c.req.query('before')
     const id = c.env.SESSION_DO.idFromName(sessionId)
@@ -197,6 +208,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.get('/:sessionId/tasks', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const status = c.req.query('status')
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
@@ -208,6 +221,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.get('/:sessionId/git/state', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
     const response = await stub.fetch(new Request('https://do/git/state'))
@@ -216,6 +231,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/git/pr/ready', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
     const response = await stub.fetch(new Request('https://do/git/pr/ready', { method: 'POST' }))
@@ -224,6 +241,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/retry', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
     try {
@@ -246,6 +265,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/pause', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
     try {
@@ -264,6 +285,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/resume', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)
     try {
@@ -282,6 +305,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/permission/:permissionId', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const permissionId = c.req.param('permissionId')
     const body = await c.req.json<{ reply: 'once' | 'always' | 'reject'; message?: string }>()
     if (!body.reply || !['once', 'always', 'reject'].includes(body.reply)) {
@@ -314,6 +339,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/question/:questionId', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const questionId = c.req.param('questionId')
     const body = await c.req.json<{ response: string }>()
     const response = body.response?.trim()
@@ -350,6 +377,8 @@ export function registerChatAuxiliaryRoutes(app: Hono<{ Bindings: Env }>) {
 
   app.post('/:sessionId/question/:questionId/reject', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const gate = await requireSessionOwner(c, sessionId)
+    if (!gate.ok) return gate.response
     const questionId = c.req.param('questionId')
     const id = c.env.SESSION_DO.idFromName(sessionId)
     const stub = c.env.SESSION_DO.get(id)

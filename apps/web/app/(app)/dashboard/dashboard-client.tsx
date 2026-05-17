@@ -29,7 +29,6 @@ import { DashboardMainColumn } from './components/dashboard-main-column'
 
 interface DashboardClientProps {
   sessions: ChatSession[]
-  userId: string
   user: User
   initialSessionId?: string | null
   initialMessages?: UIMessage[]
@@ -43,7 +42,6 @@ interface DashboardClientProps {
 
 export function DashboardClient({
   sessions: initialSessions,
-  userId,
   user,
   initialSessionId = null,
   initialMessages,
@@ -125,12 +123,12 @@ export function DashboardClient({
     loadMore: reposLoadMore,
     hasMore: reposHasMore,
     isLoadingMore: reposLoadingMore,
-  } = useGitHubRepos(userId)
-  const { models, isLoading: modelsLoading } = useModels()
+  } = useGitHubRepos(true)
+  const { models, isLoading: modelsLoading } = useModels(true)
   const { agents, isLoading: agentsLoading } = useAgents()
-  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(userId)
-  const { defaultModelId: globalDefaultModelId, isLoading: globalDefaultModelLoading } = useDefaultModel(userId)
-  const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(userId)
+  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(true)
+  const { defaultModelId: globalDefaultModelId, isLoading: globalDefaultModelLoading } = useDefaultModel(true)
+  const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(true)
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
   const { sessionModelId } = useSessionModel(chat.activeSessionId ?? undefined)
@@ -139,7 +137,7 @@ export function DashboardClient({
     sessions: swrSessions,
     isLoading: sessionsLoading,
     mutate: mutateSessions,
-  } = useSessions(userId, {
+  } = useSessions(true, {
     refreshInterval: 3000, // Poll every 3s for cross-device sync (e.g. create on phone, see on Mac)
     revalidateOnFocus: true,
   })
@@ -237,7 +235,6 @@ export function DashboardClient({
     session: {
       createSession,
       deleteSession,
-      userId,
       user,
       mutateSessions,
       onSessionCreated: (sessionId) => {
@@ -260,7 +257,10 @@ export function DashboardClient({
   })
 
   // Fetch agent-specific default model (must be after state is initialized)
-  const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading } = useAgentDefaultModel(userId, state.selectedAgent?.id)
+  const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading } = useAgentDefaultModel(
+    state.selectedAgent?.id,
+    true,
+  )
   // Prefer agent-specific default over global default
   const defaultModelId = agentDefaultModelId || globalDefaultModelId
   const defaultModelLoading = globalDefaultModelLoading || agentDefaultModelLoading

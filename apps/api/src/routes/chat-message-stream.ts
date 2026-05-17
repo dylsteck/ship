@@ -17,7 +17,9 @@ import { cloneGitHubRepoWithStrategies, generateBranchName } from '../lib/git-wo
 import { generateSessionTitle } from '../lib/generate-session-title'
 import { buildAgentEnvVars } from '../lib/chat-helpers'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
-import type { Env } from '../env.d'
+import type { AuthedEnv } from '../lib/session-authorization'
+import { requireSessionOwner } from '../lib/session-authorization'
+import { chatPostBodySchema, parseJsonBody } from '../lib/api-schemas'
 import {
   SETTINGS_PATH,
   cloneFailureDetails,
@@ -26,31 +28,36 @@ import {
   resumeAgentSessionWithTimeout,
 } from './chat-session-helpers'
 
-/** POST /chat/:sessionId — SSE stream for sending a user message to the agent */
-export async function handleChatMessageStream(c: Context<{ Bindings: Env }>) {
+/**
+ * `POST /chat/:sessionId` — SSE stream for sending a user message to the agent.
+ *
+ * @remarks
+ * Validates session ownership before touching the Durable Object or persisting messages.
+ */
+export async function handleChatMessageStream(c: Context<AuthedEnv>) {
   const sessionId = c.req.param('sessionId')
+  if (!sessionId) {
+    return c.json({ error: 'Missing session id' }, 400)
+  }
   console.log(`[chat:${sessionId}] ===== CHAT REQUEST STARTED =====`)
 
-  let content: string
-  let mode = 'agent'
+  const gate = await requireSessionOwner(c, sessionId)
+  if (!gate.ok) {
+    return gate.response
+  }
 
-  try {
-    const body = await c.req.json<{
-      content: string
-      mode?: string
-    }>()
-    content = body.content
-    mode = body.mode || 'agent'
-  } catch (parseError) {
-    console.error(`[chat:${sessionId}] Failed to parse request body:`, parseError)
-    return c.json({ error: 'Invalid request body' }, 400)
+  const body = await parseJsonBody(c, chatPostBodySchema)
+  if (body instanceof Response) {
+    return body
+  }
+  const content = body.content.trim()
+  const mode = body.mode || 'agent'
+
+  if (!content) {
+    return c.json({ error: 'Message content required' }, 400)
   }
 
   console.log(`[chat:${sessionId}] Mode: ${mode}, Content length: ${content?.length || 0}`)
-
-  if (!content?.trim()) {
-    return c.json({ error: 'Message content required' }, 400)
-  }
 
   const MAX_PROMPT_LENGTH = 100_000
   if (content.length > MAX_PROMPT_LENGTH) {

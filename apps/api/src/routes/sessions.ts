@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
+import { requireJwtUserId, requireSessionOwner } from '../lib/session-authorization'
+import { createSessionBodySchema, parseJsonBody } from '../lib/api-schemas'
 
 // Session DTO type
 interface SessionDTO {
@@ -29,33 +31,19 @@ interface SessionRow {
   title?: string
 }
 
-// Create session input
-interface CreateSessionInput {
-  userId: string
-  repoOwner: string
-  repoName: string
-  model?: string
-  agentType?: string
-  /** Initial title (e.g. from first prompt) */
-  title?: string
-  /** Base branch to create ship branch from (e.g. main). Defaults to main. */
-  baseBranch?: string
-}
-
-const sessions = new Hono<{ Bindings: Env }>()
+const sessions = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**
  * GET /sessions
- * List user's sessions
- * Query param: userId (required - auth validation in Phase 3)
+ * List sessions for the authenticated user (JWT).
  */
 sessions.get('/', async (c) => {
   try {
-    const userId = c.req.query('userId')
-
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     const cursor = await c.env.DB.prepare(
       `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at, title
@@ -89,15 +77,19 @@ sessions.get('/', async (c) => {
 /**
  * POST /sessions
  * Create new session with automatic sandbox provisioning
- * Body: { userId, repoOwner, repoName }
+ * Body: { repoOwner, repoName, ... } — user is taken from the session JWT.
  */
 sessions.post('/', async (c) => {
   try {
-    const input: CreateSessionInput = await c.req.json()
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
+    }
+    const userId = userIdOrRes
 
-    // Validate required fields
-    if (!input.userId || !input.repoOwner || !input.repoName) {
-      return c.json({ error: 'userId, repoOwner, and repoName are required' }, 400)
+    const input = await parseJsonBody(c, createSessionBodySchema)
+    if (input instanceof Response) {
+      return input
     }
 
     // Generate session ID
@@ -109,7 +101,7 @@ sessions.post('/', async (c) => {
       `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at, title)
        VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
     )
-      .bind(sessionId, input.userId, input.repoOwner, input.repoName, now, now, input.title ?? null)
+      .bind(sessionId, userId, input.repoOwner, input.repoName, now, now, input.title ?? null)
       .run()
 
     // Start DO init + sandbox provisioning in background (don't block session creation)
@@ -120,7 +112,7 @@ sessions.post('/', async (c) => {
 
         // Initialize session metadata in DO
         await doStub.setSessionMeta('session_id', sessionId)
-        await doStub.setSessionMeta('userId', input.userId)
+        await doStub.setSessionMeta('userId', userId)
         await doStub.setSessionMeta('repoOwner', input.repoOwner)
         await doStub.setSessionMeta('repoName', input.repoName)
         await doStub.setSessionMeta('createdAt', now.toString())
@@ -137,7 +129,7 @@ sessions.post('/', async (c) => {
           const userRow = await c.env.DB.prepare(
             'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
           )
-            .bind(input.userId)
+            .bind(userId)
             .first<{ name: string | null; email: string | null; username: string | null }>()
           if (userRow) {
             if (userRow.name || userRow.username) {
@@ -193,7 +185,7 @@ sessions.post('/', async (c) => {
     // Return session object immediately with provisioning status
     const session: SessionDTO & { sandboxId?: string | null; sandboxStatus?: string } = {
       id: sessionId,
-      userId: input.userId,
+      userId,
       repoOwner: input.repoOwner,
       repoName: input.repoName,
       status: 'active',
@@ -221,6 +213,11 @@ sessions.post('/', async (c) => {
 sessions.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+
+    const owner = await requireSessionOwner(c, id)
+    if (!owner.ok) {
+      return owner.response
+    }
 
     const row = await c.env.DB.prepare(
       `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at, title
@@ -272,15 +269,15 @@ sessions.get('/:id', async (c) => {
 
 /**
  * DELETE /sessions
- * Bulk delete all sessions for a user (soft delete in D1, best-effort sandbox termination)
- * Query param: userId (required)
+ * Bulk delete all sessions for the authenticated user
  */
 sessions.delete('/', async (c) => {
   try {
-    const userId = c.req.query('userId')
-    if (!userId) {
-      return c.json({ error: 'userId query parameter is required' }, 400)
+    const userIdOrRes = requireJwtUserId(c)
+    if (typeof userIdOrRes !== 'string') {
+      return userIdOrRes
     }
+    const userId = userIdOrRes
 
     // Get all active sessions for this user
     const cursor = await c.env.DB.prepare(
@@ -336,6 +333,11 @@ sessions.delete('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
+    const owner = await requireSessionOwner(c, id)
+    if (!owner.ok) {
+      return owner.response
+    }
+
     // Check session exists
     const existing = await c.env.DB.prepare('SELECT id FROM chat_sessions WHERE id = ?')
       .bind(id)
@@ -373,6 +375,11 @@ sessions.get('/:id/sandbox', async (c) => {
   try {
     const sessionId = c.req.param('id')
 
+    const owner = await requireSessionOwner(c, sessionId)
+    if (!owner.ok) {
+      return owner.response
+    }
+
     // Get DO stub
     const doId = c.env.SESSION_DO.idFromName(sessionId)
     const doStub = c.env.SESSION_DO.get(doId)
@@ -401,6 +408,11 @@ sessions.get('/:id/sandbox', async (c) => {
 sessions.get('/:id/websocket', async (c) => {
   const sessionId = c.req.param('id')
 
+  const owner = await requireSessionOwner(c, sessionId)
+  if (!owner.ok) {
+    return owner.response
+  }
+
   // Get DO stub and forward the WebSocket upgrade request
   const id = c.env.SESSION_DO.idFromName(sessionId)
   const stub = c.env.SESSION_DO.get(id)
@@ -415,6 +427,12 @@ sessions.get('/:id/websocket', async (c) => {
  */
 sessions.all('/:id/do/*', async (c) => {
   const sessionId = c.req.param('id')
+
+  const owner = await requireSessionOwner(c, sessionId)
+  if (!owner.ok) {
+    return owner.response
+  }
+
   const id = c.env.SESSION_DO.idFromName(sessionId)
   const stub = c.env.SESSION_DO.get(id)
   return stub.fetch(c.req.raw)

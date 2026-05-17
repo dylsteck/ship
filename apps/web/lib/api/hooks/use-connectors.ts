@@ -3,14 +3,14 @@
 import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
-import type { Connector, ConnectorStatus } from '../types'
+import type { ConnectorStatus } from '../types'
 
 /**
- * Hook to fetch connector status for a user
+ * Hook to fetch connector status for the JWT user.
  */
-export function useConnectors(userId: string | undefined) {
+export function useConnectors(fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<ConnectorStatus>(
-    userId ? apiUrl('/connectors', { userId }) : null,
+    fetchEnabled ? apiUrl('/connectors') : null,
     fetcher,
     {
       revalidateOnFocus: true,
@@ -32,10 +32,10 @@ export function useConnectors(userId: string | undefined) {
 export function useEnableConnector() {
   const { trigger, isMutating, error } = useSWRMutation(
     'enable-connector',
-    async (_key: string, { arg }: { arg: { name: string; userId: string } }) => {
-      return post<{ userId: string }, Connector>(
+    async (_key: string, { arg }: { arg: { name: string } }) => {
+      return post<Record<string, never>, { success: boolean; enabled?: boolean }>(
         apiUrl(`/connectors/${arg.name}/enable`),
-        { userId: arg.userId }
+        {},
       )
     }
   )
@@ -53,10 +53,10 @@ export function useEnableConnector() {
 export function useDisableConnector() {
   const { trigger, isMutating, error } = useSWRMutation(
     'disable-connector',
-    async (_key: string, { arg }: { arg: { name: string; userId: string } }) => {
-      return post<{ userId: string }, Connector>(
+    async (_key: string, { arg }: { arg: { name: string } }) => {
+      return post<Record<string, never>, { success: boolean; enabled?: boolean }>(
         apiUrl(`/connectors/${arg.name}/disable`),
-        { userId: arg.userId }
+        {},
       )
     }
   )

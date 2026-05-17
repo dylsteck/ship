@@ -9,12 +9,13 @@ import type { ModelInfo, DefaultModelResponse } from '../types'
 const PROVIDER_ORDER = ['OpenCode Zen', 'Bankr', 'Anthropic', 'OpenAI', 'Google', 'Other']
 
 /**
- * Hook to fetch available AI models
- * When userId is provided, conditionally includes Bankr models based on user preference
+ * Hook to fetch available AI models (Bankr models included when enabled for the JWT user).
+ *
+ * @param fetchEnabled - When `false`, skips the request (e.g. not logged in).
  */
-export function useModels(userId?: string) {
+export function useModels(fetchEnabled = true) {
   const { data, error, isLoading, mutate } = useSWR<ModelInfo[]>(
-    apiUrl('/models/available', userId ? { userId } : undefined),
+    fetchEnabled ? apiUrl('/models/available') : null,
     fetcher,
     {
       revalidateOnFocus: false,
@@ -60,11 +61,11 @@ export function useModels(userId?: string) {
 }
 
 /**
- * Hook to fetch user's default model
+ * Hook to fetch the JWT user's default model preference.
  */
-export function useDefaultModel(userId: string | undefined) {
+export function useDefaultModel(fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<DefaultModelResponse | null>(
-    userId ? apiUrl('/models/default', { userId }) : null,
+    fetchEnabled ? apiUrl('/models/default') : null,
     async (url: string) => {
       try {
         return await fetcher<DefaultModelResponse>(url)
@@ -110,11 +111,11 @@ export function useSessionModel(sessionId: string | undefined) {
 }
 
 /**
- * Hook to fetch user's default model for a specific agent
+ * Hook to fetch the JWT user's default model for a specific agent (`agentId` query param).
  */
-export function useAgentDefaultModel(userId: string | undefined, agentId: string | undefined) {
+export function useAgentDefaultModel(agentId: string | undefined, fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<{ model: string | null }>(
-    userId && agentId ? apiUrl('/models/default-agent-model', { userId, agentId }) : null,
+    fetchEnabled && agentId ? apiUrl('/models/default-agent-model', { agentId }) : null,
     async (url: string) => {
       try {
         return await fetcher<{ model: string | null }>(url)
@@ -140,11 +141,10 @@ export function useAgentDefaultModel(userId: string | undefined, agentId: string
 export function useSetAgentDefaultModel() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-agent-default-model',
-    async (_key: string, { arg }: { arg: { userId: string; agentId: string; modelId: string } }) => {
-      return post<{ userId: string; agentId: string; model: string }, { success: boolean; model: string }>(
+    async (_key: string, { arg }: { arg: { agentId: string; modelId: string } }) => {
+      return post<{ agentId: string; model: string }, { success: boolean; model: string }>(
         apiUrl('/models/default-agent-model'),
         {
-          userId: arg.userId,
           agentId: arg.agentId,
           model: arg.modelId,
         },
@@ -165,9 +165,8 @@ export function useSetAgentDefaultModel() {
 export function useSetDefaultModel() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-default-model',
-    async (_key: string, { arg }: { arg: { userId: string; modelId: string } }) => {
-      return post<{ userId: string; model: string }, DefaultModelResponse>(apiUrl('/models/default'), {
-        userId: arg.userId,
+    async (_key: string, { arg }: { arg: { modelId: string } }) => {
+      return post<{ model: string }, DefaultModelResponse>(apiUrl('/models/default'), {
         model: arg.modelId,
       })
     },
@@ -181,11 +180,11 @@ export function useSetDefaultModel() {
 }
 
 /**
- * Hook to fetch user's Bankr preference
+ * Hook to fetch the JWT user's Bankr preference.
  */
-export function useBankrEnabled(userId: string | undefined) {
+export function useBankrEnabled(fetchEnabled: boolean | undefined) {
   const { data, error, isLoading, mutate } = useSWR<{ enabled: boolean }>(
-    userId ? apiUrl('/models/bankr', { userId }) : null,
+    fetchEnabled ? apiUrl('/models/bankr') : null,
     fetcher,
     { revalidateOnFocus: false },
   )
@@ -205,11 +204,10 @@ export function useBankrEnabled(userId: string | undefined) {
 export function useSetBankrEnabled() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-bankr-enabled',
-    async (_key: string, { arg }: { arg: { userId: string; enabled: boolean } }) => {
-      return post<{ userId: string; enabled: boolean }, { success: boolean; enabled: boolean }>(
-        apiUrl('/models/bankr'),
-        { userId: arg.userId, enabled: arg.enabled },
-      )
+    async (_key: string, { arg }: { arg: { enabled: boolean } }) => {
+      return post<{ enabled: boolean }, { success: boolean; enabled: boolean }>(apiUrl('/models/bankr'), {
+        enabled: arg.enabled,
+      })
     },
   )
 

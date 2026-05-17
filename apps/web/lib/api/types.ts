@@ -8,7 +8,6 @@
 // ============ Sessions ============
 
 export interface CreateSessionParams {
-  userId: string
   repoOwner: string
   repoName: string
   model: string
@@ -120,12 +119,14 @@ export interface GitHubRepo {
 
 // ============ Connectors ============
 
+/** Row from `GET /connectors` (Worker). */
 export interface Connector {
   name: string
-  displayName: string
-  description: string
-  enabled: boolean
   connected: boolean
+  enabled: boolean
+  tokenExpired?: boolean
+  displayName?: string
+  description?: string
   icon?: string
 }
 

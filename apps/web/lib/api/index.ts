@@ -9,7 +9,7 @@
  * 
  * function MyComponent() {
  *   const { models, isLoading } = useModels()
- *   const { repos } = useGitHubRepos(userId)
+ *   const { repos } = useGitHubRepos(true)
  *   const { createSession } = useCreateSession()
  *   // ...
  * }
