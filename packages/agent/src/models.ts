@@ -17,19 +17,14 @@ export interface AgentModelEnv {
 }
 
 /** Default model when callers don't specify one. */
-export const DEFAULT_MODEL_ID = 'anthropic/claude-3-7-sonnet-20250219'
+export const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-4-6'
 
 export const SUPPORTED_MODEL_IDS = [
   'anthropic/claude-opus-4-7',
   'anthropic/claude-opus-4-6',
   'anthropic/claude-sonnet-4-6',
-  'anthropic/claude-3-7-sonnet-20250219',
-  'anthropic/claude-3-5-sonnet-20241022',
-  'anthropic/claude-3-5-haiku-20241022',
   'openai/gpt-5.5',
   'openai/gpt-5.4',
-  'openai/gpt-4o',
-  'openai/gpt-4o-mini',
 ] as const
 
 export type SupportedModelId = (typeof SUPPORTED_MODEL_IDS)[number]
