@@ -169,13 +169,16 @@ cd apps/api
 npx wrangler d1 execute ship-db --local --command="SELECT COUNT(*) FROM users"
 ```
 
-## OpenCode Setup (for Agent Operations)
+## Agent runtime (no extra setup)
 
-OpenCode is configured automatically when you run `pnpm dev`. The OpenCode server auto-starts in development mode.
+The agent harness lives inside the Cloudflare Worker (`@ship/agent`). There
+is no in-VM agent server to configure — running `pnpm dev` is enough.
+Anthropic and/or OpenAI keys come from `apps/api/.dev.vars`.
 
-### MCP Server Configuration
+### MCP servers
 
-Shared MCP servers are now registered by the API through the sandbox-agent SDK when creating agent sessions, so they apply across supported harnesses without a project-level `opencode.json`.
+MCP integrations are not wired into the new harness yet. See `AGENTS.md` →
+"MCP Servers" for the recommended way to add them as AI SDK tools.
 
 ## Troubleshooting
 

@@ -1,10 +1,12 @@
 # Ship
 
-A background agent platform for building software. Sign in with GitHub, chat with AI coding agents (Claude Code, OpenCode, Codex) via the Agent Client Protocol (ACP) in sandboxed environments. The agent writes code, runs tests, and deploys while you focus on other things.
+A background agent platform for building software. Sign in with GitHub, chat with an AI coding agent that runs in the Cloudflare Worker and uses an E2B sandbox as a tool. The agent writes code, runs tests, and opens PRs while you focus on other things.
 
 **Core value**: The agent works autonomously in the background on real coding tasks — you come back to working code, not just suggestions.
 
-Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/post/why-we-built-our-background-agent). Built by [@dylsteck](https://github.com/dylsteck).
+**Architecture in one line**: the agent harness lives outside the VM. The sandbox is just a tool the agent calls (`read`, `write`, `edit`, `bash`, `grep`, `glob`, `todo_write`, `ask_user_question`).
+
+Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/post/why-we-built-our-background-agent) and Vercel Labs' [open-agents](https://github.com/vercel-labs/open-agents) (which informed the out-of-VM agent design and the AI SDK + Streamdown streaming approach). Built by [@dylsteck](https://github.com/dylsteck).
 
 ---
 
@@ -22,7 +24,7 @@ Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/p
 - **Cloudflare account** (free tier)
 - **GitHub account** (for OAuth)
 - **E2B account** (for sandboxes) — [e2b.dev](https://e2b.dev)
-- **Anthropic API key** (for Claude Code agent) or **OpenAI API key** (for Codex agent); OpenCode has no required key
+- **Anthropic API key** (for Claude models — default) or **OpenAI API key** (for GPT models); at least one is required
 
 ### 1. Clone and install
 
@@ -63,12 +65,12 @@ Edit `.dev.vars`:
 
 | Variable                          | Description                                                             |
 | --------------------------------- | ----------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`               | [console.anthropic.com](https://console.anthropic.com/settings/keys) — for Claude Code agent |
+| `ANTHROPIC_API_KEY`               | [console.anthropic.com](https://console.anthropic.com/settings/keys) — for Claude models (default) |
 | `E2B_API_KEY`                     | [e2b.dev/dashboard](https://e2b.dev/dashboard) → Settings → API Keys    |
 | `API_SECRET`                      | `openssl rand -hex 32` (must match web app expectations)                |
 | `SESSION_SECRET`                  | Same as web app; for JWT verification                                   |
 | `ALLOWED_ORIGINS`                 | `http://localhost:3000`                                                 |
-| `OPENAI_API_KEY`                  | _(optional)_ [platform.openai.com](https://platform.openai.com/api-keys) — for Codex agent |
+| `OPENAI_API_KEY`                  | _(optional)_ [platform.openai.com](https://platform.openai.com/api-keys) — for GPT models |
 | `LOGIN_RESTRICTED_TO_SINGLE_USER` | _(optional)_ `true` to restrict login to one user                       |
 | `ALLOWED_USER_ID`                 | _(optional)_ Your user ID from `users` table (required when restricted) |
 
@@ -153,12 +155,18 @@ pnpm dev
 
 ## How It Works
 
-1. **Sign in** with GitHub OAuth
-2. **Create a session** linked to a GitHub repo
-3. **Chat** with the AI agent (Claude Code, OpenCode, or Codex)
-4. **sandbox-agent** runs in an E2B sandbox (custom template for fast startup), hosts the ACP agent — writes code, runs tests, creates PRs
-5. **Watch progress** via SSE (tool calls, reasoning, file changes)
-6. **Review & deploy** via MCP (Vercel, GitHub, docs)
+1. **Sign in** with GitHub OAuth.
+2. **Create a session** linked to a GitHub repo.
+3. **Chat** — your prompt hits the Cloudflare Worker.
+4. The Worker runs an **AI SDK `streamText` loop** (`@ship/agent`). Tool calls
+   — `read`, `write`, `edit`, `bash`, `grep`, `glob`, `todo_write`,
+   `ask_user_question` — go through `@ship/sandbox` to a per-session **E2B
+   sandbox**. Models are Anthropic/OpenAI direct over `fetch`.
+5. AI SDK chunks are translated to Ship's existing SSE format and streamed
+   back to the browser, where Streamdown renders the assistant message with
+   per-token fade-in animation.
+6. After the loop the Worker persists the assistant message and (optionally)
+   triggers auto-commit / PR via the existing GitHub flow.
 
 ---
 
@@ -170,48 +178,58 @@ For a detailed architecture overview, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 graph TD
     A[Next.js Web] -->|SSE| B[Cloudflare Worker]
     B -->|Durable Objects| C[Session State]
-    B -->|HTTP| D[sandbox-agent]
-    D -->|ACP stdio| E[AI Agent]
-    E -->|E2B Sandbox| F[Code Execution]
-    E -->|GitHub API| G[PRs]
+    B -->|streamText loop| D["@ship/agent (AI SDK)"]
+    D -->|fetch| M[Anthropic / OpenAI]
+    D -->|tool calls| S["@ship/sandbox"]
+    S -->|E2B SDK| E[E2B Sandbox VM]
+    B -->|GitHub API| G[PRs]
 ```
 
 ### Tech stack
 
-| Layer     | Tech                                       |
-| --------- | ------------------------------------------ |
-| Monorepo  | Turborepo, pnpm workspaces                 |
-| Frontend  | Next.js 16, React 19, Tailwind v4, Base UI |
-| Backend   | Cloudflare Workers (Hono), Durable Objects |
-| Database  | Cloudflare D1 (SQLite)                     |
-| Auth      | GitHub OAuth (Arctic), JWT (jose)          |
-| Sandboxes | E2B (custom template with sandbox-agent pre-baked) |
-| Agents    | sandbox-agent + ACP (Claude Code, OpenCode, Codex) |
-| MCP       | Grep, DeepWiki, Exa                       |
-| Real-time | SSE, WebSockets                            |
+| Layer     | Tech                                                                  |
+| --------- | --------------------------------------------------------------------- |
+| Monorepo  | Turborepo, pnpm workspaces                                            |
+| Frontend  | Next.js 16, React 19, Tailwind v4, Base UI, Streamdown                |
+| Backend   | Cloudflare Workers (Hono), Durable Objects                            |
+| Database  | Cloudflare D1 (SQLite)                                                |
+| Auth      | GitHub OAuth (Arctic), JWT (jose)                                     |
+| Sandboxes | E2B (custom template with common dev tools pre-baked)                 |
+| Agent     | `@ship/agent` (AI SDK `streamText` + tools) — runs in the Worker      |
+| Models    | Anthropic + OpenAI direct (`@ai-sdk/anthropic`, `@ai-sdk/openai`)     |
+| Real-time | SSE, WebSockets                                                       |
 
 ### Project structure
 
 ```
 ship/
 ├── apps/
-│   ├── web/           # Next.js app
-│   │   ├── app/       # Routes, dashboard, auth
+│   ├── web/                  # Next.js app
+│   │   ├── app/              # Routes, dashboard, auth
 │   │   ├── components/
-│   │   └── lib/       # API client, SSE, DAL
-│   └── api/           # Cloudflare Worker
+│   │   └── lib/              # API client, SSE adapter
+│   └── api/                  # Cloudflare Worker
 │       ├── src/
 │       │   ├── index.ts
-│       │   ├── routes/       # Hono routes
-│       │   ├── durable-objects/
-│       │   └── lib/          # E2B, sandbox-agent, event-translator
+│       │   ├── routes/       # Hono routes (chat, sessions, sandbox, models, git, …)
+│       │   ├── durable-objects/session.ts
+│       │   └── lib/
+│       │       ├── chat-runner.ts          # Drives one turn (agent + chunk translator)
+│       │       ├── chat-workspace.ts       # Sandbox + repo provisioning
+│       │       ├── chat-history.ts
+│       │       ├── chat-stream-helpers.ts
+│       │       ├── agent-chunks/           # AI SDK chunk → Ship SSE translator
+│       │       ├── agent-registry.ts
+│       │       └── e2b.ts
 │       ├── migrations/
 │       └── wrangler.toml
-├── e2b/               # Custom E2B template
-│   └── Dockerfile     # Extends e2bdev/desktop with sandbox-agent + agents
-├── e2b.toml           # E2B template config
+├── e2b/                      # Custom E2B template (Dockerfile)
+├── e2b.toml
 └── packages/
-    └── ui/            # Shared UI (@ship/ui)
+    ├── agent/                # @ship/agent — out-of-VM agent harness (AI SDK)
+    ├── sandbox/              # @ship/sandbox — Sandbox interface + E2B impl
+    ├── types/                # @ship/types — shared types
+    └── ui/                   # @ship/ui — shared UI components
 ```
 
 ---

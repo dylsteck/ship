@@ -67,125 +67,141 @@ npx wrangler secret put OPENAI_API_KEY      # Optional, for Codex agent
 ```
 ship/
 ├── apps/
-│   ├── web/                    # Next.js App Router (frontend)
-│   │   ├── app/                # Pages and routes
-│   │   │   └── (app)/dashboard # Dashboard with chat UI
-│   │   │       ├── dashboard-client.tsx       # Top-level orchestrator
-│   │   │       ├── components/
-│   │   │       │   ├── dashboard-messages.tsx  # Message list rendering
-│   │   │       │   ├── composer/              # Input + model/mode selection
-│   │   │       │   ├── right-sidebar.tsx      # Stats, tasks, changes, VCS
-│   │   │       │   ├── subagent-view.tsx      # Nested agent session viewer
-│   │   │       │   ├── permission-prompt.tsx  # Permission request UI
-│   │   │       │   └── question-prompt.tsx    # Agent question UI
-│   │   │       └── hooks/
-│   │   │           ├── use-dashboard-chat.ts  # Core state management + WebSocket
-│   │   │           ├── use-dashboard-sse.ts   # SSE streaming handler
-│   │   │           ├── sse-event-handlers.ts  # Pure event handler functions
-│   │   │           ├── use-session-sync.ts    # URL/model/repo sync effects
-│   │   │           ├── use-right-sidebar.ts   # Sidebar open/close state
-│   │   │           ├── use-events-store.ts    # Raw SSE events store (per-session, singleton)
-│   │   │           └── use-subagent-stream.ts # Sub-agent event streaming
-│   │   ├── lib/                # Frontend business logic
-│   │   │   ├── ai-elements-adapter.ts  # SSE → UIMessage adapter
-│   │   │   ├── sse-types.ts            # SSE event type definitions
-│   │   │   ├── sse-parser.ts           # SSE event parser
-│   │   │   ├── subagent/utils.ts       # Sub-agent detection + extraction
-│   │   │   └── api/                    # API client functions
-│   │   └── components/         # Shared React components
-│   └── api/                    # Cloudflare Worker (backend)
+│   ├── web/                          # Next.js App Router (frontend)
+│   │   ├── app/(app)/dashboard       # Dashboard with chat UI
+│   │   ├── components/chat/markdown.tsx  # Streamdown wrapper (animated fade-in)
+│   │   ├── lib/
+│   │   │   ├── ai-elements-adapter.ts    # SSE → UIMessage adapter
+│   │   │   ├── sse-types.ts              # Wire-format event types
+│   │   │   └── api/                      # API client functions
+│   │   └── components/               # Shared React components
+│   └── api/                          # Cloudflare Worker (backend)
 │       └── src/
 │           ├── routes/
-│           │   ├── chat.ts             # SSE streaming chat endpoint
-│           │   ├── sessions.ts         # Session CRUD
-│           │   ├── sandbox.ts          # Sandbox management
-│           │   ├── models.ts           # Model listing
-│           │   ├── git.ts              # Git operations
-│           │   ├── connectors.ts       # GitHub connector status/enable/disable
-│           │   └── terminal.ts         # Terminal access
+│           │   ├── chat.ts                       # Hono router for /chat/*
+│           │   ├── chat-message-stream.ts        # POST /chat/:sessionId — drives one turn
+│           │   ├── chat-auxiliary-routes.ts      # stop / subscribe / messages / git passthroughs
+│           │   ├── chat-session-helpers.ts       # error persistence helpers
+│           │   ├── sessions.ts                   # Session CRUD
+│           │   ├── sandbox.ts                    # Sandbox management
+│           │   ├── models.ts                     # Model listing (powered by agent-registry)
+│           │   ├── git.ts                        # Git operations
+│           │   ├── connectors.ts                 # GitHub connector status/enable/disable
+│           │   └── terminal.ts                   # Terminal access
 │           ├── lib/
-│           │   ├── sandbox-agent.ts    # sandbox-agent SDK wrapper (with pre-install detection)
-│           │   ├── agent-registry.ts   # Agent config registry
-│           │   ├── event-translator.ts # UniversalEvent → Ship SSE translator
-│           │   ├── e2b.ts              # E2B sandbox management (custom template support)
-│           │   ├── session-authorization.ts # JWT user id + D1 session ownership
-│           │   └── api-schemas.ts      # Zod + parseJsonBody for route bodies
+│           │   ├── chat-runner.ts                # Run one turn: agent.stream + chunk → Ship SSE
+│           │   ├── chat-workspace.ts             # Provision sandbox + clone repo for a turn
+│           │   ├── chat-history.ts               # Persisted message → AI SDK ModelMessage
+│           │   ├── chat-stream-helpers.ts        # writeStatus / writeError / writeDone
+│           │   ├── agent-chunks/                 # AI SDK UIMessageChunk → Ship SSE translator
+│           │   │   ├── index.ts                  # Public createAgentChunkTranslator
+│           │   │   ├── state.ts                  # Per-turn translator state
+│           │   │   ├── events.ts                 # SSE event builders
+│           │   │   ├── text-handlers.ts          # text + reasoning chunks
+│           │   │   └── tool-handlers.ts          # tool-input/output chunks
+│           │   ├── agent-registry.ts             # UI persona + model picker entries
+│           │   ├── e2b.ts                        # Raw E2B SDK wrappers (provision/pause/resume)
+│           │   ├── session-authorization.ts      # JWT user id + D1 session ownership
+│           │   └── api-schemas.ts                # Zod + parseJsonBody for route bodies
 │           ├── durable-objects/
-│           │   └── session.ts          # Session Durable Object
-│           └── env.d.ts                # Environment type definitions
+│           │   └── session.ts                    # Session Durable Object (SQLite + WS)
+│           └── env.d.ts                          # Worker env bindings
 └── packages/
-    └── ui/                     # Shared UI components (@ship/ui)
-        └── src/
-            ├── ai-elements/    # AI-specific rendering components
-            └── *.ts            # Base shadcn components + hooks
+    ├── agent/                        # @ship/agent — out-of-VM agent harness
+    │   └── src/
+    │       ├── agent.ts              # runAgentStep wrapper around streamText
+    │       ├── system-prompt.ts      # cacheable system prompt builder
+    │       ├── cache-control.ts      # Anthropic prompt-cache markers
+    │       ├── models.ts             # Anthropic + OpenAI provider resolution
+    │       └── tools/                # read / write / edit / bash / grep / glob / todo / ask
+    ├── sandbox/                      # @ship/sandbox — Sandbox interface + E2B impl
+    │   └── src/
+    │       ├── interface.ts          # Sandbox + SandboxState types
+    │       ├── e2b.ts                # E2BSandboxAdapter
+    │       └── factory.ts            # connectSandbox(state, options)
+    ├── types/                        # @ship/types — shared TS types
+    └── ui/                           # @ship/ui — shadcn-based components
 ```
 
 ## Agent Architecture
 
-Ship uses **sandbox-agent** (by Rivet) as its agent runtime, which supports multiple coding agents through the Agent Client Protocol (ACP).
+Ship runs the agent **outside** the sandbox VM. The Cloudflare Worker drives an
+AI SDK `streamText` loop; tools call into a small {@link Sandbox} interface
+backed by E2B. There is **no in-VM HTTP server** and the legacy
+[`sandbox-agent`](https://github.com/rivet-dev/sandbox-agent) dependency has
+been removed.
 
-### How it works
+### How a chat turn runs
 
-1. An E2B sandbox is provisioned for each session using a custom template (`e2b/Dockerfile`) that extends `e2bdev/desktop:latest`
-2. The custom template has `sandbox-agent` binary and common agents (claude, opencode) pre-installed for fast startup (~10s vs ~60s)
-3. If binaries are missing (non-custom template fallback), they are installed at runtime via `sandbox-agent install-agent`
-4. `sandbox-agent server` exposes an HTTP/SSE API inside the sandbox on port 3000
-5. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
-6. The Cloudflare Worker connects to the sandbox-agent API and translates events to Ship's SSE format
+1. The web app `POST /chat/:sessionId`s a user message to the Worker.
+2. {@link prepareWorkspace} ensures a sandbox exists and the repo is cloned,
+   reusing GitHub credential brokering through `lib/git-workflow.ts`.
+3. The Worker connects to the sandbox via `@ship/sandbox`'s
+   `connectSandbox(state)` (E2B SDK under the hood) and asks `@ship/agent`
+   for a streaming run.
+4. `streamText` (AI SDK) calls Anthropic/OpenAI directly; tool calls execute
+   in the Worker and reach the VM only through `sandbox.exec`/`readFile`/
+   `writeFile`.
+5. AI SDK `UIMessageChunk`s are translated to Ship's existing SSE event
+   format by `lib/agent-chunks` and streamed to the client.
+6. After the loop the assistant message is persisted to the SessionDO and a
+   `step-finish` + `session.idle` + `done` event sequence is emitted.
 
-### Building the custom E2B template
+### Tools (`packages/agent/src/tools`)
 
-The custom template pre-bakes sandbox-agent + agent binaries for faster sandbox startup (~10s vs ~60s).
+| Tool | Purpose |
+|------|---------|
+| `read` | Read a file from the workspace (with offset/limit + line numbers) |
+| `write` | Overwrite a file (creates parent dirs) |
+| `edit` | Unique-string replacement (uniqueness checked, optional `replaceAll`) |
+| `bash` | Non-interactive shell command (dangerous patterns gated behind `needsApproval`) |
+| `grep` | ripgrep-with-grep-fallback search, bounded to 200 results |
+| `glob` | Workspace glob, sorted by mtime, capped at 500 results |
+| `todo_write` | Update the agent's plan; UI mirrors the list in the side panel |
+| `ask_user_question` | Pause the agent and ask the user (next user message resumes the turn) |
+
+Plan mode (`mode: 'plan'` on the request body) drops `write`/`edit`.
+
+### E2B template
+
+The custom E2B template (`e2b/Dockerfile`, id in `apps/api/src/lib/e2b.ts`)
+pre-bakes node, bun, jq, ripgrep and build-essentials so workspace tools have
+fast startup. It no longer pre-bakes any in-VM agent binary.
 
 ```bash
-# Install E2B CLI
 npm i -g @e2b/cli
-
-# Login to E2B
 e2b auth login
-
-# Build the template (from repo root — uses e2b.toml + e2b/Dockerfile)
 e2b template build
+# Copy the template id into apps/api/src/lib/e2b.ts: E2B_TEMPLATE_ID
 ```
 
-After the build completes, copy the template ID from the output and set it:
+### Supported models
 
-1. **Local dev**: Set `E2B_TEMPLATE_ID` in `apps/api/src/lib/e2b.ts`:
-   ```typescript
-   export const E2B_TEMPLATE_ID = '<your-template-id>'
-   ```
+`apps/api/src/lib/agent-registry.ts` lists UI personas with their model
+picker entries. `@ship/agent`'s `resolveModel(id, env)` knows how to build a
+language model from `<provider>/<model>` ids:
 
-2. **Production**: Set as a Cloudflare Workers env var or secret:
-   ```bash
-   cd apps/api
-   npx wrangler secret put E2B_TEMPLATE_ID --env production
-   ```
+| Provider | Models | Required env |
+|----------|--------|--------------|
+| `anthropic/*` | `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022` | `ANTHROPIC_API_KEY` |
+| `openai/*` | `gpt-4o`, `gpt-4o-mini` | `OPENAI_API_KEY` |
 
-Without a template ID, sandboxes use E2B's default image and install everything at runtime (backwards compatible).
-
-### Supported Agents
-
-| Agent | sandbox-agent name | Required Env Var | Modes |
-|-------|-------------------|------------------|-------|
-| Claude Code | `claude` | `ANTHROPIC_API_KEY` | default, plan, acceptEdits |
-| OpenCode | `opencode` | — | build, plan |
-| Codex | `codex` | `OPENAI_API_KEY` | read-only, auto, full-access |
-
-Agent configs are defined in `apps/api/src/lib/agent-registry.ts`. Default agent is `opencode`.
-
-### Key API Files
-
-- **`sandbox-agent.ts`** — SDK wrapper. Functions: `startSandboxAgentServer`, `connectToSandboxAgent`, `createAgentSession`, `promptAgent`, `cancelAgent`, `subscribeToSessionEvents`. Caches client instances per sandbox URL. Checks for pre-installed binaries before installing (custom template fast path). `promptAgent` runs without artificial timeout — safety is provided by server-side event timeout, client-side stall detector, and user cancel.
-- **`e2b.ts`** — E2B sandbox provisioning. Supports custom template via `E2B_TEMPLATE_ID` constant.
-- **`event-translator.ts`** — Stateful translator class (`EventTranslatorState`) that maps sandbox-agent's `UniversalEvent` schema to Ship's SSE events. Tracks text/reasoning accumulators, tool call state, and file changes across a session stream.
-- **`agent-registry.ts`** — Registry of `AgentConfig` objects with `getAgent()`, `listAgents()`, and `getDefaultAgentId()` helpers.
-
-### Event Flow
+### Event flow
 
 ```
-User prompt → Cloudflare Worker → sandbox-agent (HTTP) → ACP agent (stdio)
-                                                              ↓
-Frontend ← SSE stream ← EventTranslatorState ← UniversalEvents
+User prompt → Cloudflare Worker → @ship/agent.runAgentStep → streamText
+                                       │
+                                       ├─ tools → @ship/sandbox.exec/read/write
+                                       │           │
+                                       │           └─ E2B Sandbox VM
+                                       │
+                                       └─ UIMessageChunks
+                                             │
+                                             ▼
+                                   agent-chunks translator
+                                             │
+                                             ▼
+              Frontend ← SSE stream (message.part.updated / step-finish / session.idle / done)
 ```
 
 ## Frontend Architecture
@@ -249,6 +265,16 @@ DashboardClient (orchestrator — state, routing, session lifecycle)
 └── RightSidebar (session stats, todos, file diffs, VCS link)
 ```
 
+### Markdown streaming
+
+`apps/web/components/chat/markdown.tsx` wraps Streamdown with `mode="streaming"`
++ `animated={{ animation: 'fadeIn', duration: 250, easing: 'ease-out' }}` while
+a message is streaming. New tokens fade in instead of popping, which is the
+single biggest perceptual smoothness win compared to the old in-VM agent
+pipeline (where tokens went through ACP → sandbox-agent → E2B port-proxy →
+Worker → SSE). With the agent in the Worker the hop count drops by two and
+the chunk stream is the AI SDK's native delta stream.
+
 ### Data Flow: SSE → UIMessage → Render
 
 The data pipeline has three layers:
@@ -304,7 +330,7 @@ Pure functions (no hooks) that dispatch SSE events to React state. All take an `
 - `handleSessionError()` / `handleGenericError()` — Creates classified error messages.
 - `handlePermissionAsked()` / `handlePermissionResolved()` — Permission prompt lifecycle.
 - `handleQuestionAsked()` / `handleQuestionResolved()` — Question prompt lifecycle.
-- `handleAgentUrl()` — Stores sandbox-agent URL (persisted to localStorage).
+- `handleAgentUrl()` — Legacy: previously stored the in-VM sandbox-agent URL. With the harness in the Worker the new backend never emits `agent-url`, so this handler is effectively dormant.
 
 ### Key UI Patterns
 
@@ -332,45 +358,46 @@ The API is a Cloudflare Worker (`apps/api/`) with Hono routing.
 
 | File | Purpose |
 |------|---------|
-| `routes/chat.ts` | SSE streaming endpoint. Creates/resumes sandbox-agent sessions, subscribes to events, translates via `EventTranslatorState`, streams to client. |
-| `routes/sessions.ts` | Session CRUD (create, list, get, delete) |
-| `routes/sandbox.ts` | Sandbox lifecycle management |
-| `routes/models.ts` | Available model listing |
-| `routes/git.ts` | Git operations (diff, commit, PR creation) |
-| `routes/users.ts` | `GET /users/me` (JWT), `GET /users/:id` (self or service), `POST /users/upsert` (service only) |
-| `middleware/auth.ts` | Bearer parsing: session JWT → `authKind: 'user'` + `userId`, or `API_SECRET` → `authKind: 'service'` |
-| `lib/session-authorization.ts` | `requireJwtUserId`, `requireSessionOwner` — user-scoped routes must use the session JWT, not `API_SECRET` alone |
-| `lib/api-schemas.ts` | Zod request bodies + `parseJsonBody` (shape validation; auth remains separate) |
-| `lib/sandbox-agent.ts` | SDK wrapper around `sandbox-agent` npm package. Handles server startup in E2B, client connection (cached), session create/resume/prompt/cancel. |
-| `lib/event-translator.ts` | Stateful `EventTranslatorState` class. One instance per streaming session. |
-| `lib/agent-registry.ts` | Agent config definitions and lookup functions. |
-| `lib/e2b.ts` | E2B sandbox provisioning and lifecycle. |
-| `durable-objects/session.ts` | Session Durable Object for persistent session state across Worker invocations. |
+| `routes/chat.ts` | Hono router for `/chat/*`. Mounts the message stream + auxiliary routes. |
+| `routes/chat-message-stream.ts` | `POST /chat/:sessionId` — drives one full turn end-to-end. |
+| `routes/chat-auxiliary-routes.ts` | `stop`, `subscribe` (no-op idle), `messages`, `tasks`, `git/state`, retry/pause/resume. |
+| `routes/chat-session-helpers.ts` | Persisting system-role error messages + cloning helpers. |
+| `routes/sessions.ts` | Session CRUD (create, list, get, delete). |
+| `routes/sandbox.ts` | Sandbox provisioning + lifecycle. |
+| `routes/models.ts` | Model listing — backed by `agent-registry`. |
+| `routes/git.ts` | Git operations (diff, commit, PR creation). |
+| `routes/users.ts` | `GET /users/me` (JWT), `GET /users/:id` (self or service), `POST /users/upsert` (service only). |
+| `middleware/auth.ts` | Bearer parsing: session JWT → `authKind: 'user'` + `userId`, or `API_SECRET` → `authKind: 'service'`. |
+| `lib/session-authorization.ts` | `requireJwtUserId`, `requireSessionOwner` — user-scoped routes must use the session JWT, not `API_SECRET` alone. |
+| `lib/api-schemas.ts` | Zod request bodies + `parseJsonBody` (shape validation; auth remains separate). |
+| `lib/chat-runner.ts` | One turn: `runAgentStep` (from `@ship/agent`) → translator → SSE → DO broadcast → persist. |
+| `lib/chat-workspace.ts` | Sandbox + repo provisioning for a turn (waits for sandbox, clones if needed). |
+| `lib/chat-history.ts` | Persisted Ship messages → AI SDK `ModelMessage[]`. |
+| `lib/chat-stream-helpers.ts` | Tiny SSE writers: `writeStatus`, `writeError`, `writeDone`, `writeSessionIdle`. |
+| `lib/agent-chunks/` | AI SDK `UIMessageChunk` → Ship SSE event translator (split by concern: text / tool / events / state). |
+| `lib/agent-registry.ts` | UI persona + model picker entries. Default persona is `ship`. |
+| `lib/e2b.ts` | Raw E2B SDK wrappers used by `chat-workspace` and `routes/sandbox`. |
+| `durable-objects/session.ts` | Session Durable Object — message + meta + event SQLite, websocket fanout. |
 
-### Event Translation
+### AI SDK chunk → Ship SSE translation
 
-`EventTranslatorState` maps sandbox-agent's ACP `UniversalEvent` types to Ship SSE events:
+`lib/agent-chunks` is a stateful translator that maps AI SDK
+`UIMessageChunk`s to Ship's existing SSE event format. The frontend keeps its
+SSE adapter unchanged.
 
-| UniversalEvent | Ship SSE Event(s) |
-|---------------|-------------------|
-| `session.started` | `status` (agent-active) |
-| `session.ended` | `session.idle` + `done` (normal), or `session.error` (error) |
-| `turn.started` | `status` (sending-prompt); resets accumulators |
-| `turn.ended` | `session.idle` |
-| `item.started` (message) | (internal: ensures messageId) |
-| `item.started` (tool_call) | `message.part.updated` (tool, status=pending) |
-| `item.delta` (text) | `message.part.updated` (text, with delta) |
-| `item.delta` (tool) | `message.part.updated` (tool, status=running) |
-| `item.completed` (tool_call) | `message.part.updated` (tool, status=completed/error) |
-| `item.completed` (tool_result) | `message.part.updated` (tool, with output) |
-| `item.completed` (message) | `message.part.updated` (text/reasoning final) |
-| `permission.requested` | `permission.asked` |
-| `permission.resolved` | `permission.granted` or `permission.denied` |
-| `question.requested` | `question.asked` |
-| `question.resolved` | `question.replied` or `question.rejected` |
+| AI SDK chunk | Ship SSE event |
+|--------------|----------------|
+| `text-start` | (no-op — opens a buffer) |
+| `text-delta` | `message.part.updated` (text + delta) |
+| `reasoning-start` / `reasoning-delta` | `message.part.updated` (reasoning + delta) |
+| `tool-input-start` | `message.part.updated` (tool, status=pending) |
+| `tool-input-delta` | `message.part.updated` (tool, status=running, partial JSON) |
+| `tool-input-available` | `message.part.updated` (tool, status=running, parsed input) |
+| `tool-output-available` | `message.part.updated` (tool, status=completed) |
+| `tool-output-error` | `message.part.updated` (tool, status=error) |
 | `error` | `session.error` |
-
-The translator tracks state: `textAccumulator`, `reasoningAccumulator`, `toolCallMap` (Map of itemId → tool state), `partCounter` for synthetic IDs, and `hasChanges` flag for file-modifying tools.
+| (after loop) `result.totalUsage` | `message.part.updated` (step-finish, with token totals) |
+| (after loop) | `session.idle` + `done` |
 
 ### Worker authentication and API clients
 
@@ -432,11 +459,11 @@ OPENAI_API_KEY=...         # Optional, for Codex agent
 
 ## MCP Servers
 
-Shared MCP (Model Context Protocol) servers are registered per repo directory through the sandbox-agent SDK before session creation, so they are available across supported agent harnesses:
-
-- **Grep**: GitHub code search — `https://mcp.grep.app`
-- **DeepWiki**: Deep documentation search — `https://mcp.deepwiki.com/mcp`
-- **Exa**: Web search — `https://mcp.exa.ai/mcp`
+MCP support is **not wired into the new harness yet**. Tools today are the
+in-process AI SDK tools described in [Agent Architecture](#agent-architecture).
+Adding MCP-as-tools is straightforward future work — wrap an MCP client in a
+small adapter that mints AI SDK `tool()`s, then merge them into
+`buildToolSet()`.
 
 ## Browser Testing with agent-browser + Brave CDP
 
@@ -488,7 +515,7 @@ npx wrangler tail ship-api-production
 ```
 
 This shows all `console.log`/`console.warn`/`console.error` output from the Worker, including:
-- Sandbox provisioning steps (`[sandbox-agent:...]`)
+- Sandbox provisioning steps
 - Chat route events (`[chat:...]`)
 - D1 write-through warnings
 - SSE streaming lifecycle
