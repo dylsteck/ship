@@ -49,6 +49,27 @@ export const AGENTS: Record<string, AgentConfig> = {
     ],
     models: [
       {
+        id: 'anthropic/claude-opus-4-7',
+        name: 'Claude Opus 4.7',
+        provider: 'Anthropic',
+        contextWindow: 200000,
+        maxTokens: 64000,
+      },
+      {
+        id: 'anthropic/claude-opus-4-6',
+        name: 'Claude Opus 4.6',
+        provider: 'Anthropic',
+        contextWindow: 200000,
+        maxTokens: 64000,
+      },
+      {
+        id: 'anthropic/claude-sonnet-4-6',
+        name: 'Claude Sonnet 4.6',
+        provider: 'Anthropic',
+        contextWindow: 200000,
+        maxTokens: 64000,
+      },
+      {
         id: 'anthropic/claude-3-7-sonnet-20250219',
         name: 'Claude 3.7 Sonnet',
         provider: 'Anthropic',
@@ -69,6 +90,8 @@ export const AGENTS: Record<string, AgentConfig> = {
         contextWindow: 200000,
         maxTokens: 8192,
       },
+      { id: 'openai/gpt-5.5', name: 'GPT-5.5', provider: 'OpenAI', contextWindow: 200000 },
+      { id: 'openai/gpt-5.4', name: 'GPT-5.4', provider: 'OpenAI', contextWindow: 200000 },
       { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', contextWindow: 128000 },
       { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI', contextWindow: 128000 },
       ...getBankrAgentModels(),
