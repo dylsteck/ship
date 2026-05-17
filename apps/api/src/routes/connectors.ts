@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
+import { getGitHubApiBaseUrl } from '../lib/github-base-url'
 import { requireJwtUserId } from '../lib/session-authorization'
 
 const connectors = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
@@ -20,11 +21,14 @@ interface ConnectorStatus {
 }
 
 /**
- * Validate a GitHub access token by calling the GitHub API
+ * Validate a GitHub access token by hitting `/user`.
+ *
+ * Honors the GitHub emulator base URL when active (see
+ * `lib/github-base-url.ts`).
  */
-async function isGitHubTokenValid(accessToken: string): Promise<boolean> {
+async function isGitHubTokenValid(env: Env, accessToken: string): Promise<boolean> {
   try {
-    const res = await fetch('https://api.github.com/user', {
+    const res = await fetch(`${getGitHubApiBaseUrl(env)}/user`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'User-Agent': 'Ship',
@@ -70,7 +74,7 @@ connectors.get('/', async (c) => {
 
         // Validate token if connected
         if (connected && account?.access_token) {
-          const valid = await isGitHubTokenValid(account.access_token)
+          const valid = await isGitHubTokenValid(c.env, account.access_token)
           if (!valid) {
             tokenExpired = true
           }

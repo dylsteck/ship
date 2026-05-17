@@ -4,5 +4,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "types": ["@cloudflare/workers-types"]
-  }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["dist", "node_modules"]
 }

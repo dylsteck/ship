@@ -13,6 +13,7 @@
     "deploy:prod": "cd apps/api && pnpm deploy:prod"
   },
   "devDependencies": {
+    "eslint-config-next": "^16",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "turbo": "^2.8.14",

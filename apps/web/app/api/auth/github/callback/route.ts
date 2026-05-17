@@ -1,3 +1,4 @@
+import { getGitHubApiBaseUrl } from '@/lib/emulate/env'
 import { github } from '@/lib/github'
 import { createSession } from '@/lib/session'
 import { cookies } from 'next/headers'
@@ -27,8 +28,10 @@ export async function GET(request: Request): Promise<Response> {
       ? Math.floor(tokens.accessTokenExpiresAt().getTime() / 1000)
       : null
 
-    // Fetch GitHub user
-    const githubUserResponse = await fetch('https://api.github.com/user', {
+    const githubApiBaseUrl = getGitHubApiBaseUrl()
+
+    // Fetch GitHub user (real api.github.com or emulator base when active)
+    const githubUserResponse = await fetch(`${githubApiBaseUrl}/user`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -48,7 +51,7 @@ export async function GET(request: Request): Promise<Response> {
     // Get primary email if not public
     let email = githubUser.email
     if (!email) {
-      const emailsResponse = await fetch('https://api.github.com/user/emails', {
+      const emailsResponse = await fetch(`${githubApiBaseUrl}/user/emails`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },

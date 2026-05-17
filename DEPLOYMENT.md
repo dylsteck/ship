@@ -360,7 +360,7 @@ npx wrangler tail --env production
 npx wrangler tail ship-api-production --format=pretty
 ```
 
-**Tip:** Use `npx wrangler tail ship-api-production` to debug production issues. Look for logs prefixed with `[chat:...]` and `[sandbox-agent:...]` to track agent execution flow.
+**Tip:** Use `npx wrangler tail ship-api-production` to debug production issues. Look for logs prefixed with `[chat:...]` to track agent execution flow.
 
 ### View Database Queries
 

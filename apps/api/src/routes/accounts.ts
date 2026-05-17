@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { Octokit } from '@octokit/rest'
+import { getGitHubApiBaseUrl } from '../lib/github-base-url'
 import { requireJwtUserId } from '../lib/session-authorization'
 
 // Account input type
@@ -199,8 +200,8 @@ accounts.get('/github/repos', async (c) => {
       return c.json({ error: 'GitHub account not found or no access token' }, 404)
     }
 
-    // Fetch repos from GitHub API (paginated)
-    const octokit = new Octokit({ auth: account.access_token })
+    // Fetch repos from GitHub (real or emulator base) — paginated.
+    const octokit = new Octokit({ auth: account.access_token, baseUrl: getGitHubApiBaseUrl(c.env) })
     const { data: repos } = await octokit.repos.listForAuthenticatedUser({
       sort: 'updated',
       per_page: perPage,

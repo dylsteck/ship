@@ -80,19 +80,39 @@ export interface PullRequestResponse {
 }
 
 /**
- * GitHubClient class
- * Wraps Octokit with user token authentication
+ * Optional construction options for {@link GitHubClient}.
+ */
+export interface GitHubClientOptions {
+  /**
+   * Override the GitHub REST API base URL.
+   *
+   * Defaults to `https://api.github.com`. Set this to the GitHub emulator
+   * URL when running the agent against the local emulator.
+   */
+  baseUrl?: string
+}
+
+/**
+ * Wrap Octokit with user-token authentication.
  *
- * Usage:
- *   const client = new GitHubClient(userToken)
- *   await client.createPullRequest({ ... })
+ * @example
+ * ```ts
+ * const client = new GitHubClient(userToken)
+ * await client.createPullRequest({ owner, repo, title, head })
+ * ```
+ *
+ * @example Emulator mode
+ * ```ts
+ * const client = new GitHubClient(token, { baseUrl: emuBase })
+ * ```
  */
 export class GitHubClient {
   private octokit: InstanceType<typeof OctokitWithPlugin>
 
-  constructor(token: string) {
+  constructor(token: string, options: GitHubClientOptions = {}) {
     this.octokit = new OctokitWithPlugin({
       auth: token,
+      ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
     })
   }
 
@@ -257,12 +277,12 @@ export class GitHubClient {
 }
 
 /**
- * Create a GitHub client with user token
- * Factory function for consistency with other lib modules
+ * Create a GitHub client with user token.
  *
- * @param token - User's GitHub personal access token
- * @returns GitHubClient instance
+ * @param token - User's GitHub access token.
+ * @param options - Optional overrides (e.g. `baseUrl` for emulator mode).
+ * @returns Configured {@link GitHubClient} instance.
  */
-export function createGitHubClient(token: string): GitHubClient {
-  return new GitHubClient(token)
+export function createGitHubClient(token: string, options: GitHubClientOptions = {}): GitHubClient {
+  return new GitHubClient(token, options)
 }
