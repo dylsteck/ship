@@ -24,9 +24,13 @@ export async function GET(request: Request): Promise<Response> {
     const tokens = await github.validateAuthorizationCode(code)
     const accessToken = tokens.accessToken()
     const refreshToken = tokens.hasRefreshToken() ? tokens.refreshToken() : null
-    const expiresAtSec = tokens.accessTokenExpiresAt()
-      ? Math.floor(tokens.accessTokenExpiresAt().getTime() / 1000)
-      : null
+    // GitHub OAuth Apps without token rotation omit `expires_in`; arctic throws when it's missing.
+    let expiresAtSec: number | null = null
+    try {
+      expiresAtSec = Math.floor(tokens.accessTokenExpiresAt().getTime() / 1000)
+    } catch {
+      expiresAtSec = null
+    }
 
     // Fetch GitHub user
     const githubUserResponse = await fetch('https://api.github.com/user', {
