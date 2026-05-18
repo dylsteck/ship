@@ -169,16 +169,17 @@ cd apps/api
 npx wrangler d1 execute ship-db --local --command="SELECT COUNT(*) FROM users"
 ```
 
-## Agent runtime (no extra setup)
+## Agent runtime (E2B + ACP)
 
-The agent harness lives inside the Cloudflare Worker (`@ship/agent`). There
-is no in-VM agent server to configure — running `pnpm dev` is enough.
-Anthropic and/or OpenAI keys come from `apps/api/.dev.vars`.
+Coding agents run **inside the E2B sandbox** via **Agent Client Protocol** backends.
+The Worker injects **`ship-acp-bridge`** and opens a WebSocket to it. Ensure `E2B_API_KEY`
+is set and your template/VM has **Node** (see `scripts/e2b-template/README.md` for baking CLIs).
+Anthropic/OpenAI keys in `apps/api/.dev.vars` are used for **session titles** and optional
+`authenticate` steps for some backends.
 
 ### MCP servers
 
-MCP integrations are not wired into the new harness yet. See `AGENTS.md` →
-"MCP Servers" for the recommended way to add them as AI SDK tools.
+MCP integrations depend on the ACP backend you run in the sandbox; see backend docs.
 
 ## Troubleshooting
 

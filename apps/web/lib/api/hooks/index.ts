@@ -20,8 +20,6 @@ export {
   useSetDefaultModel,
   useAgentDefaultModel,
   useSetAgentDefaultModel,
-  useBankrEnabled,
-  useSetBankrEnabled,
 } from './use-models'
 
 // Repos

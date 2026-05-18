@@ -3,11 +3,10 @@
  *
  * The handler stays small by delegating each concern to a focused module:
  *   - {@link prepareWorkspace} ensures a sandbox + cloned repo
- *   - {@link toModelMessages} loads conversation history from the DO
- *   - {@link runChatTurn} runs the AI SDK + sandbox tool loop and streams
- *     UIMessageChunks translated to Ship SSE events
+ *   - {@link toChatTurnMessages} loads conversation history from the DO
+ *   - {@link runChatTurn} streams ACP sandbox agent output as Ship SSE events
  *
- * The agent harness lives entirely in the worker — no in-VM HTTP server.
+ * Agent runs inside the E2B VM (ACP). The Worker drives JSON-RPC over a WebSocket bridge.
  *
  * @packageDocumentation
  */
@@ -15,7 +14,7 @@
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { chatPostBodySchema, parseJsonBody } from '../lib/api-schemas'
-import { appendUserMessage, toModelMessages, type PersistedMessage } from '../lib/chat-history'
+import { appendUserMessage, toChatTurnMessages, type PersistedMessage } from '../lib/chat-history'
 import { runChatTurn } from '../lib/chat-runner'
 import { writeError, writeStatus } from '../lib/chat-stream-helpers'
 import { prepareWorkspace } from '../lib/chat-workspace'
@@ -78,7 +77,7 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
       }
 
       const history = await loadHistory(stub)
-      const messages = appendUserMessage(toModelMessages(history.slice(0, -1)), content)
+      const messages = appendUserMessage(toChatTurnMessages(history.slice(0, -1)), content)
 
       const modelId = initialMeta['model'] || undefined
 
@@ -166,14 +165,13 @@ async function maybeGenerateTitle(
   assistantPreview: string,
 ): Promise<void> {
   if (!userPrompt.trim()) return
-  if (!c.env.ANTHROPIC_API_KEY && !c.env.OPENAI_API_KEY && !c.env.BANKR_API_KEY) return
+  if (!c.env.ANTHROPIC_API_KEY && !c.env.OPENAI_API_KEY) return
   try {
     const title = await generateSessionTitle({
       userPrompt,
       assistantPreview: assistantPreview?.slice(0, 300),
       ...(c.env.ANTHROPIC_API_KEY ? { anthropicApiKey: c.env.ANTHROPIC_API_KEY } : {}),
       ...(c.env.OPENAI_API_KEY ? { openaiApiKey: c.env.OPENAI_API_KEY } : {}),
-      ...(c.env.BANKR_API_KEY ? { bankrApiKey: c.env.BANKR_API_KEY } : {}),
     })
     if (!title) return
     await c.env.DB.prepare('UPDATE chat_sessions SET title = ?, last_activity = ? WHERE id = ?')

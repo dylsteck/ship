@@ -1,118 +1,57 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { listAgents, getDefaultAgentId } from '../lib/agent-registry'
-import { getBankrRouteModels, isUserBankrEnabled } from '../lib/bankr'
+import { ACP_MODEL_IDS, acpBackendFromModelId } from '../lib/acp-types'
 import { requireJwtUserId, requireSessionOwner } from '../lib/session-authorization'
 
 const models = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
-// Default model if no preference set - Big Pickle (via OpenCode Zen)
-// Format: opencode/<model-id> per OpenCode docs
-const DEFAULT_MODEL = 'opencode/big-pickle'
+const DEFAULT_MODEL = ACP_MODEL_IDS.opencode
 
-// Fallback static model list when OpenCode is unavailable
-// Ordered by recommendation - default model first
-// OpenCode Zen models use format "opencode/<model-id>" per OpenCode docs
-const FALLBACK_MODELS = [
+const STATIC_ACP_MODELS = [
   {
-    id: 'opencode/big-pickle',
-    name: 'Big Pickle',
-    provider: 'OpenCode Zen',
-    description: 'Free stealth model optimized for coding agents (200K context)',
-    contextWindow: 200000,
-    maxTokens: 128000,
+    id: ACP_MODEL_IDS.opencode,
+    name: 'OpenCode (ACP)',
+    provider: 'ACP — OpenCode',
+    description: 'Sandbox `opencode acp` backend',
     isDefault: true,
   },
   {
-    id: 'opencode/glm-4.7-free',
-    name: 'GLM 4.7 Free',
-    provider: 'OpenCode Zen',
-    description: 'Free GLM model from Zhipu AI (128K context)',
-    contextWindow: 128000,
-    maxTokens: 64000,
+    id: ACP_MODEL_IDS.cursor,
+    name: 'Cursor Agent (ACP)',
+    provider: 'ACP — Cursor',
+    description: 'Sandbox `agent acp` backend',
   },
   {
-    id: 'opencode/claude-opus-4-6',
-    name: 'Claude Opus 4.6',
-    provider: 'OpenCode Zen',
-    description: 'Most capable Claude model — Opus 4.6 via OpenCode (200K context)',
-    contextWindow: 200000,
-    maxTokens: 32000,
+    id: ACP_MODEL_IDS.claude,
+    name: 'Claude Agent (ACP)',
+    provider: 'ACP — Claude',
+    description: 'Sandbox `claude-agent-acp` backend',
   },
   {
-    id: 'opencode/claude-opus-4-5',
-    name: 'Claude Opus 4.5',
-    provider: 'OpenCode Zen',
-    description: 'Previous-gen Opus model via OpenCode (200K context)',
-    contextWindow: 200000,
-    maxTokens: 32000,
-  },
-  {
-    id: 'opencode/claude-sonnet-4-5',
-    name: 'Claude Sonnet 4.5',
-    provider: 'OpenCode Zen',
-    description: 'Fast and capable Claude Sonnet 4.5 via OpenCode (200K context)',
-    contextWindow: 200000,
-    maxTokens: 64000,
-  },
-  {
-    id: 'anthropic/claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4',
-    provider: 'Anthropic',
-    description: 'Latest balanced Claude model',
-  },
-  {
-    id: 'anthropic/claude-opus-4-20250514',
-    name: 'Claude Opus 4',
-    provider: 'Anthropic',
-    description: 'Most capable Claude model',
-  },
-  {
-    id: 'anthropic/claude-3-5-sonnet-20241022',
-    name: 'Claude 3.5 Sonnet',
-    provider: 'Anthropic',
-    description: 'Fast and intelligent',
+    id: ACP_MODEL_IDS.codex,
+    name: 'Codex (ACP)',
+    provider: 'ACP — Codex',
+    description: 'Sandbox `codex-acp` backend',
   },
 ]
 
-// Bankr LLM Gateway models — derived from shared source in lib/bankr.ts
-const BANKR_MODELS = getBankrRouteModels()
-
-/**
- * Validate model ID against available models (with fallback)
- * Since OpenCode runs in sandbox, we just validate against fallback list
- */
 function validateModelWithFallback(modelId: string): boolean {
-  // Handle legacy IDs for backwards compatibility (without opencode/ prefix)
-  const legacyIds = ['kimi-k2.5-free', 'big-pickle', 'glm-4.7-free']
-  if (legacyIds.includes(modelId)) return true
-
-  // Check if it's the new format with opencode/ prefix
-  if (FALLBACK_MODELS.some((m) => m.id === modelId)) return true
-
-  // Check Bankr models
-  if (BANKR_MODELS.some((m) => m.id === modelId)) return true
-
-  // Check agent-specific models (e.g. codex/default)
+  if (STATIC_ACP_MODELS.some((m) => m.id === modelId)) return true
   const agents = listAgents()
   return agents.some((a) => a.models.some((m) => m.id === modelId))
 }
 
 /**
  * GET /models/available
- * List all available models (Bankr models included when enabled for the JWT user).
+ * List ACP backends as model ids for pickers.
  */
 models.get('/available', async (c) => {
   const userIdOrRes = requireJwtUserId(c)
   if (typeof userIdOrRes !== 'string') {
     return userIdOrRes
   }
-  const bankrEnabled = await isUserBankrEnabled(c.env.DB, userIdOrRes)
-  if (bankrEnabled) {
-    const zenModels = FALLBACK_MODELS.filter((m) => m.provider === 'OpenCode Zen')
-    return c.json([...zenModels, ...BANKR_MODELS])
-  }
-  return c.json(FALLBACK_MODELS)
+  return c.json(STATIC_ACP_MODELS)
 })
 
 /**
@@ -213,11 +152,10 @@ models.post('/sessions/:id', async (c) => {
       return c.json({ error: 'Invalid model ID' }, 400)
     }
 
-    // Store in SessionDO metadata
-    // Model will be used on next prompt - OpenCode picks it up from the prompt() call
     const doId = c.env.SESSION_DO.idFromName(sessionId)
     const doStub = c.env.SESSION_DO.get(doId)
     await doStub.setSessionMeta('model', model)
+    await doStub.setSessionMeta('acp_backend_kind', acpBackendFromModelId(model))
 
     return c.json({ success: true, model })
   } catch (error) {
@@ -417,62 +355,6 @@ models.post('/default-agent-model', async (c) => {
   } catch (error) {
     console.error('Error setting default agent model:', error)
     return c.json({ error: 'Failed to set default agent model' }, 500)
-  }
-})
-
-/**
- * GET /models/bankr
- * Get user's Bankr preference
- */
-models.get('/bankr', async (c) => {
-  try {
-    const userIdOrRes = requireJwtUserId(c)
-    if (typeof userIdOrRes !== 'string') {
-      return userIdOrRes
-    }
-
-    const enabled = await isUserBankrEnabled(c.env.DB, userIdOrRes)
-    return c.json({ enabled })
-  } catch (error) {
-    console.error('Error fetching Bankr preference:', error)
-    return c.json({ error: 'Failed to fetch Bankr preference' }, 500)
-  }
-})
-
-/**
- * POST /models/bankr
- * Set user's Bankr preference
- */
-models.post('/bankr', async (c) => {
-  try {
-    const userIdOrRes = requireJwtUserId(c)
-    if (typeof userIdOrRes !== 'string') {
-      return userIdOrRes
-    }
-    const userId = userIdOrRes
-
-    const { enabled } = await c.req.json<{ enabled: boolean }>()
-
-    if (typeof enabled !== 'boolean') {
-      return c.json({ error: 'enabled (boolean) is required' }, 400)
-    }
-
-    if (enabled && !c.env.BANKR_API_KEY) {
-      return c.json({ error: 'Bankr LLM Gateway is not available on this server' }, 400)
-    }
-
-    await c.env.DB.prepare(
-      `INSERT INTO user_preferences (user_id, key, value)
-       VALUES (?, ?, ?)
-       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
-    )
-      .bind(userId, 'use_bankr', String(enabled))
-      .run()
-
-    return c.json({ success: true, enabled })
-  } catch (error) {
-    console.error('Error setting Bankr preference:', error)
-    return c.json({ error: 'Failed to set Bankr preference' }, 500)
   }
 })
 

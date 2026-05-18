@@ -1,0 +1,19 @@
+{
+  "name": "@ship/acp-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/server.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/bundle.mjs",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
+  }
+}

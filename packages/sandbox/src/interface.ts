@@ -1,11 +1,10 @@
 /**
- * Sandbox interface — the small, stable contract every backend implements.
+ * Sandbox interface — stable VM IO surface (`exec`, files, tunnel URLs).
  *
- * The whole point of this layer is that the agent harness lives outside the
- * sandbox VM. The harness only knows how to call these methods; it never runs
- * inside the VM and never depends on a long-lived in-VM HTTP server.
+ * @remarks
+ * Chat intelligence now runs **inside** the VM behind ACP; the Worker mainly provisions + bridges RPC.
  *
- * Inspired by vercel-labs/open-agents `packages/sandbox/interface.ts`.
+ * @packageDocumentation
  */
 
 export type SandboxBackend = 'e2b'

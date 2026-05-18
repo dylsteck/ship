@@ -78,14 +78,11 @@ export function useSessionSync({
     }
   }, [initialSessionId, sessionParam, activeSessionId, setActiveSessionId])
 
-  // Set default model once defaults have loaded — prefer user's saved default from settings
-  // Wait for defaultModelLoading to finish so we don't pick Kimi before "big pickle" loads
+  // Pick the user's saved default once `/models/default` has settled.
   useEffect(() => {
     if (defaultModelLoading || models.length === 0 || selectedModel) return
 
-    // Match by id, or legacy format (e.g. "big-pickle" -> "opencode/big-pickle")
-    const findModel = (id: string) =>
-      models.find((m) => m.id === id || m.id === `opencode/${id}` || m.id === `bankr/${id}`)
+    const findModel = (id: string) => models.find((m) => m.id === id || m.id.endsWith(id))
     const savedDefault = defaultModelId ? findModel(defaultModelId) : null
     const markedDefault = models.find((m) => m.isDefault)
     setSelectedModel(savedDefault || markedDefault || models[0])

@@ -5,11 +5,11 @@ import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
 import type { ModelInfo, DefaultModelResponse } from '../types'
 
-// Provider display order - OpenCode Zen first, Bankr before direct providers
-const PROVIDER_ORDER = ['OpenCode Zen', 'Bankr', 'Anthropic', 'OpenAI', 'Google', 'Other']
+// Provider display order — sandbox ACP backends surface as distinct providers for grouping.
+const PROVIDER_ORDER = ['ACP — OpenCode', 'ACP — Cursor', 'ACP — Claude', 'ACP — Codex', 'Other']
 
 /**
- * Hook to fetch available AI models (Bankr models included when enabled for the JWT user).
+ * Hook to fetch available ACP backends (`ship-acp-*`) as models for pickers.
  *
  * @param fetchEnabled - When `false`, skips the request (e.g. not logged in).
  */
@@ -174,45 +174,6 @@ export function useSetDefaultModel() {
 
   return {
     setDefaultModel: trigger,
-    isSetting: isMutating,
-    error,
-  }
-}
-
-/**
- * Hook to fetch the JWT user's Bankr preference.
- */
-export function useBankrEnabled(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<{ enabled: boolean }>(
-    fetchEnabled ? apiUrl('/models/bankr') : null,
-    fetcher,
-    { revalidateOnFocus: false },
-  )
-
-  return {
-    bankrEnabled: data?.enabled ?? false,
-    isLoading,
-    isError: !!error,
-    error,
-    mutate,
-  }
-}
-
-/**
- * Mutation hook to toggle Bankr on/off
- */
-export function useSetBankrEnabled() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'set-bankr-enabled',
-    async (_key: string, { arg }: { arg: { enabled: boolean } }) => {
-      return post<{ enabled: boolean }, { success: boolean; enabled: boolean }>(apiUrl('/models/bankr'), {
-        enabled: arg.enabled,
-      })
-    },
-  )
-
-  return {
-    setBankrEnabled: trigger,
     isSetting: isMutating,
     error,
   }
