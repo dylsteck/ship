@@ -38,44 +38,72 @@ export interface AgentConfig {
   models: AgentModel[]
 }
 
-/** Registry of agent personas. Default is `ship`. */
+const ACP_AGENT_MODES: AgentMode[] = [
+  { id: 'agent', label: 'Agent' },
+  { id: 'plan', label: 'Plan' },
+]
+
+const ACP_CONTEXT_WINDOW = 200000
+
+/** Registry of ACP harnesses exposed to the composer. */
 export const AGENTS: Record<string, AgentConfig> = {
-  ship: {
-    id: 'ship',
-    name: 'Ship',
+  opencode: {
+    id: 'opencode',
+    name: 'OpenCode',
     requiredEnvVars: ['E2B_API_KEY'],
-    modes: [
-      { id: 'agent', label: 'Agent' },
-      { id: 'plan', label: 'Plan' },
-    ],
+    modes: ACP_AGENT_MODES,
     models: [
       {
         id: ACP_MODEL_IDS.opencode,
-        name: 'OpenCode (ACP)',
+        name: 'Default',
         provider: 'ACP — OpenCode',
         description: '`opencode acp` in sandbox — set OPENCODE_API_KEY on Worker for auth.',
-        contextWindow: 200000,
+        contextWindow: ACP_CONTEXT_WINDOW,
       },
+    ],
+  },
+  cursor: {
+    id: 'cursor',
+    name: 'Cursor Agent',
+    requiredEnvVars: ['E2B_API_KEY'],
+    modes: ACP_AGENT_MODES,
+    models: [
       {
         id: ACP_MODEL_IDS.cursor,
-        name: 'Cursor Agent (ACP)',
+        name: 'Default',
         provider: 'ACP — Cursor',
         description: '`agent acp` — CURSOR_API_KEY / CURSOR_AUTH_TOKEN on Worker per Cursor docs.',
-        contextWindow: 200000,
+        contextWindow: ACP_CONTEXT_WINDOW,
       },
+    ],
+  },
+  claude: {
+    id: 'claude',
+    name: 'Claude Agent',
+    requiredEnvVars: ['E2B_API_KEY'],
+    modes: ACP_AGENT_MODES,
+    models: [
       {
         id: ACP_MODEL_IDS.claude,
-        name: 'Claude Agent (ACP)',
+        name: 'Default',
         provider: 'ACP — Claude',
         description: '`claude-agent-acp` binary in template; Claude auth per upstream docs.',
-        contextWindow: 200000,
+        contextWindow: ACP_CONTEXT_WINDOW,
       },
+    ],
+  },
+  codex: {
+    id: 'codex',
+    name: 'Codex',
+    requiredEnvVars: ['E2B_API_KEY'],
+    modes: ACP_AGENT_MODES,
+    models: [
       {
         id: ACP_MODEL_IDS.codex,
-        name: 'Codex (ACP)',
+        name: 'Default',
         provider: 'ACP — Codex',
         description: '`codex-acp` in sandbox — typically OPENAI_API_KEY for Worker auth negotiation.',
-        contextWindow: 200000,
+        contextWindow: ACP_CONTEXT_WINDOW,
       },
     ],
   },
@@ -90,5 +118,5 @@ export function listAgents(): AgentConfig[] {
 }
 
 export function getDefaultAgentId(): string {
-  return 'ship'
+  return 'opencode'
 }

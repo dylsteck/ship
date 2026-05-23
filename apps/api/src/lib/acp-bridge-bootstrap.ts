@@ -14,8 +14,6 @@ import { ACP_BRIDGE_BUNDLE } from '../generated/acp-bridge-bundled'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 
 export const ACP_RELAY_PORT_DEFAULT = 9847
-const ACP_RELAY_PORT_MIN = 10_000
-const ACP_RELAY_PORT_SPAN = 20_000
 
 function randomHex(bytes: number): string {
   const u = new Uint8Array(bytes)
@@ -42,12 +40,6 @@ function shellExport(key: string, value: string | undefined): string {
   if (!value) return ''
   const escaped = value.replace(/'/g, `'\\''`)
   return `export ${key}='${escaped}'`
-}
-
-function randomPort(): number {
-  const u = new Uint32Array(1)
-  crypto.getRandomValues(u)
-  return ACP_RELAY_PORT_MIN + (u[0] % ACP_RELAY_PORT_SPAN)
 }
 
 function healthUrl(httpsOrigin: string, token: string): string {
@@ -94,18 +86,14 @@ export async function ensureAcpBridgeReady(input: {
   const domainFn = input.sandbox.domain
   if (!domainFn) throw new Error('Sandbox backend missing domain() — cannot reach ACP bridge')
 
-  let portStr = meta['acp_relay_port'] || String(ACP_RELAY_PORT_DEFAULT)
+  const portStr = meta['acp_relay_port'] || String(ACP_RELAY_PORT_DEFAULT)
   let port = Number.parseInt(portStr, 10)
   if (!Number.isFinite(port)) port = ACP_RELAY_PORT_DEFAULT
 
-  let httpsOrigin = domainFn.call(input.sandbox, port)
+  const httpsOrigin = domainFn.call(input.sandbox, port)
   if (await checkBridgeHealth({ httpsOrigin, token, workingDirectory: input.workingDirectory })) {
     return { httpsOrigin, token, port }
   }
-
-  port = randomPort()
-  portStr = String(port)
-  httpsOrigin = domainFn.call(input.sandbox, port)
 
   await patchMeta(input.stub, { acp_relay_port: portStr })
   await input.sandbox.writeFile('/tmp/ship-acp-bridge.mjs', ACP_BRIDGE_BUNDLE, 'utf-8')
@@ -122,7 +110,18 @@ export async function ensureAcpBridgeReady(input: {
     .filter(Boolean)
     .join(' ; ')
 
-  const startCmd = `${exportsPrefix ? `${exportsPrefix} ; ` : ''}nohup node /tmp/ship-acp-bridge.mjs --port ${port} > /tmp/acp-bridge.log 2>&1 & sleep 1 ; echo bridge_started`
+  const startCmd = [
+    `pkill -f '[s]hip-acp-bridge.mjs' 2>/dev/null || true`,
+    `rm -f /tmp/acp-bridge.pid`,
+    `: > /tmp/acp-bridge.log`,
+    exportsPrefix,
+    `nohup node /tmp/ship-acp-bridge.mjs --port ${port} > /tmp/acp-bridge.log 2>&1 & echo $! > /tmp/acp-bridge.pid`,
+    `sleep 1`,
+    `kill -0 $(cat /tmp/acp-bridge.pid) 2>/dev/null || { cat /tmp/acp-bridge.log ; exit 1 ; }`,
+    `echo bridge_started`,
+  ]
+    .filter(Boolean)
+    .join(' ; ')
 
   const run = await input.sandbox.exec(startCmd, input.workingDirectory, 120_000)
   if (!run.success) {

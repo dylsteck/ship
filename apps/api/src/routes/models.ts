@@ -237,7 +237,10 @@ models.get('/default-agent', async (c) => {
       .bind(userId, 'default_agent')
       .first<{ value: string }>()
 
-    const agentId = result?.value || getDefaultAgentId()
+    const agents = listAgents()
+    const storedAgentId = result?.value
+    const agentId =
+      storedAgentId && agents.some((agent) => agent.id === storedAgentId) ? storedAgentId : getDefaultAgentId()
 
     return c.json({ agentId })
   } catch (error) {

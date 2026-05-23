@@ -14,10 +14,15 @@ import { cn } from '@ship/ui/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Tick02Icon } from '@hugeicons/core-free-icons'
 import { useComposer } from './composer-context'
+import type { AgentInfo, ModelInfo } from '@/lib/api/types'
 
 function shortenModelName(name: string): string {
   // "Claude Opus 4.6" → "Opus 4.6", "Claude Sonnet 4.6" → "Sonnet 4.6"
   return name.replace(/^Claude\s+/i, '')
+}
+
+function selectedModelForAgent(agent: AgentInfo | null, selectedModel: ModelInfo | null): ModelInfo | undefined {
+  return agent?.models?.find((model) => model.id === selectedModel?.id)
 }
 
 export function AgentModelSelector() {
@@ -33,21 +38,8 @@ export function AgentModelSelector() {
   } = useComposer()
 
   const loading = agentsLoading || modelsLoading
-
-  // Build trigger label: show short model name (e.g. "Opus 4.6")
-  let triggerLabel = 'Select agent'
-  if (loading) {
-    triggerLabel = 'Loading...'
-  } else if (selectedAgent) {
-    const agentModels = selectedAgent.models ?? []
-    if (selectedModel) {
-      triggerLabel = shortenModelName(selectedModel.name)
-    } else if (agentModels.length === 1) {
-      triggerLabel = shortenModelName(agentModels[0].name)
-    } else {
-      triggerLabel = selectedAgent.name
-    }
-  }
+  const triggerHarness = loading ? 'Loading...' : selectedAgent?.name || 'Select harness'
+  const triggerModel = selectedModelForAgent(selectedAgent, selectedModel)?.name ?? selectedModel?.name
 
   return (
     <DropdownMenu>
@@ -57,9 +49,12 @@ export function AgentModelSelector() {
             variant="ghost"
             size="sm"
             disabled={isStreaming}
-            className="group h-6 gap-0.5 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent! hover:shadow-none! disabled:opacity-60 disabled:pointer-events-none max-w-full overflow-hidden"
+            className="group h-6 gap-1 px-0 py-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent! hover:shadow-none! disabled:opacity-60 disabled:pointer-events-none max-w-full overflow-hidden"
           >
-            <span className="truncate text-xs">{triggerLabel}</span>
+            <span className="truncate text-xs font-medium">{triggerHarness}</span>
+            {triggerModel && !loading && (
+              <span className="truncate text-xs text-muted-foreground/70">/ {shortenModelName(triggerModel)}</span>
+            )}
             <svg
               className="size-2.5 shrink-0 opacity-40 transition-opacity duration-150 group-hover:opacity-100"
               fill="none"
@@ -71,67 +66,60 @@ export function AgentModelSelector() {
           </Button>
         }
       />
-      <DropdownMenuContent align="start" className="w-[180px]">
-        {agents.map((agent, agentIdx) => {
+      <DropdownMenuContent align="start" className="w-[220px]">
+        {agents.map((agent) => {
           const agentModels = agent.models ?? []
           const isAgentSelected = selectedAgent?.id === agent.id
+          const selectedAgentModel = selectedModelForAgent(agent, selectedModel)
 
           return (
             <div key={agent.id}>
-              {agentModels.length > 1 ? (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger
-                    className={cn(
-                      'cursor-pointer [&>svg.ml-auto]:hidden',
-                      isAgentSelected && 'bg-accent',
-                    )}
-                  >
-                    <span className="text-xs">{agent.name}</span>
-                    {isAgentSelected && (
-                      <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="shrink-0 text-foreground ml-auto mr-1" />
-                    )}
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-[200px]">
-                    {agentModels.map((model) => {
-                      const isModelSelected = isAgentSelected && selectedModel?.id === model.id
-                      return (
-                        <DropdownMenuItem
-                          key={model.id}
-                          className={cn(
-                            'flex items-center justify-between cursor-pointer',
-                            isModelSelected && 'bg-accent',
-                          )}
-                          onClick={() => {
-                            if (!isAgentSelected) onAgentSelect(agent)
-                            onModelSelect(model)
-                          }}
-                        >
-                          <span className="truncate text-xs">{model.name}</span>
-                          {isModelSelected && (
-                            <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="shrink-0 text-foreground" />
-                          )}
-                        </DropdownMenuItem>
-                      )
-                    })}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              ) : (
-                <DropdownMenuItem
-                  className={cn(
-                    'flex items-center justify-between cursor-pointer',
-                    isAgentSelected && 'bg-accent',
-                  )}
-                  onClick={() => {
-                    onAgentSelect(agent)
-                    if (agentModels.length === 1) onModelSelect(agentModels[0])
-                  }}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  className={cn('cursor-pointer gap-2 [&>svg.ml-auto]:hidden', isAgentSelected && 'bg-accent')}
                 >
-                  <span className="truncate text-xs">{agent.name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium">{agent.name}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {selectedAgentModel?.name ?? 'Choose model'}
+                    </span>
+                  </span>
                   {isAgentSelected && (
                     <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="shrink-0 text-foreground" />
                   )}
-                </DropdownMenuItem>
-              )}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-[220px]">
+                  {agentModels.map((model) => {
+                    const isModelSelected = isAgentSelected && selectedModel?.id === model.id
+                    return (
+                      <DropdownMenuItem
+                        key={model.id}
+                        className={cn(
+                          'flex items-center justify-between gap-2 cursor-pointer',
+                          isModelSelected && 'bg-accent',
+                        )}
+                        onClick={() => {
+                          if (!isAgentSelected) onAgentSelect(agent)
+                          onModelSelect(model)
+                        }}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs">{model.name}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">{model.provider}</span>
+                        </span>
+                        {isModelSelected && (
+                          <HugeiconsIcon
+                            icon={Tick02Icon}
+                            size={14}
+                            strokeWidth={2.5}
+                            className="shrink-0 text-foreground"
+                          />
+                        )}
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </div>
           )
         })}
