@@ -42,13 +42,18 @@ export async function getChatEvents(sessionId: string): Promise<RawEvent[]> {
   return res.json()
 }
 
-export async function sendChatMessage(sessionId: string, content: string, mode?: string): Promise<Response> {
+export async function sendChatMessage(
+  sessionId: string,
+  content: string,
+  mode?: string,
+  model?: string | null,
+): Promise<Response> {
   const url = `${API_URL}/chat/${encodeURIComponent(sessionId)}`
 
   return fetch(url, {
     method: 'POST',
     headers: chatFetchHeaders({ Accept: 'text/event-stream' }),
-    body: JSON.stringify({ content, mode }),
+    body: JSON.stringify({ content, mode, ...(model ? { model } : {}) }),
     cache: 'no-store',
   })
 }

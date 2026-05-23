@@ -77,11 +77,9 @@ export async function prepareWorkspace(input: PrepareWorkspaceInput): Promise<Pr
     if (!cloneResult.ok) return cloneResult
   }
 
-  const workingDirectory = input.meta['repo_url'] || repoMeta ? `${DEFAULT_WORKING_DIRECTORY}/repo` : DEFAULT_WORKING_DIRECTORY
-  const sandbox = await connectSandbox(
-    { type: 'e2b', sandboxId },
-    { apiKey: input.env.E2B_API_KEY, workingDirectory },
-  )
+  const workingDirectory =
+    input.meta['repo_url'] || repoMeta ? `${DEFAULT_WORKING_DIRECTORY}/repo` : DEFAULT_WORKING_DIRECTORY
+  const sandbox = await connectSandbox({ type: 'e2b', sandboxId }, { apiKey: input.env.E2B_API_KEY, workingDirectory })
 
   const branchName = input.meta['current_branch'] || repoMeta?.branchName
   return {
@@ -112,7 +110,8 @@ async function ensureSandboxId(
       error: {
         code: 'sandbox_provisioning_failed',
         message:
-          input.meta['sandbox_error'] || 'Sandbox provisioning failed. Try refreshing the page or starting a new session.',
+          input.meta['sandbox_error'] ||
+          'Sandbox provisioning failed. Try refreshing the page or starting a new session.',
         retryable: true,
       },
     }
@@ -179,8 +178,7 @@ async function cloneRepoOrError(
       ok: false,
       error: {
         code: 'github_not_connected',
-        message:
-          'GitHub is not connected. Connect GitHub in Settings to clone this repository.',
+        message: 'GitHub is not connected. Connect GitHub in Settings to clone this repository.',
         retryable: false,
       },
     }
@@ -203,8 +201,7 @@ async function cloneRepoOrError(
       ok: false,
       error: {
         code: 'clone_failed',
-        message:
-          cloneError instanceof Error ? cloneError.message : 'Failed to clone repository.',
+        message: cloneError instanceof Error ? cloneError.message : 'Failed to clone repository.',
         retryable: false,
       },
     }
@@ -222,6 +219,7 @@ async function cloneRepoOrError(
       body: JSON.stringify({
         repo_url: repoUrl,
         current_branch: branchName,
+        branch_name: branchName,
         base_branch: repo.baseBranch,
         repo_path: repoPath,
       }),

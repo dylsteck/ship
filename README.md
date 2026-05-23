@@ -1,10 +1,10 @@
 # Ship
 
-A background agent platform for building software. Sign in with GitHub, chat with an AI coding agent that runs in the Cloudflare Worker and uses an E2B sandbox as a tool. The agent writes code, runs tests, and opens PRs while you focus on other things.
+A background agent platform for building software. Sign in with GitHub, chat with an AI coding agent that runs **inside an E2B sandbox** via the **Agent Client Protocol (ACP)**. The Worker orchestrates workspace setup, opens a **WebSocket bridge** to an in-VM relay (`ship-acp-bridge`), and streams assistant output over SSE. The agent writes code, runs tests, and opens PRs while you focus on other things.
 
 **Core value**: The agent works autonomously in the background on real coding tasks — you come back to working code, not just suggestions.
 
-**Architecture in one line**: the agent harness lives outside the VM. The sandbox is just a tool the agent calls (`read`, `write`, `edit`, `bash`, `grep`, `glob`, `todo_write`, `ask_user_question`).
+**Architecture in one line**: ACP-compatible backends (`codex-acp`, `claude-agent-acp`, Cursor `agent acp`, `opencode acp`) run **in the sandbox** with `cwd` on the cloned repo; the Cloudflare Worker is a thin orchestrator (no AI SDK tool loop).
 
 Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/post/why-we-built-our-background-agent) and Vercel Labs' [open-agents](https://github.com/vercel-labs/open-agents) (which informed the out-of-VM agent design and the AI SDK + Streamdown streaming approach). Built by [@dylsteck](https://github.com/dylsteck).
 
@@ -24,7 +24,9 @@ Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/p
 - **Cloudflare account** (free tier)
 - **GitHub account** (for OAuth)
 - **E2B account** (for sandboxes) — [e2b.dev](https://e2b.dev)
-- **Anthropic API key** (for Claude models — default) or **OpenAI API key** (for GPT models); at least one is required
+- **Anthropic and/or OpenAI API keys** (optional but recommended) — session **title generation** uses REST from the Worker; ACP backends may also use these keys for `authenticate` (e.g. Codex / Claude flows).
+- **ACP backend CLIs** in your E2B image (or `npx` at cold start) — see `scripts/e2b-template/README.md`.
+- Optional: **Cursor** (`CURSOR_API_KEY` / `CURSOR_AUTH_TOKEN`) and **OpenCode** (`OPENCODE_API_KEY`) on the Worker for single-tenant auth injection into the sandbox during bridge bootstrap.
 
 ### 1. Clone and install
 
@@ -70,7 +72,9 @@ Edit `.dev.vars`:
 | `API_SECRET`                      | `openssl rand -hex 32` (must match web app expectations)                |
 | `SESSION_SECRET`                  | Same as web app; for JWT verification                                   |
 | `ALLOWED_ORIGINS`                 | `http://localhost:3000`                                                 |
-| `OPENAI_API_KEY`                  | _(optional)_ [platform.openai.com](https://platform.openai.com/api-keys) — for GPT models |
+| `OPENAI_API_KEY`                  | _(optional)_ Codex / OpenAI-auth paths                                              |
+| `CURSOR_API_KEY` / `CURSOR_AUTH_TOKEN` | _(optional)_ Cursor `agent acp` auth                                         |
+| `OPENCODE_API_KEY`                | _(optional)_ OpenCode `opencode acp`                                              |
 | `LOGIN_RESTRICTED_TO_SINGLE_USER` | _(optional)_ `true` to restrict login to one user                       |
 | `ALLOWED_USER_ID`                 | _(optional)_ Your user ID from `users` table (required when restricted) |
 
@@ -158,15 +162,13 @@ pnpm dev
 1. **Sign in** with GitHub OAuth.
 2. **Create a session** linked to a GitHub repo.
 3. **Chat** — your prompt hits the Cloudflare Worker.
-4. The Worker runs an **AI SDK `streamText` loop** (`@ship/agent`). Tool calls
-   — `read`, `write`, `edit`, `bash`, `grep`, `glob`, `todo_write`,
-   `ask_user_question` — go through `@ship/sandbox` to a per-session **E2B
-   sandbox**. Models are Anthropic/OpenAI direct over `fetch`.
-5. AI SDK chunks are translated to Ship's existing SSE format and streamed
-   back to the browser, where Streamdown renders the assistant message with
-   per-token fade-in animation.
-6. After the loop the Worker persists the assistant message and (optionally)
-   triggers auto-commit / PR via the existing GitHub flow.
+4. The Worker **drops a bundled `ship-acp-bridge` script** into the sandbox, starts it on a localhost port, and waits for `/healthz`.
+5. It opens a **TLS WebSocket** (E2B port forward) to the bridge with a per-session **bearer token** (`acp_bridge_token` in SessionDO meta; also passed as `?token=` for Worker WebSocket clients).
+6. The bridge **spawns** the selected backend (`codex` \| `claude` \| `cursor` \| `opencode`) and forwards **NDJSON JSON-RPC** lines between the Worker and the child stdio.
+7. ACP notifications are translated into Ship’s existing SSE (`message.part.updated`) for the web UI.
+8. After the turn the Worker persists the assistant message and (optionally) triggers auto-commit / PR via the GitHub flow.
+
+Bridge source: `packages/acp-bridge` (also embedded into `apps/api/src/generated/acp-bridge-bundled.ts` via `pnpm` `pretype-check` / `bundle:acp-bridge`).
 
 ---
 
@@ -178,10 +180,10 @@ For a detailed architecture overview, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 graph TD
     A[Next.js Web] -->|SSE| B[Cloudflare Worker]
     B -->|Durable Objects| C[Session State]
-    B -->|streamText loop| D["@ship/agent (AI SDK)"]
-    D -->|fetch| M[Anthropic / OpenAI]
-    D -->|tool calls| S["@ship/sandbox"]
-    S -->|E2B SDK| E[E2B Sandbox VM]
+    B -->|WebSocket NDJSON| D[ship-acp-bridge in E2B]
+    D -->|stdio ACP| E[Codex / Claude / Cursor / OpenCode]
+    E -->|cwd repo| F[Cloned workspace]
+    B -->|optional title LLM| M[Anthropic / OpenAI REST]
     B -->|GitHub API| G[PRs]
 ```
 
@@ -195,8 +197,8 @@ graph TD
 | Database  | Cloudflare D1 (SQLite)                                                |
 | Auth      | GitHub OAuth (Arctic), JWT (jose)                                     |
 | Sandboxes | E2B (custom template with common dev tools pre-baked)                 |
-| Agent     | `@ship/agent` (AI SDK `streamText` + tools) — runs in the Worker      |
-| Models    | Anthropic + OpenAI direct (`@ai-sdk/anthropic`, `@ai-sdk/openai`)     |
+| Agent     | **ACP in sandbox** (`packages/acp-bridge` + backend CLIs) — Worker is orchestrator only |
+| Models    | Picker ids `ship-acp-{opencode,cursor,claude,codex}` (see `agent-registry.ts`)      |
 | Real-time | SSE, WebSockets                                                       |
 
 ### Project structure
@@ -214,19 +216,20 @@ ship/
 │       │   ├── routes/       # Hono routes (chat, sessions, sandbox, models, git, …)
 │       │   ├── durable-objects/session.ts
 │       │   └── lib/
-│       │       ├── chat-runner.ts          # Drives one turn (agent + chunk translator)
-│       │       ├── chat-workspace.ts       # Sandbox + repo provisioning
-│       │       ├── chat-history.ts
-│       │       ├── chat-stream-helpers.ts
-│       │       ├── agent-chunks/           # AI SDK chunk → Ship SSE translator
-│       │       ├── agent-registry.ts
-│       │       └── e2b.ts
+│       │       ├── chat-runner.ts          # Re-exports ACP turn driver
+│       │       ├── chat-workspace.ts       # Sandbox + clone
+│       │       ├── acp-chat-runner.ts      # ACP handshake + streaming turn
+│       │       ├── acp-bridge-bootstrap.ts # Inject bridge + poll health
+│       │       ├── acp-json-rpc.ts         # WS multiplexer + permission stubs
+│       │       ├── generated/              # acp-bridge-bundled (esbuild output)
 │       ├── migrations/
 │       └── wrangler.toml
+├── scripts/
+│   └── e2b-template/        # Notes for baking CLIs into a custom E2B image
 ├── e2b/                      # Custom E2B template (Dockerfile)
 ├── e2b.toml
 └── packages/
-    ├── agent/                # @ship/agent — out-of-VM agent harness (AI SDK)
+    ├── acp-bridge/           # @ship/acp-bridge — in-VM WS ↔ stdio relay
     ├── sandbox/              # @ship/sandbox — Sandbox interface + E2B impl
     ├── types/                # @ship/types — shared types
     └── ui/                   # @ship/ui — shared UI components

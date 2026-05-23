@@ -89,32 +89,34 @@ ship/
 │           │   ├── connectors.ts                 # GitHub connector status/enable/disable
 │           │   └── terminal.ts                   # Terminal access
 │           ├── lib/
-│           │   ├── chat-runner.ts                # Run one turn: agent.stream + chunk → Ship SSE
-│           │   ├── chat-workspace.ts             # Provision sandbox + clone repo for a turn
-│           │   ├── chat-history.ts               # Persisted message → AI SDK ModelMessage
-│           │   ├── chat-stream-helpers.ts        # writeStatus / writeError / writeDone
-│           │   ├── agent-chunks/                 # AI SDK UIMessageChunk → Ship SSE translator
-│           │   │   ├── index.ts                  # Public createAgentChunkTranslator
-│           │   │   ├── state.ts                  # Per-turn translator state
-│           │   │   ├── events.ts                 # SSE event builders
-│           │   │   ├── text-handlers.ts          # text + reasoning chunks
-│           │   │   └── tool-handlers.ts          # tool-input/output chunks
-│           │   ├── agent-registry.ts             # UI persona + model picker entries
-│           │   ├── e2b.ts                        # Raw E2B SDK wrappers (provision/pause/resume)
-│           │   ├── session-authorization.ts      # JWT user id + D1 session ownership
-│           │   └── api-schemas.ts                # Zod + parseJsonBody for route bodies
+│           │   ├── acp-chat-runner.ts           # One turn — ACP JSON-RPC over bridge → Ship SSE
+│           │   ├── acp-bridge-bootstrap.ts      # Bundled bridge drop-in + `/healthz` polling
+│           │   ├── acp-json-rpc.ts              # WebSocket envelopes + JSON-RPC multiplexing
+│           │   ├── chat-runner.ts               # Facade re-export (stable import path)
+│           │   ├── chat-workspace.ts            # Sandbox + repo provisioning for a turn
+│           │   ├── chat-history.ts              # Persisted rows → `ChatTurnMessage[]`
+│           │   ├── chat-stream-helpers.ts       # `writeStatus` / `writeError` / `writeDone`
+│           │   ├── agent-chunks/                # ACP notifications → Ship SSE
+│           │   │   ├── index.ts                 # Public exports
+│           │   │   ├── acp-translator.ts
+│           │   │   ├── events.ts
+│           │   │   └── state.ts
+│           │   ├── agent-registry.ts            # Personas + `ship-acp-*` picker entries
+│           │   ├── acp-types.ts                 # `AcpBackendKind` + stable model ids
+│           │   ├── generate-session-title.ts    # REST title helper (Anthropic → OpenAI)
+│           │   ├── e2b.ts                       # Raw E2B SDK wrappers (provision / pause / resume)
+│           │   ├── session-authorization.ts     # JWT user id + D1 session ownership
+│           │   └── api-schemas.ts               # Zod + `parseJsonBody` for route bodies
+│           ├── workflows/
+│           │   └── ship-acp-bootstrap.ts        # Cloudflare Workflow scaffold (bootstrap retries)
 │           ├── durable-objects/
-│           │   └── session.ts                    # Session Durable Object (SQLite + WS)
-│           └── env.d.ts                          # Worker env bindings
+│           │   └── session.ts                   # Session Durable Object (SQLite + WS)
+│           └── env.d.ts                         # Worker env bindings
 └── packages/
-    ├── agent/                        # @ship/agent — out-of-VM agent harness
+    ├── acp-bridge/                 # `ship-acp-bridge` sources (esbuild-bundled into the Worker)
     │   └── src/
-    │       ├── agent.ts              # runAgentStep wrapper around streamText
-    │       ├── system-prompt.ts      # cacheable system prompt builder
-    │       ├── cache-control.ts      # Anthropic prompt-cache markers
-    │       ├── models.ts             # Anthropic + OpenAI provider resolution
-    │       └── tools/                # read / write / edit / bash / grep / glob / todo / ask
-    ├── sandbox/                      # @ship/sandbox — Sandbox interface + E2B impl
+    │       └── server.ts           # Localhost HTTP + WS → NDJSON stdio
+    ├── sandbox/                    # @ship/sandbox — Sandbox interface + E2B impl
     │   └── src/
     │       ├── interface.ts          # Sandbox + SandboxState types
     │       ├── e2b.ts                # E2BSandboxAdapter
@@ -125,83 +127,41 @@ ship/
 
 ## Agent Architecture
 
-Ship runs the agent **outside** the sandbox VM. The Cloudflare Worker drives an
-AI SDK `streamText` loop; tools call into a small {@link Sandbox} interface
-backed by E2B. There is **no in-VM HTTP server** and the legacy
-[`sandbox-agent`](https://github.com/rivet-dev/sandbox-agent) dependency has
-been removed.
+Ship runs **ACP agent CLIs inside the E2B sandbox**. The Worker connects to **`ship-acp-bridge`** over **WSS**; the bridge spawns the selected backend and forwards **NDJSON JSON-RPC** on stdio. Tooling and file access are owned by that backend (not a Worker-side AI SDK loop).
 
 ### How a chat turn runs
 
-1. The web app `POST /chat/:sessionId`s a user message to the Worker.
-2. {@link prepareWorkspace} ensures a sandbox exists and the repo is cloned,
-   reusing GitHub credential brokering through `lib/git-workflow.ts`.
-3. The Worker connects to the sandbox via `@ship/sandbox`'s
-   `connectSandbox(state)` (E2B SDK under the hood) and asks `@ship/agent`
-   for a streaming run.
-4. `streamText` (AI SDK) calls Anthropic/OpenAI directly; tool calls execute
-   in the Worker and reach the VM only through `sandbox.exec`/`readFile`/
-   `writeFile`.
-5. AI SDK `UIMessageChunk`s are translated to Ship's existing SSE event
-   format by `lib/agent-chunks` and streamed to the client.
-6. After the loop the assistant message is persisted to the SessionDO and a
-   `step-finish` + `session.idle` + `done` event sequence is emitted.
+1. The web app sends `POST /chat/:sessionId` with `{ content, mode? }`.
+2. {@link prepareWorkspace} ensures a sandbox exists and the repo is cloned.
+3. {@link ensureAcpBridgeReady} writes the bundled bridge to `/tmp`, starts it, polls `/healthz`.
+4. `acp-json-rpc` opens the WebSocket, sends `ctl.spawn` with the backend kind from `model` / `ship-acp-*` ids.
+5. JSON-RPC `initialize` → `authenticate` (per-backend) → `session/new` or `session/load` → `session/prompt`.
+6. Notifications are translated by {@link createAcpNotificationTranslator} into Ship SSE.
+7. Assistant text is persisted; `step-finish`, `session.idle`, `done` close the stream.
 
-### Tools (`packages/agent/src/tools`)
+### ACP backends (spawn targets)
 
-| Tool | Purpose |
-|------|---------|
-| `read` | Read a file from the workspace (with offset/limit + line numbers) |
-| `write` | Overwrite a file (creates parent dirs) |
-| `edit` | Unique-string replacement (uniqueness checked, optional `replaceAll`) |
-| `bash` | Non-interactive shell command (dangerous patterns gated behind `needsApproval`) |
-| `grep` | ripgrep-with-grep-fallback search, bounded to 200 results |
-| `glob` | Workspace glob, sorted by mtime, capped at 500 results |
-| `todo_write` | Update the agent's plan; UI mirrors the list in the side panel |
-| `ask_user_question` | Pause the agent and ask the user (next user message resumes the turn) |
+| Backend | Typical CLI | Notes |
+|---------|-------------|--------|
+| OpenCode | `opencode acp` | `OPENCODE_API_KEY` optional on Worker |
+| Cursor | `agent acp` | Cursor auth per docs |
+| Claude | `claude-agent-acp` | Anthropic env optional |
+| Codex | `codex-acp` | Often `OPENAI_API_KEY` |
 
-Plan mode (`mode: 'plan'` on the request body) drops `write`/`edit`.
+See `scripts/e2b-template/README.md` for baking CLIs into a custom template.
 
-### E2B template
+### Supported models (picker)
 
-The custom E2B template (`e2b/Dockerfile`, id in `apps/api/src/lib/e2b.ts`)
-pre-bakes node, bun, jq, ripgrep and build-essentials so workspace tools have
-fast startup. It no longer pre-bakes any in-VM agent binary.
-
-```bash
-npm i -g @e2b/cli
-e2b auth login
-e2b template build
-# Copy the template id into apps/api/src/lib/e2b.ts: E2B_TEMPLATE_ID
-```
-
-### Supported models
-
-`apps/api/src/lib/agent-registry.ts` lists UI personas with their model
-picker entries. `@ship/agent`'s `resolveModel(id, env)` knows how to build a
-language model from `<provider>/<model>` ids:
-
-| Provider | Models | Required env |
-|----------|--------|--------------|
-| `anthropic/*` | `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022` | `ANTHROPIC_API_KEY` |
-| `openai/*` | `gpt-4o`, `gpt-4o-mini` | `OPENAI_API_KEY` |
+`agent-registry.ts` / `GET /models/available` expose **`ship-acp-opencode`**, **`ship-acp-cursor`**, **`ship-acp-claude`**, **`ship-acp-codex`**.
 
 ### Event flow
 
 ```
-User prompt → Cloudflare Worker → @ship/agent.runAgentStep → streamText
-                                       │
-                                       ├─ tools → @ship/sandbox.exec/read/write
-                                       │           │
-                                       │           └─ E2B Sandbox VM
-                                       │
-                                       └─ UIMessageChunks
-                                             │
-                                             ▼
-                                   agent-chunks translator
-                                             │
-                                             ▼
-              Frontend ← SSE stream (message.part.updated / step-finish / session.idle / done)
+User prompt → Worker → bridge (WSS) → ACP backend (stdio) → repo workspace
+                │                               │
+                │◄── ACP notifications ─────────┘
+                ▼
+      ACP notification translator → SSE → web
 ```
 
 ## Frontend Architecture
@@ -370,34 +330,28 @@ The API is a Cloudflare Worker (`apps/api/`) with Hono routing.
 | `middleware/auth.ts` | Bearer parsing: session JWT → `authKind: 'user'` + `userId`, or `API_SECRET` → `authKind: 'service'`. |
 | `lib/session-authorization.ts` | `requireJwtUserId`, `requireSessionOwner` — user-scoped routes must use the session JWT, not `API_SECRET` alone. |
 | `lib/api-schemas.ts` | Zod request bodies + `parseJsonBody` (shape validation; auth remains separate). |
-| `lib/chat-runner.ts` | One turn: `runAgentStep` (from `@ship/agent`) → translator → SSE → DO broadcast → persist. |
+| `lib/chat-runner.ts` | Re-exports `runChatTurn` from `acp-chat-runner`. |
+| `lib/acp-chat-runner.ts` | ACP JSON-RPC turn over bridge WebSocket. |
 | `lib/chat-workspace.ts` | Sandbox + repo provisioning for a turn (waits for sandbox, clones if needed). |
-| `lib/chat-history.ts` | Persisted Ship messages → AI SDK `ModelMessage[]`. |
+| `lib/chat-history.ts` | Persisted Ship messages → `{role, content}[]` for prompt assembly. |
 | `lib/chat-stream-helpers.ts` | Tiny SSE writers: `writeStatus`, `writeError`, `writeDone`, `writeSessionIdle`. |
-| `lib/agent-chunks/` | AI SDK `UIMessageChunk` → Ship SSE event translator (split by concern: text / tool / events / state). |
+| `lib/agent-chunks/` | ACP JSON-RPC notifications → Ship SSE (`createAcpNotificationTranslator`). |
 | `lib/agent-registry.ts` | UI persona + model picker entries. Default persona is `ship`. |
 | `lib/e2b.ts` | Raw E2B SDK wrappers used by `chat-workspace` and `routes/sandbox`. |
 | `durable-objects/session.ts` | Session Durable Object — message + meta + event SQLite, websocket fanout. |
 
-### AI SDK chunk → Ship SSE translation
+### ACP notification → Ship SSE translation
 
-`lib/agent-chunks` is a stateful translator that maps AI SDK
-`UIMessageChunk`s to Ship's existing SSE event format. The frontend keeps its
-SSE adapter unchanged.
+`lib/agent-chunks/createAcpNotificationTranslator` maps ACP session/update-style
+notifications (heuristic text extraction) into `message.part.updated` SSE. Token
+totals on `step-finish` are often zero — ACP backends do not always report usage
+to the Worker.
 
-| AI SDK chunk | Ship SSE event |
-|--------------|----------------|
-| `text-start` | (no-op — opens a buffer) |
-| `text-delta` | `message.part.updated` (text + delta) |
-| `reasoning-start` / `reasoning-delta` | `message.part.updated` (reasoning + delta) |
-| `tool-input-start` | `message.part.updated` (tool, status=pending) |
-| `tool-input-delta` | `message.part.updated` (tool, status=running, partial JSON) |
-| `tool-input-available` | `message.part.updated` (tool, status=running, parsed input) |
-| `tool-output-available` | `message.part.updated` (tool, status=completed) |
-| `tool-output-error` | `message.part.updated` (tool, status=error) |
-| `error` | `session.error` |
-| (after loop) `result.totalUsage` | `message.part.updated` (step-finish, with token totals) |
-| (after loop) | `session.idle` + `done` |
+| Source | Ship SSE event |
+|--------|----------------|
+| `session/update` (text delta) | `message.part.updated` |
+| RPC error | `session.error` |
+| End of turn | `step-finish` (zeros) + `session.idle` + `done` |
 
 ### Worker authentication and API clients
 
@@ -444,8 +398,8 @@ interfaces, classes, functions, top-level constants. Tags we actually use:
 Avoid noisy comments on self-explanatory private code; small private
 helpers can stay uncommented if their name is honest.
 
-When in doubt, look at `packages/agent/src/agent.ts`, `packages/sandbox/src/interface.ts`,
-`apps/api/src/lib/agent-chunks/*.ts`, and `apps/web/lib/github.ts` for the
+When in doubt, look at `packages/acp-bridge/src/server.ts`, `packages/sandbox/src/interface.ts`,
+`apps/api/src/lib/agent-chunks/acp-translator.ts`, and `apps/web/lib/github.ts` for the
 in-repo style.
 
 ### React: effects and data flow

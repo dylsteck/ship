@@ -21,14 +21,10 @@ export interface UseDashboardDerivedParams {
     modelsLoading: boolean
   }
   isCreating: boolean
+  onModelSelect?: (model: ModelInfo) => void
 }
 
-export function useDashboardDerived({
-  chat,
-  state,
-  data,
-  isCreating,
-}: UseDashboardDerivedParams) {
+export function useDashboardDerived({ chat, state, data, isCreating, onModelSelect }: UseDashboardDerivedParams) {
   const {
     prompt,
     setPrompt,
@@ -101,7 +97,7 @@ export function useDashboardDerived({
       agents: data.agents,
       agentsLoading: data.agentsLoading,
       selectedModel,
-      onModelSelect: setSelectedModel,
+      onModelSelect: onModelSelect ?? setSelectedModel,
       modelsLoading: data.modelsLoading ?? false,
       groupedByProvider,
       mode,
@@ -129,6 +125,7 @@ export function useDashboardDerived({
       data.agents,
       data.agentsLoading,
       selectedModel,
+      onModelSelect,
       data.modelsLoading,
       groupedByProvider,
       mode,

@@ -34,11 +34,7 @@ function normalizeInitialMessages(msgs: UIMessage[]): UIMessage[] {
   return msgs.map((m) => ({
     ...m,
     createdAt:
-      m.createdAt instanceof Date
-        ? m.createdAt
-        : typeof m.createdAt === 'string'
-          ? new Date(m.createdAt)
-          : undefined,
+      m.createdAt instanceof Date ? m.createdAt : typeof m.createdAt === 'string' ? new Date(m.createdAt) : undefined,
   }))
 }
 
@@ -63,9 +59,7 @@ export function useDashboardChat(
     sessionStatusStore.getSnapshot,
     sessionStatusStore.getSnapshot,
   )
-  const storeSessionRunning = Boolean(
-    activeSessionId && storeMap.get(activeSessionId)?.isRunning,
-  )
+  const storeSessionRunning = Boolean(activeSessionId && storeMap.get(activeSessionId)?.isRunning)
   const isStreaming = internalIsStreaming || storeSessionRunning
 
   // Sidebar / session persistence state
@@ -92,11 +86,7 @@ export function useDashboardChat(
   useEffect(() => {
     if (!activeSessionId || !storeSessionRunning) return
     const hasStreamingPlaceholder = messages.some(
-      (m) =>
-        m.role === 'assistant' &&
-        !m.content &&
-        !m.toolInvocations?.length &&
-        !m.reasoning?.length,
+      (m) => m.role === 'assistant' && !m.content && !m.toolInvocations?.length && !m.reasoning?.length,
     )
     if (!hasStreamingPlaceholder) {
       const placeholder = createAssistantPlaceholder()
@@ -105,94 +95,108 @@ export function useDashboardChat(
     }
   }, [activeSessionId, storeSessionRunning, messages])
 
-  const connectWebSocket = useCallback((sessionId: string) => {
-    wsRef.current?.disconnect()
+  const connectWebSocket = useCallback(
+    (sessionId: string) => {
+      wsRef.current?.disconnect()
 
-    const token = getApiToken()
-    const wsUrl = `${API_URL.replace('http', 'ws')}/sessions/${sessionId}/websocket${token ? `?token=${encodeURIComponent(token)}` : ''}`
+      const token = getApiToken()
+      const wsUrl = `${API_URL.replace('http', 'ws')}/sessions/${sessionId}/websocket${token ? `?token=${encodeURIComponent(token)}` : ''}`
 
-    wsRef.current = createReconnectingWebSocket({
-      url: wsUrl,
-      onMessage: (data: unknown) => {
-        const event = data as {
-          type: string
-          message?: APIMessage | string
-          messageId?: string
-          parts?: string
-          category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
-          retryable?: boolean
-          prUrl?: string
-          status?: string
-        }
-
-        if (event.type === 'message') {
-          const msg = event.message as APIMessage
-          const uiMsg: UIMessage = {
-            id: msg.id,
-            role: msg.role as UIMessage['role'],
-            content: msg.content,
-            createdAt: new Date(msg.createdAt * 1000),
+      wsRef.current = createReconnectingWebSocket({
+        url: wsUrl,
+        onMessage: (data: unknown) => {
+          const event = data as {
+            type: string
+            message?: APIMessage | string
+            messageId?: string
+            parts?: string
+            category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
+            retryable?: boolean
+            prUrl?: string
+            status?: string
           }
-          setMessages((prev) => {
-            const exists = prev.some(
-              (m) => m.id === uiMsg.id || (m.role === uiMsg.role && m.content === uiMsg.content),
+
+          if (event.type === 'message') {
+            const msg = event.message as APIMessage
+            const uiMsg: UIMessage = {
+              id: msg.id,
+              role: msg.role as UIMessage['role'],
+              content: msg.content,
+              createdAt: new Date(msg.createdAt * 1000),
+            }
+            setMessages((prev) => {
+              if (uiMsg.role === 'assistant' && streamingMessageRef.current) {
+                return prev.map((m) =>
+                  m.id === streamingMessageRef.current
+                    ? { ...m, content: uiMsg.content, createdAt: uiMsg.createdAt }
+                    : m,
+                )
+              }
+              const exists = prev.some(
+                (m) => m.id === uiMsg.id || (m.role === uiMsg.role && m.content === uiMsg.content),
+              )
+              if (exists) return prev
+              return [...prev, uiMsg]
+            })
+          }
+
+          if (event.type === 'error') {
+            const errorMsg = createErrorMessage(
+              typeof event.message === 'string' ? event.message : 'An error occurred',
+              event.category || 'persistent',
+              event.retryable || false,
             )
-            if (exists) return prev
-            return [...prev, uiMsg]
-          })
-        }
-
-        if (event.type === 'error') {
-          const errorMsg = createErrorMessage(
-            typeof event.message === 'string' ? event.message : 'An error occurred',
-            event.category || 'persistent',
-            event.retryable || false,
-          )
-          setMessages((prev) => [...prev, errorMsg])
-        }
-
-        if (event.type === 'pr-created') {
-          const prMsg: UIMessage = {
-            id: `pr-${Date.now()}`,
-            role: 'system',
-            content: `Draft PR created: ${event.prUrl}`,
-            type: 'pr-notification',
-            createdAt: new Date(),
+            setMessages((prev) => [...prev, errorMsg])
           }
-          setMessages((prev) => [...prev, prMsg])
-        }
 
-        if (event.type === 'agent-url' || event.type === 'opencode-url') {
-          const url = (event as { url?: string }).url
-          if (url) {
-            setAgentUrl(url)
-            try { localStorage.setItem(`agent-url-${sessionId}`, url) } catch {}
+          if (event.type === 'pr-created') {
+            const prMsg: UIMessage = {
+              id: `pr-${Date.now()}`,
+              role: 'system',
+              content: `Draft PR created: ${event.prUrl}`,
+              type: 'pr-notification',
+              createdAt: new Date(),
+            }
+            setMessages((prev) => [...prev, prMsg])
           }
-        }
 
-        if (event.type === 'agent-session') {
-          const id = (event as { agentSessionId?: string }).agentSessionId
-          if (id) {
-            setAgentSessionId(id)
-            try { localStorage.setItem(`agent-session-id-${sessionId}`, id) } catch {}
+          if (event.type === 'agent-url' || event.type === 'opencode-url') {
+            const url = (event as { url?: string }).url
+            if (url) {
+              setAgentUrl(url)
+              try {
+                localStorage.setItem(`agent-url-${sessionId}`, url)
+              } catch {}
+            }
           }
-        }
 
-        if (event.type === 'sandbox-status') {
-          const status = (event as { status?: string }).status
-          if (status) setSandboxStatus(status)
-        }
-
-        if (event.type === 'agent-event') {
-          const inner = (event as { event?: { type: string; [k: string]: unknown } }).event
-          if (inner) {
-            onAgentEventRef?.current?.(sessionId, inner)
+          if (event.type === 'agent-session') {
+            const id = (event as { agentSessionId?: string }).agentSessionId
+            if (id) {
+              setAgentSessionId(id)
+              try {
+                localStorage.setItem(`agent-session-id-${sessionId}`, id)
+              } catch {}
+            }
           }
-        }
-      },
-      onStatusChange: setWsStatus,
-    })
-  }, [setAgentSessionId, setAgentUrl, setSandboxStatus, onAgentEventRef])
+
+          if (event.type === 'sandbox-status') {
+            const status = (event as { status?: string }).status
+            if (status) setSandboxStatus(status)
+          }
+
+          if (event.type === 'agent-event') {
+            const inner = (event as { event?: { type: string; [k: string]: unknown } }).event
+            if (inner) {
+              onAgentEventRef?.current?.(sessionId, inner)
+            }
+          }
+        },
+        onStatusChange: setWsStatus,
+      })
+    },
+    [setAgentSessionId, setAgentUrl, setSandboxStatus, onAgentEventRef],
+  )
 
   useEffect(() => {
     return () => wsRef.current?.disconnect()
@@ -214,8 +218,7 @@ export function useDashboardChat(
       historyLoadedRef.current = null
       return
     }
-    const hadInitialForThisSession =
-      rawInitialMessages !== undefined && activeSessionId === initialActiveSessionId
+    const hadInitialForThisSession = rawInitialMessages !== undefined && activeSessionId === initialActiveSessionId
     if (hadInitialForThisSession) {
       historyLoadedRef.current = activeSessionId
       setMessages(normalizeInitialMessages(rawInitialMessages!))
@@ -236,10 +239,7 @@ export function useDashboardChat(
     if (historyLoadedRef.current === activeSessionId) return
     historyLoadedRef.current = activeSessionId
 
-    Promise.all([
-      getChatMessages(activeSessionId, { limit: 100 }),
-      getChatEvents(activeSessionId),
-    ])
+    Promise.all([getChatMessages(activeSessionId, { limit: 100 }), getChatEvents(activeSessionId)])
       .then(([apiMessages, events]) => {
         // When events exist, replay them to derive messages — ensures identical state across tabs/reloads
         const uiMessages =
@@ -272,12 +272,16 @@ export function useDashboardChat(
       // Ignore stop errors
     }
     setInternalIsStreaming(false)
+    sessionStatusStore.update(activeSessionId, { isRunning: false, status: 'Stopped' })
     streamingMessageRef.current = null
   }, [activeSessionId])
 
-  const updateSessionTitle = useCallback((sessionId: string, title: string) => {
-    setLocalSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title } : s)))
-  }, [setLocalSessions])
+  const updateSessionTitle = useCallback(
+    (sessionId: string, title: string) => {
+      setLocalSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title } : s)))
+    },
+    [setLocalSessions],
+  )
 
   const updateSessionTitleIfEmpty = useCallback(
     (sessionId: string, title: string) => {

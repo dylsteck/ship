@@ -1,4 +1,9 @@
-import type { LanguageModelUsage } from 'ai'
+/**
+ * SSE event builders shared by chat streaming paths (`message.part.updated`, `session.error`, …).
+ *
+ * @packageDocumentation
+ */
+
 import type { TranslatorState } from './state'
 
 /** Ship SSE event matching the frontend wire format. */
@@ -34,9 +39,6 @@ export function makeMessagePartUpdated(
 
 /**
  * Build a `step-finish` part with token totals.
- *
- * Used after the chunk loop resolves `result.totalUsage` since AI SDK
- * doesn't expose usage on the chunk stream itself.
  */
 export function makeStepFinishEvent(
   sessionId: string,
@@ -66,14 +68,23 @@ export function makeStepFinishEvent(
   }
 }
 
-/** Convert AI SDK usage into our normalized totals. */
-export function totalsFromUsage(usage: LanguageModelUsage | undefined): StepFinishTotals {
+/** Normalize usage-like structs into Ship totals (ACP backends rarely expose tokens — zeros are fine). */
+export function totalsFromUsage(usage?: {
+  inputTokens?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  cachedInputTokens?: number
+}): StepFinishTotals {
   return {
     inputTokens: usage?.inputTokens ?? 0,
     outputTokens: usage?.outputTokens ?? 0,
     reasoningTokens: usage?.reasoningTokens ?? 0,
     cachedInputTokens: usage?.cachedInputTokens ?? 0,
   }
+}
+
+export function emptyStepTotals(): StepFinishTotals {
+  return totalsFromUsage(undefined)
 }
 
 /** Build a `session.error` Ship SSE event. */

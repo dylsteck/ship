@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import { sendChatMessage, subscribeToChatStream } from '@/lib/api/chat-client'
+import { sendChatMessage } from '@/lib/api/chat-client'
 import { postSessionSync } from '@/lib/session-sync-channel'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { isAgentHarnessEvent } from '@/lib/sse-types'
@@ -42,9 +42,10 @@ function actionForChatErrorPayload(payload: { category?: string }): { label: str
 export interface UseDashboardSSEParams {
   chat: ReturnType<typeof useDashboardChat>
   modeRef: React.MutableRefObject<string>
+  modelIdRef: React.MutableRefObject<string | null>
 }
 
-export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
+export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEParams) {
   const {
     activeSessionId,
     activeSessionIdRef,
@@ -96,7 +97,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
         if (m.id !== msgId) return m
         const updates: Partial<typeof m> = {}
         if (m.content !== text) updates.content = text
-        if (reasoning && (m.reasoning?.[0] !== reasoning)) updates.reasoning = [reasoning]
+        if (reasoning && m.reasoning?.[0] !== reasoning) updates.reasoning = [reasoning]
         if (Object.keys(updates).length === 0) return m
         return { ...m, ...updates }
       }),
@@ -172,7 +173,10 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
           const msgId = streamingMessageRef.current
           setMessages((prev) => {
             const withoutPlaceholder = prev.filter((m) => m.id !== msgId)
-            return [...withoutPlaceholder, createErrorMessage('Request timed out. The agent took too long to respond.', 'transient', true)]
+            return [
+              ...withoutPlaceholder,
+              createErrorMessage('Request timed out. The agent took too long to respond.', 'transient', true),
+            ]
           })
           setIsStreaming(false)
           setStreamingStatus('')
@@ -212,25 +216,25 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
       }
 
       try {
-        const response = await sendChatMessage(targetSessionId, content, modeOverride ?? modeRef.current)
+        const response = await sendChatMessage(
+          targetSessionId,
+          content,
+          modeOverride ?? modeRef.current,
+          modelIdRef.current,
+        )
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
           const mainError = errorData.error || errorData.details || 'Failed to start agent'
           const errorContent =
-            errorData.details && isGenericError(errorData.error || '')
-              ? errorData.details
-              : mainError
+            errorData.details && isGenericError(errorData.error || '') ? errorData.details : mainError
           const { category, retryable } = classifyError(errorContent)
           const errPayload = errorData as { category?: string }
           const action = actionForChatErrorPayload(errPayload)
 
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
-            return [
-              ...filtered,
-              createErrorMessage(errorContent, category, retryable, errorContent, action),
-            ]
+            return [...filtered, createErrorMessage(errorContent, category, retryable, errorContent, action)]
           })
 
           sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
@@ -372,10 +376,19 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
 
                   case 'done':
                   case 'session.idle': {
-                    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
-                    if (stallTimerId) { clearTimeout(stallTimerId); stallTimerId = null }
+                    if (timeoutId) {
+                      clearTimeout(timeoutId)
+                      timeoutId = null
+                    }
+                    if (stallTimerId) {
+                      clearTimeout(stallTimerId)
+                      stallTimerId = null
+                    }
                     // Cancel any pending throttled flush — done handler writes final state
-                    if (flushTimerRef.current != null) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
+                    if (flushTimerRef.current != null) {
+                      clearTimeout(flushTimerRef.current)
+                      flushTimerRef.current = null
+                    }
                     handleDoneOrIdle(ctx, streamStartTimeRef)
                     sessionStatusStore.update(targetSessionId, {
                       isRunning: false,
@@ -404,12 +417,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
                       ctx.setStreamingStatus(retryMsg, ctx.accumulateSetupStepsRef.current)
                       sessionStatusStore.update(targetSessionId, { status: retryMsg })
                     } else {
-                      handleGenericError(
-                        errEvt.error,
-                        ctx,
-                        errEvt.details,
-                        actionForChatErrorPayload(errEvt),
-                      )
+                      handleGenericError(errEvt.error, ctx, errEvt.details, actionForChatErrorPayload(errEvt))
                       sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
                     }
                     break
@@ -452,8 +460,14 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
           }
         }
         // Stream ended — clear watchdog timers immediately
-        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
-        if (stallTimerId) { clearTimeout(stallTimerId); stallTimerId = null }
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        if (stallTimerId) {
+          clearTimeout(stallTimerId)
+          stallTimerId = null
+        }
         const current = sessionStatusStore.get(targetSessionId)
         if (current?.isRunning) {
           sessionStatusStore.update(targetSessionId, {
@@ -486,7 +500,7 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
         if (stallTimerId) clearTimeout(stallTimerId)
       }
     },
-    [activeSessionId, activeSessionIdRef],
+    [activeSessionId, activeSessionIdRef, modelIdRef],
   )
 
   /** Process SSE event for a session when streamSessionInBackground receives it and user is viewing that session */
@@ -533,7 +547,10 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
           return
         }
         if (event.type === 'session.error') {
-          handleSessionError((event as { properties?: { error?: Parameters<typeof handleSessionError>[0] } }).properties?.error, ctxEarly)
+          handleSessionError(
+            (event as { properties?: { error?: Parameters<typeof handleSessionError>[0] } }).properties?.error,
+            ctxEarly,
+          )
           sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
           return
         }
@@ -668,288 +685,11 @@ export function useDashboardSSE({ chat, modeRef }: UseDashboardSSEParams) {
     ],
   )
 
-  /** Resume an active stream (e.g. after page reload). Tries subscribe endpoint; if session not running, returns early. */
-  const resumeStream = useCallback(
-    async (sessionId: string) => {
-      if (isStreamingRef.current) return
-
-      try {
-        const response = await subscribeToChatStream(sessionId)
-        if (!response.ok || !response.body) return
-
-        setIsStreaming(true)
-        clearStreamingStatusSteps()
-        assistantTextRef.current = ''
-        reasoningRef.current = ''
-        const now = Date.now()
-        streamStartTimeRef.current = now
-        setStreamStartTime(now)
-
-        const hasCompletedAssistant = messagesRef.current.some(
-          (m) => m.role === 'assistant' && (m.content || m.toolInvocations?.length),
-        )
-        const accumulateSetupStepsRef = { current: !hasCompletedAssistant }
-        sessionStatusStore.update(sessionId, {
-          isRunning: true,
-          status: 'Resuming...',
-          steps: [],
-          contentPreview: '',
-        })
-
-        let placeholderAdded = false
-        const ensurePlaceholder = () => {
-          if (placeholderAdded) return
-          placeholderAdded = true
-          const placeholder = createAssistantPlaceholder()
-          streamingMessageRef.current = placeholder.id
-          setMessages((prev) => [...prev, placeholder])
-        }
-
-        const ctx: SSEHandlerContext = {
-          setMessages,
-          setIsStreaming,
-          setTotalCost,
-          setLastStepCost,
-          setSessionTodos,
-          setFileDiffs,
-          setAgentUrl,
-          setSessionTitle,
-          setSessionInfo,
-          setAgentSessionId,
-          setStreamStartTime,
-          setStreamingStatus,
-          accumulateSetupStepsRef,
-          streamingStatusStepsRef,
-          clearStreamingStatusSteps,
-          streamingMessageRef,
-          assistantTextRef,
-          reasoningRef,
-          targetSessionId: sessionId,
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          let currentEventType = ''
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEventType = line.slice(7).trim()
-              continue
-            }
-            if (line.startsWith('data: ')) {
-              try {
-                const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
-                if (!rawData.type && currentEventType) rawData.type = currentEventType
-                if (!rawData.type && typeof rawData.error === 'string') {
-                  rawData.type = 'error'
-                }
-                const event = parseSSEEvent(rawData)
-
-                // Only capture raw events from agent harness (exclude sandbox-ready, heartbeat, etc.)
-                const eventType = event?.type ?? (typeof rawData.type === 'string' ? rawData.type : 'unknown')
-                if (isAgentHarnessEvent(eventType, rawData)) {
-                  eventsStore.addEvent(sessionId, {
-                    id: crypto.randomUUID(),
-                    type: eventType,
-                    timestamp: Date.now(),
-                    payload: rawData,
-                  })
-                }
-
-                if (!event) continue
-
-                switch (event.type) {
-                  case 'session.idle':
-                  case 'done':
-                    if (flushTimerRef.current != null) { clearTimeout(flushTimerRef.current); flushTimerRef.current = null }
-                    if (!placeholderAdded) {
-                      setIsStreaming(false)
-                      sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
-                      return
-                    }
-                    handleDoneOrIdle(ctx, streamStartTimeRef)
-                    sessionStatusStore.update(sessionId, {
-                      isRunning: false,
-                      status: 'Done',
-                      contentPreview: ctx.assistantTextRef.current || undefined,
-                    })
-                    return
-                  case 'message.part.updated': {
-                    ensurePlaceholder()
-                    handleMessagePartUpdated(event as any, ctx, scheduleFlush)
-                    const textDelta = extractTextDelta(event as any)
-                    if (textDelta) {
-                      sessionStatusStore.update(sessionId, {
-                        contentPreview: ctx.assistantTextRef.current,
-                      })
-                    }
-                    const eventStatus = getEventStatus(event as any)
-                    if (eventStatus) {
-                      sessionStatusStore.update(sessionId, { status: eventStatus.label })
-                      sessionStatusStore.addStep(sessionId, eventStatus.label)
-                    }
-                    break
-                  }
-                  case 'message.updated':
-                    break
-                  case 'todo.updated':
-                    ensurePlaceholder()
-                    setSessionTodos((event as any).properties.todos)
-                    break
-                  case 'session.diff':
-                    ensurePlaceholder()
-                    setFileDiffs((event as any).properties.diff)
-                    break
-                  case 'message.removed':
-                    setMessages((prev) => prev.filter((m) => m.id !== (event as any).properties.messageID))
-                    break
-                  case 'session.updated': {
-                    ensurePlaceholder()
-                    const info = (event as any).properties.info
-                    if (info) {
-                      if (info.title) {
-                        setSessionTitle(info.title)
-                        if (activeSessionId === sessionId) updateSessionTitle(sessionId, info.title)
-                      }
-                      setSessionInfo(info)
-                    }
-                    break
-                  }
-                  case 'agent-url':
-                  case 'opencode-url': {
-                    ensurePlaceholder()
-                    const url = (event as { url?: string }).url
-                    if (url) handleAgentUrl(url, ctx)
-                    break
-                  }
-                  case 'agent-session': {
-                    ensurePlaceholder()
-                    const id = (event as { agentSessionId?: string }).agentSessionId
-                    if (id) handleAgentSession(id, ctx)
-                    break
-                  }
-                  case 'permission.asked':
-                    ensurePlaceholder()
-                    handlePermissionAsked((event as any).properties, ctx)
-                    break
-                  case 'permission.granted':
-                    handlePermissionResolved((event as any).properties.id, 'granted', ctx)
-                    break
-                  case 'permission.denied':
-                    handlePermissionResolved((event as any).properties.id, 'denied', ctx)
-                    break
-                  case 'question.asked':
-                    ensurePlaceholder()
-                    handleQuestionAsked((event as any).properties, ctx)
-                    break
-                  case 'question.replied':
-                    handleQuestionResolved((event as any).properties.id, 'replied', ctx)
-                    break
-                  case 'question.rejected':
-                    handleQuestionResolved((event as any).properties.id, 'rejected', ctx)
-                    break
-                  case 'session.error':
-                    if (!placeholderAdded) setIsStreaming(false)
-                    handleSessionError((event as any).properties.error, ctx)
-                    sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
-                    return
-                  case 'error': {
-                    const errEvt = rawData as {
-                      error?: string
-                      details?: string
-                      retryable?: boolean
-                      attempt?: number
-                      category?: string
-                    }
-                    if (errEvt.retryable && typeof errEvt.attempt === 'number') {
-                      ensurePlaceholder()
-                      const retryMsg = errEvt.error || `Retrying (attempt ${errEvt.attempt + 1})...`
-                      ctx.setStreamingStatus(retryMsg, ctx.accumulateSetupStepsRef.current)
-                      sessionStatusStore.update(sessionId, { status: retryMsg })
-                    } else {
-                      if (!placeholderAdded) setIsStreaming(false)
-                      handleGenericError(
-                        errEvt.error,
-                        ctx,
-                        errEvt.details,
-                        actionForChatErrorPayload(errEvt),
-                      )
-                      sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
-                      return
-                    }
-                    break
-                  }
-                  case 'status':
-                  case 'session.status': {
-                    ensurePlaceholder()
-                    const ev = event as { message?: string; status?: string }
-                    const msg = ev.message ?? ev.status
-                    if (typeof msg === 'string') {
-                      ctx.setStreamingStatus(msg, ctx.accumulateSetupStepsRef.current)
-                      sessionStatusStore.update(sessionId, { status: msg })
-                      sessionStatusStore.addStep(sessionId, msg)
-                    }
-                    break
-                  }
-                  default:
-                    ensurePlaceholder()
-                    handleRawDataFallbacks(rawData, ctx)
-                }
-              } catch {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
-
-        const current = sessionStatusStore.get(sessionId)
-        if (current?.isRunning) {
-          sessionStatusStore.update(sessionId, {
-            isRunning: false,
-            status: 'Done',
-            contentPreview: ctx.assistantTextRef.current || undefined,
-          })
-        }
-      } catch (err) {
-        console.error('Resume stream error:', err)
-        sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
-        setIsStreaming(false)
-        setStreamingStatus('')
-        streamingMessageRef.current = null
-      }
-    },
-    [
-      activeSessionId,
-      setMessages,
-      setIsStreaming,
-      setTotalCost,
-      setLastStepCost,
-      setSessionTodos,
-      setFileDiffs,
-      setAgentUrl,
-      setSessionTitle,
-      setSessionInfo,
-      setAgentSessionId,
-      setStreamStartTime,
-      setStreamingStatus,
-      updateSessionTitle,
-      streamingStatusStepsRef,
-      clearStreamingStatusSteps,
-      streamingMessageRef,
-      assistantTextRef,
-      reasoningRef,
-      scheduleFlush,
-    ],
-  )
+  /** Active turns are replayed through the SessionDO WebSocket `agent-event` path. */
+  const resumeStream = useCallback((_sessionId: string) => {
+    // The old `/subscribe` endpoint is intentionally not used: it is not a live
+    // fanout stream in the ACP harness and can falsely mark active turns idle.
+  }, [])
 
   return { handleSend, processStreamEventForSession, resumeStream }
 }

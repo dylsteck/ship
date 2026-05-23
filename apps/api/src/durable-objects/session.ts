@@ -388,9 +388,7 @@ export class SessionDO extends DurableObject<Env> {
     if (!sessionId) return 0
 
     try {
-      const d1Result = await this.env.DB.prepare(
-        `SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ?`,
-      )
+      const d1Result = await this.env.DB.prepare(`SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ?`)
         .bind(sessionId)
         .first<{ count: number }>()
       return d1Result?.count || 0
@@ -665,6 +663,7 @@ export class SessionDO extends DurableObject<Env> {
    */
   async setBranchName(name: string): Promise<void> {
     await this.setSessionMeta('branch_name', name)
+    await this.setSessionMeta('current_branch', name)
   }
 
   /**
@@ -673,7 +672,7 @@ export class SessionDO extends DurableObject<Env> {
    */
   async getBranchName(): Promise<string | null> {
     const meta = await this.getSessionMeta()
-    return meta['branch_name'] || null
+    return meta['branch_name'] || meta['current_branch'] || null
   }
 
   /**
@@ -918,7 +917,9 @@ export class SessionDO extends DurableObject<Env> {
 
     // RPC: Append session events (for Overview inspector persistence)
     if (url.pathname.endsWith('/events') && request.method === 'POST') {
-      const body = (await request.json()) as { events: Array<{ id: string; type: string; timestamp: number; payload: unknown }> }
+      const body = (await request.json()) as {
+        events: Array<{ id: string; type: string; timestamp: number; payload: unknown }>
+      }
       const existing = await this.getSessionMeta()
       const current = (existing['session_events'] ? JSON.parse(existing['session_events']) : []) as typeof body.events
       const updated = [...current, ...(body.events ?? [])].slice(-500)

@@ -8,7 +8,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
-import { useModels, useDefaultModel, useAgentDefaultModel, useSessionModel } from '@/lib/api/hooks/use-models'
+import {
+  useModels,
+  useDefaultModel,
+  useAgentDefaultModel,
+  useSessionModel,
+  useSetSessionModel,
+} from '@/lib/api/hooks/use-models'
 import { useAgents, useDefaultAgent } from '@/lib/api/hooks/use-agents'
 import { useDefaultRepo } from '@/lib/api/hooks/use-default-repo'
 import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks/use-sessions'
@@ -54,6 +60,7 @@ export function DashboardClient({
   const searchParams = useSearchParams()
   const isMobile = useIsMobile()
   const modeRef = useRef('agent')
+  const modelIdRef = useRef<string | null>(null)
   const onAgentEventRef = useRef<((sessionId: string, event: { type: string; [k: string]: unknown }) => void) | null>(
     null,
   )
@@ -94,7 +101,11 @@ export function DashboardClient({
     [chat.activeSessionId],
   )
 
-  const { handleSend, processStreamEventForSession, resumeStream } = useDashboardSSE({ chat, modeRef })
+  const { handleSend, processStreamEventForSession, resumeStream } = useDashboardSSE({
+    chat,
+    modeRef,
+    modelIdRef,
+  })
 
   const handleRetryLastMessage = useCallback(() => {
     const lastUserMsg = [...chat.messages].reverse().find((m) => m.role === 'user')
@@ -131,7 +142,8 @@ export function DashboardClient({
   const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(true)
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
-  const { sessionModelId } = useSessionModel(chat.activeSessionId ?? undefined)
+  const { sessionModelId, mutate: mutateSessionModel } = useSessionModel(chat.activeSessionId ?? undefined)
+  const { setSessionModel } = useSetSessionModel()
   const router = useRouter()
   const {
     sessions: swrSessions,
@@ -164,9 +176,7 @@ export function DashboardClient({
     // Remove from pending any that now appear in API
     for (const id of swrIds) pendingCreateIdsRef.current.delete(id)
     setLocalSessions((prev) => {
-      const optimisticOnly = prev.filter(
-        (s) => !swrIds.has(s.id) && pendingCreateIdsRef.current.has(s.id),
-      )
+      const optimisticOnly = prev.filter((s) => !swrIds.has(s.id) && pendingCreateIdsRef.current.has(s.id))
       // Preserve optimistic titles when API returns session without title
       const merged = swrSessions.map((s) => {
         const p = prev.find((x) => x.id === s.id)
@@ -256,6 +266,28 @@ export function DashboardClient({
     },
   })
 
+  modelIdRef.current = state.selectedModel?.id ?? null
+
+  const handleModelSelect = useCallback(
+    async (model: NonNullable<typeof state.selectedModel>) => {
+      state.setSelectedModel(model)
+      const sessionId = chat.activeSessionId
+      if (!sessionId) return
+
+      chat.setLocalSessions((prev) =>
+        prev.map((session) => (session.id === sessionId ? { ...session, model: model.id } : session)),
+      )
+      try {
+        await setSessionModel({ sessionId, modelId: model.id })
+        await mutateSessionModel()
+        mutateSessions()
+      } catch (error) {
+        console.error('Failed to set session model:', error)
+      }
+    },
+    [chat.activeSessionId, chat.setLocalSessions, mutateSessionModel, mutateSessions, setSessionModel, state],
+  )
+
   // Fetch agent-specific default model (must be after state is initialized)
   const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading } = useAgentDefaultModel(
     state.selectedAgent?.id,
@@ -279,6 +311,7 @@ export function DashboardClient({
       modelsLoading: modelsLoading ?? false,
     },
     isCreating,
+    onModelSelect: handleModelSelect,
   })
 
   useSessionSync({
@@ -315,24 +348,22 @@ export function DashboardClient({
   modeRef.current = state.mode
 
   const activeSession = chat.activeSessionId
-    ? chat.localSessions.find((session) => session.id === chat.activeSessionId) ?? null
+    ? (chat.localSessions.find((session) => session.id === chat.activeSessionId) ?? null)
     : null
 
-  const activeSessionAgent =
-    chat.activeSessionId
-      ? agents.find(
-          (agent) =>
-            agent.id === activeSession?.agentType ||
-            agent.id === chat.sessionInfo?.agentType ||
-            (!!(activeSession?.model || sessionModelId) &&
-              agent.models.some((model) => model.id === (activeSession?.model || sessionModelId))),
-        ) ?? null
-      : state.selectedAgent
+  const activeSessionAgent = chat.activeSessionId
+    ? (agents.find(
+        (agent) =>
+          agent.id === activeSession?.agentType ||
+          agent.id === chat.sessionInfo?.agentType ||
+          (!!(activeSession?.model || sessionModelId) &&
+            agent.models.some((model) => model.id === (activeSession?.model || sessionModelId))),
+      ) ?? null)
+    : state.selectedAgent
 
-  const activeSessionModel =
-    chat.activeSessionId
-      ? models.find((model) => model.id === (activeSession?.model || sessionModelId)) ?? null
-      : state.selectedModel
+  const activeSessionModel = chat.activeSessionId
+    ? (models.find((model) => model.id === (activeSession?.model || sessionModelId)) ?? null)
+    : state.selectedModel
 
   useEffect(() => {
     if (!chat.activeSessionId || !activeSessionAgent) return
@@ -385,9 +416,7 @@ export function DashboardClient({
               description: null,
             }
           : state.selectedRepo,
-        selectedAgent: activeSessionAgent
-          ? { id: activeSessionAgent.id, name: activeSessionAgent.name }
-          : null,
+        selectedAgent: activeSessionAgent ? { id: activeSessionAgent.id, name: activeSessionAgent.name } : null,
         selectedModel: activeSessionModel
           ? {
               id: activeSessionModel.id,

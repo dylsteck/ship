@@ -5,11 +5,11 @@ import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
 import type { ModelInfo, DefaultModelResponse } from '../types'
 
-// Provider display order - OpenCode Zen first, Bankr before direct providers
-const PROVIDER_ORDER = ['OpenCode Zen', 'Bankr', 'Anthropic', 'OpenAI', 'Google', 'Other']
+// Provider display order — sandbox ACP backends surface as distinct providers for grouping.
+const PROVIDER_ORDER = ['ACP — OpenCode', 'ACP — Cursor', 'ACP — Claude', 'ACP — Codex', 'Other']
 
 /**
- * Hook to fetch available AI models (Bankr models included when enabled for the JWT user).
+ * Hook to fetch available ACP backends (`ship-acp-*`) as models for pickers.
  *
  * @param fetchEnabled - When `false`, skips the request (e.g. not logged in).
  */
@@ -180,39 +180,20 @@ export function useSetDefaultModel() {
 }
 
 /**
- * Hook to fetch the JWT user's Bankr preference.
+ * Mutation hook to set the active model for a chat session.
  */
-export function useBankrEnabled(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<{ enabled: boolean }>(
-    fetchEnabled ? apiUrl('/models/bankr') : null,
-    fetcher,
-    { revalidateOnFocus: false },
-  )
-
-  return {
-    bankrEnabled: data?.enabled ?? false,
-    isLoading,
-    isError: !!error,
-    error,
-    mutate,
-  }
-}
-
-/**
- * Mutation hook to toggle Bankr on/off
- */
-export function useSetBankrEnabled() {
+export function useSetSessionModel() {
   const { trigger, isMutating, error } = useSWRMutation(
-    'set-bankr-enabled',
-    async (_key: string, { arg }: { arg: { enabled: boolean } }) => {
-      return post<{ enabled: boolean }, { success: boolean; enabled: boolean }>(apiUrl('/models/bankr'), {
-        enabled: arg.enabled,
+    'set-session-model',
+    async (_key: string, { arg }: { arg: { sessionId: string; modelId: string } }) => {
+      return post<{ model: string }, { success: boolean; model: string }>(apiUrl(`/models/sessions/${arg.sessionId}`), {
+        model: arg.modelId,
       })
     },
   )
 
   return {
-    setBankrEnabled: trigger,
+    setSessionModel: trigger,
     isSetting: isMutating,
     error,
   }

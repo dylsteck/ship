@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+[[workflows]]
+binding = "SHIP_ACP_WORKFLOW"
+name = "ship-acp-bootstrap"
+class_name = "ShipAcpBootstrapWorkflow"
+
 # Durable Objects
 [durable_objects]
 bindings = [
@@ -42,8 +47,10 @@ ENVIRONMENT = "development"
 # Production Environment
 [env.production]
 name = "ship-api-production"
-vars = { ENVIRONMENT = "production" }
 compatibility_flags = ["nodejs_compat"]
+
+[env.production.vars]
+ENVIRONMENT = "production"
 
 [env.production.durable_objects]
 bindings = [

@@ -15,6 +15,7 @@ export const uuidParamSchema = z.string().uuid()
 export const chatPostBodySchema = z.object({
   content: z.string().max(100_000),
   mode: z.string().max(64).optional(),
+  model: z.string().max(200).optional(),
 })
 
 export const createSessionBodySchema = z.object({
@@ -28,26 +29,6 @@ export const createSessionBodySchema = z.object({
 
 export const sandboxProvisionBodySchema = z.object({
   sessionId: uuidParamSchema,
-})
-
-const bankrMessageSchema = z.object({
-  role: z.string().min(1).max(32),
-  content: z.string(),
-})
-
-export const bankrChatBodySchema = z.object({
-  model: z.string().min(1).max(200),
-  messages: z.array(bankrMessageSchema).min(1).max(500),
-  stream: z.boolean().optional(),
-  max_tokens: z.number().int().positive().max(1_000_000).optional(),
-})
-
-export const bankrMessagesBodySchema = z.object({
-  model: z.string().min(1).max(200),
-  messages: z.array(bankrMessageSchema).min(1).max(500),
-  system: z.string().max(500_000).optional(),
-  stream: z.boolean().optional(),
-  max_tokens: z.number().int().positive().max(1_000_000).optional(),
 })
 
 /**

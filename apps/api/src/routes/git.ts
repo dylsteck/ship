@@ -110,7 +110,7 @@ git.post('/clone', async (c) => {
     await doStub.fetch('http://do/meta', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ current_branch: branchName, repo_url: repoUrl }),
+      body: JSON.stringify({ current_branch: branchName, branch_name: branchName, repo_url: repoUrl }),
     })
 
     return c.json({
@@ -182,9 +182,7 @@ git.post('/commit', async (c) => {
     const commitUserId = meta['userId'] || meta['user_id']
     if (commitUserId && (userName === 'Ship Agent' || userEmail === 'shipagent@dylansteck.com')) {
       try {
-        const userRow = await c.env.DB.prepare(
-          'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
-        )
+        const userRow = await c.env.DB.prepare('SELECT name, email, username FROM users WHERE id = ? LIMIT 1')
           .bind(commitUserId)
           .first<{ name: string | null; email: string | null; username: string | null }>()
         if (userRow) {
