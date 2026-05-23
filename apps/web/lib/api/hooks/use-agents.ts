@@ -3,7 +3,70 @@
 import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
-import type { AgentInfo, DefaultAgentResponse } from '../types'
+import type { AgentInfo, DefaultAgentResponse, ModelInfo } from '../types'
+
+const ACP_HARNESSES = {
+  opencode: { name: 'OpenCode', provider: 'ACP — OpenCode' },
+  cursor: { name: 'Cursor Agent', provider: 'ACP — Cursor' },
+  claude: { name: 'Claude Agent', provider: 'ACP — Claude' },
+  codex: { name: 'Codex', provider: 'ACP — Codex' },
+} as const
+
+type AcpHarnessId = keyof typeof ACP_HARNESSES
+
+function acpHarnessForModel(model: ModelInfo): AcpHarnessId | null {
+  const marker = `${model.id} ${model.name} ${model.provider}`.toLowerCase()
+  if (marker.includes('opencode')) return 'opencode'
+  if (marker.includes('cursor')) return 'cursor'
+  if (marker.includes('claude')) return 'claude'
+  if (marker.includes('codex')) return 'codex'
+  return null
+}
+
+function normalizeAcpModel(model: ModelInfo, harnessId: AcpHarnessId): ModelInfo {
+  const harness = ACP_HARNESSES[harnessId]
+  return {
+    ...model,
+    name: model.name === `${harness.name} (ACP)` || model.name === harness.name ? 'Default' : model.name,
+    provider: harness.provider,
+  }
+}
+
+function normalizeAgents(rawAgents: AgentInfo[]): AgentInfo[] {
+  const normalized = new Map<string, AgentInfo>()
+
+  for (const agent of rawAgents) {
+    if (agent.id !== 'ship') {
+      const harnessId = (Object.keys(ACP_HARNESSES) as AcpHarnessId[]).find((id) => id === agent.id)
+      if (!harnessId) {
+        normalized.set(agent.id, agent)
+        continue
+      }
+      normalized.set(harnessId, {
+        ...agent,
+        name: ACP_HARNESSES[harnessId].name,
+        models: (agent.models ?? []).map((model) => normalizeAcpModel(model, harnessId)),
+      })
+      continue
+    }
+
+    for (const model of agent.models ?? []) {
+      const harnessId = acpHarnessForModel(model)
+      if (!harnessId) continue
+      const harness = ACP_HARNESSES[harnessId]
+      normalized.set(harnessId, {
+        id: harnessId,
+        name: harness.name,
+        modes: agent.modes,
+        models: [normalizeAcpModel(model, harnessId)],
+      })
+    }
+  }
+
+  return (Object.keys(ACP_HARNESSES) as AcpHarnessId[])
+    .map((id) => normalized.get(id))
+    .filter((agent): agent is AgentInfo => Boolean(agent))
+}
 
 /**
  * Hook to fetch available agents with their models and modes
@@ -15,7 +78,7 @@ export function useAgents() {
   })
 
   return {
-    agents: data ?? [],
+    agents: normalizeAgents(data ?? []),
     isLoading,
     isError: !!error,
     error,
@@ -39,7 +102,7 @@ export function useDefaultAgent(fetchEnabled: boolean | undefined) {
   )
 
   return {
-    defaultAgentId: data?.agentId ?? null,
+    defaultAgentId: data?.agentId === 'ship' ? 'opencode' : (data?.agentId ?? null),
     isLoading,
     isError: !!error,
     error,

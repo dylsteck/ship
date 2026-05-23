@@ -11,26 +11,26 @@ const DEFAULT_MODEL = ACP_MODEL_IDS.opencode
 const STATIC_ACP_MODELS = [
   {
     id: ACP_MODEL_IDS.opencode,
-    name: 'OpenCode (ACP)',
+    name: 'OpenCode',
     provider: 'ACP — OpenCode',
     description: 'Sandbox `opencode acp` backend',
     isDefault: true,
   },
   {
     id: ACP_MODEL_IDS.cursor,
-    name: 'Cursor Agent (ACP)',
+    name: 'Cursor Agent',
     provider: 'ACP — Cursor',
     description: 'Sandbox `agent acp` backend',
   },
   {
     id: ACP_MODEL_IDS.claude,
-    name: 'Claude Agent (ACP)',
+    name: 'Claude Agent',
     provider: 'ACP — Claude',
     description: 'Sandbox `claude-agent-acp` backend',
   },
   {
     id: ACP_MODEL_IDS.codex,
-    name: 'Codex (ACP)',
+    name: 'Codex',
     provider: 'ACP — Codex',
     description: 'Sandbox `codex-acp` backend',
   },
