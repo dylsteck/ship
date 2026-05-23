@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
 import type { ModelInfo, DefaultModelResponse } from '../types'
+import { modelsWithFallback } from '../acp-catalog'
 
 // Provider display order — sandbox ACP backends surface as distinct providers for grouping.
 const PROVIDER_ORDER = ['ACP — OpenCode', 'ACP — Cursor', 'ACP — Claude', 'ACP — Codex', 'Other']
@@ -22,10 +23,11 @@ export function useModels(fetchEnabled = true) {
       dedupingInterval: 60000, // Cache for 1 minute
     },
   )
+  const models = fetchEnabled ? modelsWithFallback(data) : []
 
   // Group models by provider with guaranteed order
   const groupedByProvider = (() => {
-    const grouped = (data ?? []).reduce<Record<string, ModelInfo[]>>((acc, model) => {
+    const grouped = models.reduce<Record<string, ModelInfo[]>>((acc, model) => {
       const provider = model.provider || 'Other'
       if (!acc[provider]) acc[provider] = []
       acc[provider].push(model)
@@ -51,10 +53,10 @@ export function useModels(fetchEnabled = true) {
   })()
 
   return {
-    models: data ?? [],
+    models,
     groupedByProvider,
     isLoading,
-    isError: !!error,
+    isError: !!error && !models.length,
     error,
     mutate,
   }

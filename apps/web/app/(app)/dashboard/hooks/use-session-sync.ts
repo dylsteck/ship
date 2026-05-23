@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import type { ChatSession } from '@/lib/api/server'
 import type { GitHubRepo, ModelInfo } from '@/lib/api/types'
+import { resolveLegacyDefaultModel } from '@/lib/api/acp-catalog'
 
 export interface UseSessionSyncParams {
   initialSessionId: string | null
@@ -48,28 +49,9 @@ export function useSessionSync({
   model,
   repo,
 }: UseSessionSyncParams) {
-  const {
-    activeSessionId,
-    setActiveSessionId,
-    localSessions,
-    isStreaming,
-    messageQueue,
-    setMessageQueue,
-  } = chat
-  const {
-    models,
-    selectedModel,
-    setSelectedModel,
-    defaultModelId,
-    defaultModelLoading,
-  } = model
-  const {
-    repos,
-    selectedRepo,
-    setSelectedRepo,
-    defaultRepoLoading,
-    defaultRepoFullName,
-  } = repo
+  const { activeSessionId, setActiveSessionId, localSessions, isStreaming, messageQueue, setMessageQueue } = chat
+  const { models, selectedModel, setSelectedModel, defaultModelId, defaultModelLoading } = model
+  const { repos, selectedRepo, setSelectedRepo, defaultRepoLoading, defaultRepoFullName } = repo
   // Support the legacy /?session=<id> bootstrap as a fallback.
   useEffect(() => {
     if (!initialSessionId && sessionParam && !activeSessionId) {
@@ -82,7 +64,8 @@ export function useSessionSync({
   useEffect(() => {
     if (defaultModelLoading || models.length === 0 || selectedModel) return
 
-    const findModel = (id: string) => models.find((m) => m.id === id || m.id.endsWith(id))
+    const findModel = (id: string) =>
+      models.find((m) => m.id === id || m.id.endsWith(id)) || resolveLegacyDefaultModel(id, models)
     const savedDefault = defaultModelId ? findModel(defaultModelId) : null
     const markedDefault = models.find((m) => m.isDefault)
     setSelectedModel(savedDefault || markedDefault || models[0])
@@ -93,9 +76,7 @@ export function useSessionSync({
     if (activeSessionId) {
       const session = localSessions.find((s) => s.id === activeSessionId)
       if (session) {
-        const repo = repos.find(
-          (r) => r.owner === session.repoOwner && r.name === session.repoName,
-        )
+        const repo = repos.find((r) => r.owner === session.repoOwner && r.name === session.repoName)
         if (repo) setSelectedRepo(repo)
       }
     }

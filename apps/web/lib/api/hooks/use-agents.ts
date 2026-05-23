@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
 import type { AgentInfo, DefaultAgentResponse, ModelInfo } from '../types'
+import { expandLegacyAgents, FALLBACK_AGENTS } from '../acp-catalog'
 
 const ACP_HARNESSES = {
   opencode: { name: 'OpenCode', provider: 'ACP — OpenCode' },
@@ -25,7 +26,8 @@ function acpHarnessForModel(model: ModelInfo): AcpHarnessId | null {
 
 function normalizeAcpModel(model: ModelInfo, harnessId: AcpHarnessId): ModelInfo {
   const harness = ACP_HARNESSES[harnessId]
-  const isLegacyHarnessModel = model.name === `${harness.name} (ACP)` || model.name === harness.name || model.name === 'Default'
+  const isLegacyHarnessModel =
+    model.name === `${harness.name} (ACP)` || model.name === harness.name || model.name === 'Default'
   return {
     ...model,
     name: isLegacyHarnessModel ? 'Configured default' : model.name,
@@ -77,11 +79,12 @@ export function useAgents() {
     revalidateOnFocus: false,
     dedupingInterval: 60000,
   })
+  const agents = data && data.length > 0 ? data : FALLBACK_AGENTS
 
   return {
-    agents: normalizeAgents(data ?? []),
+    agents: expandLegacyAgents(normalizeAgents(agents)),
     isLoading,
-    isError: !!error,
+    isError: !!error && !agents.length,
     error,
   }
 }
