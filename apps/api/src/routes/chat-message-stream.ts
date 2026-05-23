@@ -14,6 +14,7 @@
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { chatPostBodySchema, parseJsonBody } from '../lib/api-schemas'
+import { ACP_MODEL_IDS, acpBackendFromModelId } from '../lib/acp-types'
 import { appendUserMessage, toChatTurnMessages, type PersistedMessage } from '../lib/chat-history'
 import { runChatTurn } from '../lib/chat-runner'
 import { writeError, writeStatus } from '../lib/chat-stream-helpers'
@@ -25,6 +26,7 @@ import { requireSessionOwner } from '../lib/session-authorization'
 
 const MAX_PROMPT_LENGTH = 100_000
 const DO_URL = 'https://do'
+const VALID_ACP_MODEL_IDS = new Set<string>(Object.values(ACP_MODEL_IDS))
 
 /** Hono handler for `POST /chat/:sessionId` — see file-level TSDoc. */
 export async function handleChatMessageStream(c: Context<AuthedEnv>) {
@@ -38,8 +40,12 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
   if (body instanceof Response) return body
   const content = body.content.trim()
   const mode = body.mode || 'agent'
+  const requestedModel = body.model?.trim()
 
   if (!content) return c.json({ error: 'Message content required' }, 400)
+  if (requestedModel && !VALID_ACP_MODEL_IDS.has(requestedModel)) {
+    return c.json({ error: 'Invalid model ID' }, 400)
+  }
   if (content.length > MAX_PROMPT_LENGTH) {
     return c.json({ error: `Prompt too long (${content.length} chars). Maximum is ${MAX_PROMPT_LENGTH}.` }, 413)
   }
@@ -47,7 +53,15 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
   const stub = sessionDOStub(c, sessionId)
   await persistUserMessage(stub, content)
 
-  const initialMeta = await fetchMeta(stub)
+  let initialMeta = await fetchMeta(stub)
+  if (requestedModel && initialMeta['model'] !== requestedModel) {
+    await patchMeta(stub, {
+      model: requestedModel,
+      acp_backend_kind: acpBackendFromModelId(requestedModel),
+      acp_protocol_session_id: '',
+    })
+    initialMeta = { ...initialMeta, model: requestedModel, acp_backend_kind: acpBackendFromModelId(requestedModel) }
+  }
   const userId = initialMeta['userId'] || initialMeta['user_id']
 
   return streamSSE(c, async (stream) => {
@@ -114,6 +128,16 @@ function sessionDOStub(c: Context<AuthedEnv>, sessionId: string): { fetch: typeo
 async function fetchMeta(stub: { fetch: typeof fetch }): Promise<Record<string, string>> {
   const res = await stub.fetch(new Request(`${DO_URL}/meta`))
   return (await res.json()) as Record<string, string>
+}
+
+async function patchMeta(stub: { fetch: typeof fetch }, patch: Record<string, string>): Promise<void> {
+  await stub.fetch(
+    new Request(`${DO_URL}/meta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+  )
 }
 
 async function persistUserMessage(stub: { fetch: typeof fetch }, content: string): Promise<void> {

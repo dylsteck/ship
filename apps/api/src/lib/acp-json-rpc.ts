@@ -15,9 +15,17 @@ export function sendCtl(ws: WebSocket, op: 'spawn' | 'reset', backend?: string):
 }
 
 export interface AcpMultiplexer {
-  request(method: string, params?: unknown): Promise<unknown>
+  request(method: string, params?: unknown, options?: { timeoutMs?: number }): Promise<unknown>
   notify(method: string, params?: unknown): void
   close(): void
+}
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
+
+function errorFromUnknown(value: unknown): Error {
+  if (value instanceof Error) return value
+  if (typeof value === 'string') return new Error(value)
+  return new Error(JSON.stringify(value))
 }
 
 /**
@@ -31,8 +39,22 @@ export function createAcpMultiplexer(
     onLog?: (stream: string, data: string) => void
   },
 ): AcpMultiplexer {
-  const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  const pending = new Map<
+    string,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+  >()
   let counter = 0
+  let closed = false
+
+  function rejectAll(error: Error): void {
+    if (closed && pending.size === 0) return
+    closed = true
+    for (const [id, waiter] of pending) {
+      clearTimeout(waiter.timer)
+      waiter.reject(error)
+      pending.delete(id)
+    }
+  }
 
   const route = async (rawLine: string) => {
     let rpc: JsonRpcRecord
@@ -50,7 +72,8 @@ export function createAcpMultiplexer(
       const waiter = pending.get(idStr)
       if (waiter) {
         pending.delete(idStr)
-        if (rpc.error) waiter.reject(new Error(typeof rpc.error === 'string' ? rpc.error : JSON.stringify(rpc.error)))
+        clearTimeout(waiter.timer)
+        if (rpc.error) waiter.reject(errorFromUnknown(rpc.error))
         else waiter.resolve(rpc.result)
         return
       }
@@ -94,15 +117,28 @@ export function createAcpMultiplexer(
       handlers.onLog?.(typeof outer.stream === 'string' ? outer.stream : 'stderr', outer.data)
       return
     }
+    if (outer.type === 'ctl' && (outer.status === 'error' || outer.status === 'exit')) {
+      const message =
+        typeof outer.message === 'string'
+          ? outer.message
+          : outer.status === 'exit'
+            ? `ACP backend exited before completing the request`
+            : 'ACP backend failed'
+      rejectAll(new Error(message))
+      return
+    }
     if (outer.type === 'rpc_in' && typeof outer.line === 'string') {
       await route(outer.line)
     }
   }
 
   ws.addEventListener('message', (ev) => void onMessage(ev))
+  ws.addEventListener('close', () => rejectAll(new Error('ACP bridge WebSocket closed')))
+  ws.addEventListener('error', () => rejectAll(new Error('ACP bridge WebSocket error')))
 
   return {
-    request(method, params) {
+    request(method, params, options) {
+      if (closed) return Promise.reject(new Error('ACP bridge is closed'))
       const rid = String(++counter)
       ws.send(
         JSON.stringify({
@@ -111,7 +147,12 @@ export function createAcpMultiplexer(
         }),
       )
       return new Promise((resolve, reject) => {
-        pending.set(rid, { resolve, reject })
+        const timeoutMs = options?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+        const timer = setTimeout(() => {
+          pending.delete(rid)
+          reject(new Error(`ACP request timed out: ${method}`))
+        }, timeoutMs)
+        pending.set(rid, { resolve, reject, timer })
       })
     },
     notify(method, params) {
@@ -123,6 +164,7 @@ export function createAcpMultiplexer(
       )
     },
     close() {
+      rejectAll(new Error('ACP bridge closed by client'))
       ws.close()
     },
   }

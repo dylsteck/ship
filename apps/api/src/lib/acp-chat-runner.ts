@@ -22,7 +22,7 @@ import {
   type StepFinishTotals,
 } from './agent-chunks'
 import type { ChatTurnMessage } from './chat-history'
-import { writeDone, writeSessionIdle, type SSEWriter } from './chat-stream-helpers'
+import { writeDone, writeSessionIdle, writeStatus, type SSEWriter } from './chat-stream-helpers'
 import { ensureAcpBridgeReady, toBridgeWsUrl } from './acp-bridge-bootstrap'
 import { createAcpMultiplexer, openBridgeWebSocket, sendCtl } from './acp-json-rpc'
 import { DEFAULT_ACP_MODEL_ID, resolveAcpBackend, type AcpBackendKind } from './agent-registry'
@@ -48,6 +48,14 @@ export interface ChatTurnResult {
 }
 
 const DO_URL = 'https://do'
+const ACP_PROMPT_TIMEOUT_MS = 480_000
+
+class AgentStoppedError extends Error {
+  constructor() {
+    super('Agent run stopped by user')
+    this.name = 'AgentStoppedError'
+  }
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -71,6 +79,7 @@ async function readMeta(stub: { fetch: typeof fetch }): Promise<Record<string, s
 async function emitEvent(input: RunChatTurnInput, event: ShipSSEEvent): Promise<void> {
   await input.stream.writeSSE({ event: event.type, data: JSON.stringify(event) })
   void broadcastToDurableObject(input.stub, event).catch(() => {})
+  void persistEventToDurableObject(input.stub, event).catch(() => {})
 }
 
 async function broadcastToDurableObject(stub: { fetch: typeof fetch }, event: ShipSSEEvent): Promise<void> {
@@ -79,6 +88,25 @@ async function broadcastToDurableObject(stub: { fetch: typeof fetch }, event: Sh
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'agent-event', event }),
+    }),
+  )
+}
+
+async function persistEventToDurableObject(stub: { fetch: typeof fetch }, event: ShipSSEEvent): Promise<void> {
+  await stub.fetch(
+    new Request(`${DO_URL}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        events: [
+          {
+            id: crypto.randomUUID(),
+            type: event.type,
+            timestamp: Date.now(),
+            payload: event,
+          },
+        ],
+      }),
     }),
   )
 }
@@ -104,12 +132,19 @@ async function runHandshake(
   cwd: string,
   persistedSessionId: string | undefined,
   persistSessionId: (id: string) => Promise<void>,
-): Promise<string> {
-  await rpc.request('initialize', {
+  setSuppressNotifications: (value: boolean) => void,
+): Promise<{ sessionId: string; loadedExisting: boolean }> {
+  const initRaw = await rpc.request('initialize', {
     protocolVersion: '2025-06-23',
     clientCapabilities: {},
     clientInfo: { name: 'Ship', version: '2.0.0' },
   })
+  const init = initRaw && typeof initRaw === 'object' ? (initRaw as Record<string, unknown>) : {}
+  const capabilities =
+    init.agentCapabilities && typeof init.agentCapabilities === 'object'
+      ? (init.agentCapabilities as Record<string, unknown>)
+      : {}
+  const canLoadSession = capabilities.loadSession === true
 
   switch (backend) {
     case 'cursor':
@@ -154,21 +189,56 @@ async function runHandshake(
   }
 
   let sid = persistedSessionId
+  let loadedExisting = false
   if (!sid) {
     const raw = await rpc.request('session/new', { cwd })
     const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
     sid = String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
     if (!sid) throw new Error('ACP session/new missing session id')
     await persistSessionId(sid)
-  } else {
+  } else if (canLoadSession) {
     try {
-      await rpc.request('session/load', { sessionId: sid })
+      setSuppressNotifications(true)
+      await rpc.request('session/load', { sessionId: sid, cwd })
+      loadedExisting = true
     } catch {
-      /* backends may omit session/load */
+      const raw = await rpc.request('session/new', { cwd })
+      const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+      sid = String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
+      if (!sid) throw new Error('ACP session/new missing session id after load failure')
+      await persistSessionId(sid)
+    } finally {
+      setSuppressNotifications(false)
     }
+  } else {
+    const raw = await rpc.request('session/new', { cwd })
+    const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+    sid = String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
+    if (!sid) throw new Error('ACP session/new missing session id without load support')
+    await persistSessionId(sid)
   }
 
-  return sid
+  return { sessionId: sid, loadedExisting }
+}
+
+async function waitForStopRequest(
+  input: RunChatTurnInput,
+  isActive: () => boolean,
+  onStop: () => void | Promise<void>,
+): Promise<never> {
+  while (isActive()) {
+    if (input.abortSignal?.aborted) {
+      await onStop()
+      throw new AgentStoppedError()
+    }
+    const meta = await readMeta(input.stub).catch((): Record<string, string> => ({}))
+    if (meta['agent_should_stop'] === 'true') {
+      await onStop()
+      throw new AgentStoppedError()
+    }
+    await delay(1000)
+  }
+  return new Promise<never>(() => {})
 }
 
 /**
@@ -177,8 +247,10 @@ async function runHandshake(
 export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResult> {
   const translator = createAcpNotificationTranslator(input.sessionId)
   let assistantText = ''
+  let suppressAcpNotifications = false
 
   const emitTranslated = async (note: Record<string, unknown>) => {
+    if (suppressAcpNotifications) return
     const events = translator.translateNotification(note)
     for (const event of events) {
       if (event.type === 'message.part.updated') {
@@ -199,9 +271,18 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
   const meta = await readMeta(input.stub)
   const pickerId = input.modelId || meta['model'] || DEFAULT_ACP_MODEL_ID
   const backend = resolveAcpBackend(pickerId)
-  if (!meta['acp_backend_kind']) {
-    await patchMeta(input.stub, { acp_backend_kind: backend })
+  const workingDirectory = input.sandbox.workingDirectory
+  const canReuseProtocolSession =
+    meta['acp_protocol_session_id'] &&
+    meta['acp_protocol_session_backend'] === backend &&
+    meta['acp_protocol_session_cwd'] === workingDirectory
+  if (meta['acp_backend_kind'] !== backend || !canReuseProtocolSession) {
+    await patchMeta(input.stub, {
+      acp_backend_kind: backend,
+      ...(canReuseProtocolSession ? {} : { acp_protocol_session_id: '' }),
+    })
   }
+  await patchMeta(input.stub, { agent_should_stop: 'false', agent_paused: 'false', model: pickerId })
 
   const bridge = await ensureAcpBridgeReady({
     sandbox: input.sandbox,
@@ -220,6 +301,7 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
       console.warn(`[acp:${stream}]`, data.slice(0, 500))
     },
   })
+  let stoppedByRequest = false
 
   if (input.abortSignal?.aborted) {
     rpc.close()
@@ -230,29 +312,61 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
     sendCtl(ws, 'spawn', backend)
     await delay(450)
 
-    const sid = await runHandshake(
+    const handshake = await runHandshake(
       rpc,
       backend,
       input.env,
-      input.sandbox.workingDirectory,
-      meta['acp_protocol_session_id'],
-      async (id) => patchMeta(input.stub, { acp_protocol_session_id: id }),
+      workingDirectory,
+      canReuseProtocolSession ? meta['acp_protocol_session_id'] : undefined,
+      async (id) =>
+        patchMeta(input.stub, {
+          acp_protocol_session_id: id,
+          acp_protocol_session_backend: backend,
+          acp_protocol_session_cwd: workingDirectory,
+        }),
+      (value) => {
+        suppressAcpNotifications = value
+      },
     )
+    const sid = handshake.sessionId
 
-    const transcript = input.messages
-      .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
-      .join('\n---\n')
+    const transcript = input.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n---\n')
+    const latestUserPrompt = [...input.messages].reverse().find((message) => message.role === 'user')?.content
     const planPrefix = input.planMode ? '[plan mode — describe steps; avoid edits]\n\n' : ''
+    const promptText = handshake.loadedExisting && latestUserPrompt ? latestUserPrompt : transcript
 
-    await rpc.request('session/prompt', {
-      sessionId: sid,
-      prompt: `${planPrefix}${transcript}`,
-    })
-
-    await emitEvent(
+    let waitingForPrompt = true
+    const stopPromise = waitForStopRequest(
       input,
-      makeStepFinishEvent(input.sessionId, translator.messageId, emptyStepTotals(), 'stop'),
+      () => waitingForPrompt,
+      async () => {
+        stoppedByRequest = true
+        rpc.notify('session/cancel', { sessionId: sid })
+        await delay(1500)
+        try {
+          sendCtl(ws, 'reset')
+        } finally {
+          rpc.close()
+        }
+      },
     )
+    try {
+      await Promise.race([
+        rpc.request(
+          'session/prompt',
+          {
+            sessionId: sid,
+            prompt: [{ type: 'text', text: `${planPrefix}${promptText}` }],
+          },
+          { timeoutMs: ACP_PROMPT_TIMEOUT_MS },
+        ),
+        stopPromise,
+      ])
+    } finally {
+      waitingForPrompt = false
+    }
+
+    await emitEvent(input, makeStepFinishEvent(input.sessionId, translator.messageId, emptyStepTotals(), 'stop'))
 
     await persistAssistantMessage(input.stub, assistantText)
     await writeSessionIdle(input.stream)
@@ -260,6 +374,13 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
 
     return { assistantText, totals: emptyStepTotals(), hadToolCalls: false }
   } catch (error) {
+    if (error instanceof AgentStoppedError || stoppedByRequest) {
+      await patchMeta(input.stub, { agent_should_stop: 'false', agent_paused: 'false' })
+      await writeStatus(input.stream, 'stopped', 'Agent stopped.')
+      await writeSessionIdle(input.stream)
+      await writeDone(input.stream)
+      return { assistantText, totals: emptyStepTotals(), hadToolCalls: false }
+    }
     const msg = error instanceof Error ? error.message : String(error)
     await emitEvent(input, {
       type: 'session.error',

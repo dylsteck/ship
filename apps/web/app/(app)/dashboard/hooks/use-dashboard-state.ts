@@ -18,6 +18,7 @@ const DEFAULT_MODES: AgentMode[] = [
   { id: 'plan', label: 'plan' },
 ]
 
+const DEFAULT_ACP_MODEL_ID = 'ship-acp-opencode'
 const MODE_STORAGE_KEY = 'ship-chat-mode'
 
 function getStoredMode(): AgentModeId {
@@ -63,7 +64,13 @@ export interface UseDashboardStateParams {
   }
 }
 
-export function useDashboardState({ chat, handleSend, processStreamEventForSession, session, data }: UseDashboardStateParams) {
+export function useDashboardState({
+  chat,
+  handleSend,
+  processStreamEventForSession,
+  session,
+  data,
+}: UseDashboardStateParams) {
   const { createSession, deleteSession, user, mutateSessions, onSessionCreated, onSessionDeleted } = session
   const {
     repos,
@@ -105,23 +112,31 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
     }
   }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent, setMode])
 
-  const handleAgentSelect = useCallback((agent: AgentInfo) => {
-    setSelectedAgent(agent)
-    setAvailableModes(agent.modes)
-    const savedMode = getStoredMode()
-    const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
-    setMode(validMode)
-    // Reset selectedModel so use-session-sync can apply the user's saved default for this agent
-    setSelectedModel(null)
-  }, [setMode, setSelectedModel])
+  const handleAgentSelect = useCallback(
+    (agent: AgentInfo) => {
+      setSelectedAgent(agent)
+      setAvailableModes(agent.modes)
+      const savedMode = getStoredMode()
+      const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
+      setMode(validMode)
+      // Reset selectedModel so use-session-sync can apply the user's saved default for this agent
+      setSelectedModel(null)
+    },
+    [setMode, setSelectedModel],
+  )
 
   /** Read SSE stream in background to populate live status for a homepage session card */
   const streamSessionInBackground = useCallback(
-    async (sessionId: string, content: string, sessionMode: string) => {
+    async (sessionId: string, content: string, sessionMode: string, modelId?: string) => {
       sessionStatusStore.update(sessionId, { isRunning: true, status: 'Starting...', steps: [], contentPreview: '' })
       let accumulatedText = ''
       try {
-        const response = await sendChatMessage(sessionId, content, sessionMode)
+        const response = await sendChatMessage(
+          sessionId,
+          content,
+          sessionMode,
+          modelId ?? selectedModel?.id ?? DEFAULT_ACP_MODEL_ID,
+        )
         if (!response.ok || !response.body) {
           sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
           return
@@ -150,8 +165,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
               if (!rawData.type && typeof rawData.error === 'string') {
                 rawData.type = 'error'
               }
-              const eventType: string =
-                typeof rawData.type === 'string' ? rawData.type : currentEventType || 'unknown'
+              const eventType: string = typeof rawData.type === 'string' ? rawData.type : currentEventType || 'unknown'
               if (isAgentHarnessEvent(eventType, rawData)) {
                 eventsStore.addEvent(sessionId, {
                   id: crypto.randomUUID(),
@@ -231,19 +245,18 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
         sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
       }
     },
-    [chat, processStreamEventForSession],
+    [chat, processStreamEventForSession, selectedModel],
   )
 
   const handleCreate = useCallback(
     async (data: { repoOwner: string; repoName: string; model?: string; baseBranch?: string }) => {
       try {
         const trimmedPrompt = prompt.trim()
-        const initialTitle =
-          trimmedPrompt.length > 60 ? `${trimmedPrompt.slice(0, 57)}...` : trimmedPrompt
+        const initialTitle = trimmedPrompt.length > 60 ? `${trimmedPrompt.slice(0, 57)}...` : trimmedPrompt
         const newSession = await createSession({
           repoOwner: data.repoOwner,
           repoName: data.repoName,
-          model: data.model || selectedModel?.id || 'opencode/big-pickle',
+          model: data.model || selectedModel?.id || DEFAULT_ACP_MODEL_ID,
           agentType: selectedAgent?.id || 'opencode',
           baseBranch: data.baseBranch || 'main',
           title: initialTitle || undefined,
@@ -273,7 +286,7 @@ export function useDashboardState({ chat, handleSend, processStreamEventForSessi
           if (trimmedPrompt) {
             setPrompt('')
             // Stream SSE in background to track live status without navigating
-            streamSessionInBackground(newSession.id, trimmedPrompt, mode)
+            streamSessionInBackground(newSession.id, trimmedPrompt, mode, newSessionData.model)
           }
         }
       } catch (error) {

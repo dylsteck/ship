@@ -5,8 +5,11 @@
   "license": "MIT",
   "scripts": {
     "dev": "wrangler dev",
+    "predev": "node ./scripts/bundle-acp-bridge.mjs",
     "deploy": "wrangler deploy",
+    "predeploy": "node ./scripts/bundle-acp-bridge.mjs",
     "deploy:prod": "wrangler deploy --env production",
+    "predeploy:prod": "node ./scripts/bundle-acp-bridge.mjs",
     "bundle:acp-bridge": "node ./scripts/bundle-acp-bridge.mjs",
     "pretype-check": "node ./scripts/bundle-acp-bridge.mjs",
     "lint": "eslint \"src/**/*.ts\"",

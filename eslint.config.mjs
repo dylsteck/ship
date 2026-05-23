@@ -9,6 +9,7 @@ const eslintConfig = [
     ignores: [
       '**/node_modules/**',
       '**/.next/**',
+      '**/.open-next/**',
       '**/dist/**',
       '**/coverage/**',
       '.agents/skills/**',

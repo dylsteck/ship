@@ -22,6 +22,7 @@ type BackendKind = 'codex' | 'claude' | 'cursor' | 'opencode'
 let child: ChildProcessWithoutNullStreams | null = null
 let stdoutBuf = ''
 let stderrRate: { count: number; resetAt: number } = { count: 0, resetAt: 0 }
+const bridgeVersion = '1'
 
 function parseArgs(argv: string[]): { port: number } {
   let port = 9847
@@ -73,6 +74,14 @@ function killChild(): void {
   stdoutBuf = ''
 }
 
+function sendCtl(ws: WebSocket, payload: Record<string, unknown>): void {
+  try {
+    ws.send(JSON.stringify({ type: 'ctl', ...payload }))
+  } catch {
+    /* socket closing */
+  }
+}
+
 function spawnBackend(kind: BackendKind, client: WebSocket): void {
   killChild()
   const cwd = process.env.SHIP_REPO_CWD || process.cwd()
@@ -84,9 +93,11 @@ function spawnBackend(kind: BackendKind, client: WebSocket): void {
       env: process.env,
     })
   } catch (err) {
-    client.send(JSON.stringify({ type: 'log', stream: 'stderr', data: `spawn failed: ${String(err)}` }))
+    sendCtl(client, { op: 'spawn', status: 'error', backend: kind, message: `spawn failed: ${String(err)}` })
     return
   }
+
+  sendCtl(client, { op: 'spawn', status: 'ok', backend: kind, pid: child.pid })
 
   child.stdout?.on('data', (chunk: Buffer) => {
     stdoutBuf += chunk.toString('utf8')
@@ -119,12 +130,30 @@ function spawnBackend(kind: BackendKind, client: WebSocket): void {
     }
   })
 
+  child.on('error', (err) => {
+    sendCtl(client, {
+      op: 'spawn',
+      status: 'error',
+      backend: kind,
+      message: `ACP backend failed to start: ${err.message}`,
+    })
+    child = null
+  })
+
   child.on('exit', (code, signal) => {
     try {
       client.send(JSON.stringify({ type: 'log', stream: 'stderr', data: `child exit code=${code} signal=${signal}` }))
     } catch {
       /* ignore */
     }
+    sendCtl(client, {
+      op: 'child',
+      status: 'exit',
+      backend: kind,
+      code,
+      signal,
+      message: `ACP backend exited code=${code} signal=${signal}`,
+    })
     child = null
   })
 }
@@ -165,8 +194,21 @@ const token = process.env.SHIP_BRIDGE_TOKEN
 const server = http.createServer((req, res) => {
   const u = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`)
   if (req.method === 'GET' && u.pathname === '/healthz') {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
-    res.end('ok')
+    if (!authorize(req, token)) {
+      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: false, error: 'unauthorized' }))
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(
+      JSON.stringify({
+        ok: true,
+        version: bridgeVersion,
+        cwd: process.env.SHIP_REPO_CWD || process.cwd(),
+        pid: process.pid,
+        childPid: child?.pid ?? null,
+      }),
+    )
     return
   }
   res.writeHead(404)

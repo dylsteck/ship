@@ -154,8 +154,14 @@ models.post('/sessions/:id', async (c) => {
 
     const doId = c.env.SESSION_DO.idFromName(sessionId)
     const doStub = c.env.SESSION_DO.get(doId)
+    const meta = await doStub.getSessionMeta()
     await doStub.setSessionMeta('model', model)
     await doStub.setSessionMeta('acp_backend_kind', acpBackendFromModelId(model))
+    if (meta['model'] !== model || meta['acp_backend_kind'] !== acpBackendFromModelId(model)) {
+      await doStub.setSessionMeta('acp_protocol_session_id', '')
+      await doStub.setSessionMeta('acp_protocol_session_backend', '')
+      await doStub.setSessionMeta('acp_protocol_session_cwd', '')
+    }
 
     return c.json({ success: true, model })
   } catch (error) {

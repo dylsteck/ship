@@ -15,6 +15,7 @@ export const uuidParamSchema = z.string().uuid()
 export const chatPostBodySchema = z.object({
   content: z.string().max(100_000),
   mode: z.string().max(64).optional(),
+  model: z.string().max(200).optional(),
 })
 
 export const createSessionBodySchema = z.object({

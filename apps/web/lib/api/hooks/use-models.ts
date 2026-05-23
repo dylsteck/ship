@@ -178,3 +178,23 @@ export function useSetDefaultModel() {
     error,
   }
 }
+
+/**
+ * Mutation hook to set the active model for a chat session.
+ */
+export function useSetSessionModel() {
+  const { trigger, isMutating, error } = useSWRMutation(
+    'set-session-model',
+    async (_key: string, { arg }: { arg: { sessionId: string; modelId: string } }) => {
+      return post<{ model: string }, { success: boolean; model: string }>(apiUrl(`/models/sessions/${arg.sessionId}`), {
+        model: arg.modelId,
+      })
+    },
+  )
+
+  return {
+    setSessionModel: trigger,
+    isSetting: isMutating,
+    error,
+  }
+}
