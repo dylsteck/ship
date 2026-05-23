@@ -92,8 +92,8 @@ const FALLBACK_CODEX_MODELS: ModelInfo[] = [
 /** Curated browser-side fallback for ACP agents when prod serves legacy harness-only data. */
 export const FALLBACK_AGENTS: AgentInfo[] = [
   fallbackAgent('opencode', 'OpenCode', FALLBACK_OPENCODE_MODELS),
-  fallbackAgent('cursor', 'Cursor Agent', FALLBACK_CURSOR_MODELS),
-  fallbackAgent('claude', 'Claude Agent', FALLBACK_CLAUDE_MODELS),
+  fallbackAgent('cursor', 'Cursor', FALLBACK_CURSOR_MODELS),
+  fallbackAgent('claude', 'Claude', FALLBACK_CLAUDE_MODELS),
   fallbackAgent('codex', 'Codex', FALLBACK_CODEX_MODELS),
 ]
 

@@ -22,7 +22,7 @@ function shortenModelName(name: string): string {
 }
 
 function modelSubtitle(model: ModelInfo): string {
-  const parts = [model.provider]
+  const parts: string[] = []
   if (model.isFree && !/free/i.test(model.provider)) parts.push('Free')
   if (model.contextWindow) parts.push(`${Math.round(model.contextWindow / 1000)}K ctx`)
   return parts.join(' - ')

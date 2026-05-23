@@ -258,14 +258,14 @@ export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfi
     },
     {
       id: 'cursor',
-      name: 'Cursor Agent',
+      name: 'Cursor',
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
       models: CURSOR_MODELS,
     },
     {
       id: 'claude',
-      name: 'Claude Agent',
+      name: 'Claude',
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
       models: CLAUDE_MODELS,

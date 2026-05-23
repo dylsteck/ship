@@ -210,6 +210,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
         stallTimerId = setTimeout(onStall, STALL_TIMEOUT_MS)
       }
       let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(onStall, CLIENT_TIMEOUT_MS)
+      let doneOrIdleReceived = false
 
       const ctx: SSEHandlerContext = {
         setMessages,
@@ -404,17 +405,10 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
                       clearTimeout(stallTimerId)
                       stallTimerId = null
                     }
-                    // Cancel any pending throttled flush — done handler writes final state
-                    if (flushTimerRef.current != null) {
-                      clearTimeout(flushTimerRef.current)
-                      flushTimerRef.current = null
-                    }
-                    handleDoneOrIdle(ctx, streamStartTimeRef)
-                    sessionStatusStore.update(targetSessionId, {
-                      isRunning: false,
-                      status: 'Done',
-                      contentPreview: ctx.assistantTextRef.current || undefined,
-                    })
+                    // Mark done but DON'T finalize yet — the server may emit additional
+                    // message.part.updated events after done (race between ACP event queue
+                    // and the done signal). Drain the rest of the stream first.
+                    doneOrIdleReceived = true
                     terminalStreamSessionsRef.current.add(targetSessionId)
                     break
                   }
@@ -491,14 +485,25 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
           clearTimeout(stallTimerId)
           stallTimerId = null
         }
-        const current = sessionStatusStore.get(targetSessionId)
-        if (current?.isRunning) {
-          sessionStatusStore.update(targetSessionId, {
-            isRunning: false,
-            status: 'Done',
-            contentPreview: ctx.assistantTextRef.current || undefined,
-          })
+        // Stream fully drained — finalize any pending streaming message now.
+        // We deferred handleDoneOrIdle past the done/session.idle event so that
+        // any text events the server queued after done are still accumulated.
+        if (streamingMessageRef.current) {
+          if (flushTimerRef.current != null) {
+            clearTimeout(flushTimerRef.current)
+            flushTimerRef.current = null
+          }
+          const finalPreview = ctx.assistantTextRef.current || undefined
+          handleDoneOrIdle(ctx, streamStartTimeRef)
+          sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Done', contentPreview: finalPreview })
+        } else {
+          const current = sessionStatusStore.get(targetSessionId)
+          if (current?.isRunning) {
+            sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Done' })
+          }
         }
+        // Invalidate session list so the AI-generated title surfaces immediately
+        if (doneOrIdleReceived) postSessionSync({ type: 'sessions-invalidate' })
       } catch (err) {
         console.error('Chat error:', err)
         sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
@@ -637,8 +642,18 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
           break
         case 'done':
         case 'session.idle':
-          handleDoneOrIdle(ctx, streamStartTimeRef)
+          // Don't finalize yet — wait for __stream_finalize__ after the SSE stream drains
           sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
+          break
+        case '__stream_finalize__':
+          // Sent by streamSessionInBackground after the stream fully drains
+          if (streamingMessageRef.current) {
+            if (flushTimerRef.current != null) {
+              clearTimeout(flushTimerRef.current)
+              flushTimerRef.current = null
+            }
+            handleDoneOrIdle(ctx, streamStartTimeRef)
+          }
           terminalStreamSessionsRef.current.add(sessionId)
           break
         case 'session.error':

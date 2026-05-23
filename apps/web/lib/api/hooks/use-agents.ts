@@ -8,8 +8,8 @@ import { expandLegacyAgents, FALLBACK_AGENTS } from '../acp-catalog'
 
 const ACP_HARNESSES = {
   opencode: { name: 'OpenCode', provider: 'ACP — OpenCode' },
-  cursor: { name: 'Cursor Agent', provider: 'ACP — Cursor' },
-  claude: { name: 'Claude Agent', provider: 'ACP — Claude' },
+  cursor: { name: 'Cursor', provider: 'ACP — Cursor' },
+  claude: { name: 'Claude', provider: 'ACP — Claude' },
   codex: { name: 'Codex', provider: 'ACP — Codex' },
 } as const
 

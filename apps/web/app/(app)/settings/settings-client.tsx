@@ -1,29 +1,19 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { setApiToken } from '@/lib/api/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useIsMobile, SidebarTrigger, useSidebar, Tabs, TabsList, TabsTrigger, TabsContent } from '@ship/ui'
+import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
+import { Search01Icon, PlusSignIcon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
 import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
-import {
-  useModels,
-  useAgents,
-  useDefaultAgent,
-  useFilteredGitHubRepos,
-  useDefaultRepo,
-  useSessions,
-} from '@/lib/api'
+import { useSessions } from '@/lib/api'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
 import { DashboardLayout } from '../dashboard/components/dashboard-layout'
-import { DefaultAgentCard } from './default-agent-card'
-import { DefaultRepoCard } from './default-repo-card'
 import { DeleteAllSessionsCard } from './delete-all-sessions-card'
-import { AgentModelRow } from './agent-model-row'
 
 interface SettingsClientProps {
   user: User
@@ -82,29 +72,6 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
   const { sessions: swrSessions } = useSessions(true, { revalidateOnFocus: true })
   const sessions = swrSessions.length > 0 ? swrSessions : initialSessions
 
-  const { agents, isLoading: agentsLoading } = useAgents()
-  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(true)
-  const { models: availableModels, isLoading: modelsLoading } = useModels(true)
-
-  const {
-    repos,
-    isLoading: reposLoading,
-    loadMore: reposLoadMore,
-    hasMore: reposHasMore,
-    isLoadingMore: reposLoadingMore,
-  } = useFilteredGitHubRepos(true, '')
-  const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(true)
-
-  const [selectedAgentId, setSelectedAgentId] = useState<string>('')
-
-  useEffect(() => {
-    if (defaultAgentId && !selectedAgentId) {
-      setSelectedAgentId(defaultAgentId)
-    }
-  }, [defaultAgentId, selectedAgentId])
-
-  const loading = agentsLoading || defaultAgentLoading || modelsLoading || reposLoading || defaultRepoLoading
-
   const handleNewChat = useCallback(() => {
     router.push('/')
   }, [router])
@@ -113,85 +80,37 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
     router.refresh()
   }, [router])
 
-  const settingsContent = loading ? (
-    <div className="flex items-center justify-center py-24">
-      <div className="size-4 border-2 border-muted border-t-foreground rounded-full animate-spin" />
-    </div>
-  ) : (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+  const settingsContent = (
+    <div className="mx-auto max-w-2xl px-4 py-10">
       {/* Mobile header */}
       {isMobile && (
-        <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 -mx-4 -mt-8 mb-6 justify-end">
-          <nav className="flex items-center gap-0.5">
-            <Link
-              href="/"
-              className="px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Agents
-            </Link>
-            <Link
-              href="/settings"
-              className="px-1.5 py-1 text-xs text-foreground font-medium transition-colors"
-            >
-              Settings
-            </Link>
-          </nav>
+        <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 -mx-4 -mt-10 mb-6 justify-end">
           <UserDropdown user={user} />
         </div>
       )}
 
-      <h1 className="text-xl font-semibold text-foreground mb-8">Settings</h1>
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6"
+      >
+        <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} className="size-3" />
+        Back to Home
+      </Link>
 
-      {/* Preferences */}
-      <section className="mb-8">
-        <Tabs defaultValue="defaults" className="items-start">
-          <TabsList>
-            <TabsTrigger value="defaults">Defaults</TabsTrigger>
-            <TabsTrigger value="agents">Agents</TabsTrigger>
-          </TabsList>
-          <TabsContent value="defaults" className="w-full self-stretch">
-            <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
-              <DefaultAgentCard
-                agents={agents}
-                defaultAgentId={defaultAgentId}
-                onAgentChange={setSelectedAgentId}
-              />
-              <DefaultRepoCard
-                repos={repos}
-                reposLoading={reposLoading}
-                reposLoadMore={reposLoadMore}
-                reposHasMore={reposHasMore ?? false}
-                reposLoadingMore={reposLoadingMore ?? false}
-                defaultRepoFullName={defaultRepoFullName}
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="agents" className="w-full self-stretch">
-            <div className="rounded-lg border border-border overflow-hidden divide-y divide-border mt-3">
-              {agents.map((agent) => (
-                <AgentModelRow
-                  key={agent.id}
-                  agent={agent}
-                  allModels={availableModels}
-                />
-              ))}
-            </div>
-          </TabsContent>
-        </Tabs>
-      </section>
+      <h1 className="text-2xl font-semibold text-foreground mb-10">Settings</h1>
 
       {/* Integrations */}
-      <section className="mb-8">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">Integrations</h2>
-        <div className="rounded-lg border border-border overflow-hidden">
+      <section className="mb-10">
+        <h2 className="text-xs text-muted-foreground mb-3">Integrations</h2>
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
           <ConnectorSettings />
         </div>
       </section>
 
       {/* Data */}
       <section>
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">Data</h2>
-        <div className="rounded-lg border border-border overflow-hidden">
+        <h2 className="text-xs text-muted-foreground mb-3">Data</h2>
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
           <DeleteAllSessionsCard />
         </div>
       </section>

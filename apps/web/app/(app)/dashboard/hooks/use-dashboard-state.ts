@@ -235,11 +235,17 @@ export function useDashboardState({
             }
           }
         }
-        // Stream ended
+        // Stream fully drained — signal finalization so processStreamEventForSession
+        // can flush any text accumulated after the done event
+        if (chat.activeSessionIdRef?.current === sessionId && processStreamEventForSession) {
+          processStreamEventForSession(sessionId, { type: '__stream_finalize__' })
+        }
         const current = sessionStatusStore.get(sessionId)
         if (current?.isRunning) {
           sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
         }
+        // Refresh session list to pick up AI-generated title from DB
+        postSessionSync({ type: 'sessions-invalidate' })
       } catch (err) {
         console.error('Background SSE error:', err)
         sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })

@@ -169,7 +169,7 @@ function HomepageSessionCard({
   const { getStatus } = useSessionStatusStore()
   const liveStatus = getStatus(session.id)
 
-  const title = liveStatus?.title || getSessionDisplayTitle(session) || session.repoName
+  const title = liveStatus?.title || getSessionDisplayTitle(session) || (liveStatus?.isRunning ? 'New Agent' : session.repoName)
   const repoPath = getSessionRepoLabel(session) || session.repoName
   const modelLabel = getSessionModelLabel(session, models, agentLabel)
 
@@ -275,8 +275,8 @@ function getSessionModelLabel(session: ChatSession, models: ModelInfo[], fallbac
 
 function agentNameFromModelId(modelId: string): string | null {
   if (modelId.includes('ship-acp-opencode')) return 'OpenCode'
-  if (modelId.includes('ship-acp-cursor')) return 'Cursor Agent'
-  if (modelId.includes('ship-acp-claude')) return 'Claude Agent'
+  if (modelId.includes('ship-acp-cursor')) return 'Cursor'
+  if (modelId.includes('ship-acp-claude')) return 'Claude'
   if (modelId.includes('ship-acp-codex')) return 'Codex'
   return null
 }
