@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
-import { getChatMessages, stopChatStream } from '@/lib/api'
+import { getChatMessages, retryChatSession, sendChatMessage, stopChatStream } from '@/lib/api'
 import type { AgentStatus } from '@/components/session/status-indicator'
 import {
   type UIMessage,
@@ -130,11 +130,7 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
       setMessages((prev) => [...prev, userMessage, assistantMessage])
 
       try {
-        const response = await fetch(`${API_URL}/chat/${encodeURIComponent(sessionId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-          body: JSON.stringify({ content, mode: modeOverride ?? initialMode }),
-        })
+        const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -172,7 +168,9 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
 
     // Batch state updates: collect events and flush once per animation frame
     const pendingEvents: Record<string, unknown>[] = []
-    const clearStreamingRef = () => { streamingMessageRef.current = null }
+    const clearStreamingRef = () => {
+      streamingMessageRef.current = null
+    }
 
     function flushEvents() {
       rafId = null
@@ -235,7 +233,7 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
     async (messageId: string) => {
       setMessages((prev) => prev.filter((m) => m.id !== messageId))
       try {
-        await fetch(`${API_URL}/sessions/${sessionId}/retry`, { method: 'POST' })
+        await retryChatSession(sessionId)
       } catch (err) {
         console.error('Retry failed:', err)
       }

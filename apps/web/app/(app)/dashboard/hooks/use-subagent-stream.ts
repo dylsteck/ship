@@ -1,16 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { API_URL } from '@/lib/config'
-import {
-  type UIMessage,
-  createAssistantPlaceholder,
-  processPartUpdated,
-} from '@/lib/ai-elements-adapter'
+import { streamSubagentSession } from '@/lib/api'
+import { type UIMessage, createAssistantPlaceholder, processPartUpdated } from '@/lib/ai-elements-adapter'
 import { parseSSEEvent } from '@/lib/sse-parser'
 import type { MessagePartUpdatedEvent } from '@/lib/sse-types'
 
-function getStatusFromPart(part: { type?: string; tool?: string; state?: { status?: string; input?: Record<string, unknown> } }): string | null {
+function getStatusFromPart(part: {
+  type?: string
+  tool?: string
+  state?: { status?: string; input?: Record<string, unknown> }
+}): string | null {
   if (!part) return null
   if (part.type === 'reasoning') return 'Thinking...'
   if (part.type === 'text') return 'Writing response...'
@@ -22,8 +22,10 @@ function getStatusFromPart(part: { type?: string; tool?: string; state?: { statu
     if (state === 'pending') return `Starting: ${part.tool}`
     if (tool.includes('read')) return short ? `Reading: ${short}` : 'Reading files...'
     if (tool.includes('write') || tool.includes('edit')) return short ? `Writing: ${short}` : 'Writing...'
-    if (tool.includes('bash') || tool.includes('run') || tool.includes('command')) return short ? `Running: ${short}` : 'Running command...'
-    if (tool.includes('glob') || tool.includes('grep') || tool.includes('search')) return short ? `Searching: ${short}` : `Searching: ${part.tool}`
+    if (tool.includes('bash') || tool.includes('run') || tool.includes('command'))
+      return short ? `Running: ${short}` : 'Running command...'
+    if (tool.includes('glob') || tool.includes('grep') || tool.includes('search'))
+      return short ? `Searching: ${short}` : `Searching: ${part.tool}`
     return short ? `${part.tool}: ${short}` : `Running: ${part.tool}`
   }
   return null
@@ -77,13 +79,7 @@ export function useSubagentStream({
     const controller = new AbortController()
     abortRef.current = controller
 
-    const url = `${API_URL}/chat/${encodeURIComponent(parentSessionId)}/subagent/${encodeURIComponent(subagentSessionId)}/stream`
-
-    fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: 'text/event-stream' },
-      credentials: 'include',
-    })
+    streamSubagentSession(parentSessionId, subagentSessionId, controller.signal)
       .then(async (res) => {
         if (!res.ok) throw new Error(`Stream failed: ${res.status}`)
         const reader = res.body?.getReader()
@@ -118,14 +114,7 @@ export function useSubagentStream({
                   const msgId = messageIdRef.current
                   if (msgId) {
                     setMessages((prev) =>
-                      processPartUpdated(
-                        part,
-                        mpu.properties?.delta,
-                        msgId,
-                        prev,
-                        textRef,
-                        reasoningRef,
-                      ),
+                      processPartUpdated(part, mpu.properties?.delta, msgId, prev, textRef, reasoningRef),
                     )
                   }
                   const partStatus = getStatusFromPart(part) || 'Thinking...'
@@ -147,9 +136,7 @@ export function useSubagentStream({
 
                 if (event.type === 'done' || event.type === 'session.idle') {
                   const msgId = messageIdRef.current
-                  const elapsed = streamStartRef.current
-                    ? Date.now() - streamStartRef.current
-                    : 0
+                  const elapsed = streamStartRef.current ? Date.now() - streamStartRef.current : 0
                   if (msgId && elapsed > 0) {
                     setMessages((prev) =>
                       prev.map((m) =>
@@ -157,9 +144,7 @@ export function useSubagentStream({
                           ? {
                               ...m,
                               content: textRef.current,
-                              reasoning: reasoningRef.current
-                                ? [reasoningRef.current]
-                                : undefined,
+                              reasoning: reasoningRef.current ? [reasoningRef.current] : undefined,
                               elapsed,
                             }
                           : m,

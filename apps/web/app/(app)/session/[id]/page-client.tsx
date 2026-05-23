@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider } from '@ship/ui'
+import { getSession, getSessionSandbox, retryChatSession } from '@/lib/api'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
 import { API_URL } from '@/lib/config'
@@ -26,7 +27,7 @@ function useLocalSessions(initialSessions: ChatSession[], currentSessionId: stri
 
   const removeSession = (sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId))
-    
+
     // If we deleted the currently viewed session, redirect to home and refresh
     if (currentSessionId === sessionId) {
       router.push('/')
@@ -88,16 +89,13 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
   useEffect(() => {
     async function loadSession() {
       try {
-        const res = await fetch(`${API_URL}/sessions/${sessionId}`)
-        if (res.ok) {
-          const data = await res.json()
-          setSessionInfo({
-            repoOwner: data.repoOwner,
-            repoName: data.repoName,
-            branch: data.branch,
-            model: data.model,
-          })
-        }
+        const data = await getSession(sessionId)
+        setSessionInfo({
+          repoOwner: data.repoOwner,
+          repoName: data.repoName,
+          branch: data.branch,
+          model: data.model,
+        })
       } catch (err) {
         console.error('Failed to load session:', err)
       }
@@ -122,19 +120,14 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
     async function loadSandbox() {
       try {
-        const res = await fetch(`${API_URL}/sessions/${sessionId}/sandbox`)
-        if (res.ok) {
-          const data = await res.json()
-          setSandboxId(data.sandboxId || null)
-          setSandboxStatus(normalizeSandboxStatus(data.status))
-          if (data.opencodeUrl) {
-            setOpencodeUrl(data.opencodeUrl)
-          }
-          if (data.opencodeSessionId) {
-            setOpencodeSessionId(data.opencodeSessionId)
-          }
-        } else if (res.status === 404) {
-          setSandboxStatus('none')
+        const data = await getSessionSandbox(sessionId)
+        setSandboxId(data?.sandboxId || null)
+        setSandboxStatus(normalizeSandboxStatus(data?.status))
+        if (data?.opencodeUrl) {
+          setOpencodeUrl(data.opencodeUrl)
+        }
+        if (data?.opencodeSessionId) {
+          setOpencodeSessionId(data.opencodeSessionId)
         }
       } catch (err) {
         console.error('[page-client] Failed to load sandbox:', err)
@@ -324,9 +317,7 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
 
   const handleRetryOperation = async () => {
     try {
-      await fetch(`${API_URL}/chat/${sessionId}/retry`, {
-        method: 'POST',
-      })
+      await retryChatSession(sessionId)
     } catch (err) {
       console.error('Failed to retry operation:', err)
     }
@@ -351,17 +342,22 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               {/* Status indicator */}
               {agentStatus !== 'idle' ? (
                 <div className="relative flex items-center justify-center size-3.5 shrink-0">
-                  <div className={`size-1.5 rounded-full ${agentStatus === 'error' ? 'bg-red-500' : 'bg-green-500'} ${agentStatus !== 'error' ? 'animate-pulse' : ''}`} />
+                  <div
+                    className={`size-1.5 rounded-full ${agentStatus === 'error' ? 'bg-red-500' : 'bg-green-500'} ${agentStatus !== 'error' ? 'animate-pulse' : ''}`}
+                  />
                 </div>
               ) : (
-                <svg className="size-3.5 shrink-0 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  className="size-3.5 shrink-0 text-muted-foreground/50"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                 </svg>
               )}
               {/* Title */}
-              <span className="text-xs text-muted-foreground truncate">
-                {sessionTitle || 'Session'}
-              </span>
+              <span className="text-xs text-muted-foreground truncate">{sessionTitle || 'Session'}</span>
               {/* Branch */}
               {sessionInfo.branch && (
                 <span className="text-xs text-muted-foreground/40 shrink-0">{sessionInfo.branch}</span>
@@ -373,7 +369,14 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               className="flex items-center justify-center size-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
               title={rightSidebarOpen ? 'Hide panel' : 'Show panel'}
             >
-              <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+              <svg
+                className="size-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <path d="M15 3v18" />
               </svg>
@@ -442,7 +445,6 @@ export function SessionPageClient({ sessionId, userId, user, sessions: initialSe
               />
             )}
           </div>
-
         </div>
       </SidebarInset>
     </SidebarProvider>

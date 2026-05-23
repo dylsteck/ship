@@ -16,9 +16,14 @@ export { API_URL, fetcher, authFetcher, post, del, apiUrl, wsUrl, chatFetchHeade
 // Chat types + browser-safe chat fetches (JWT via setApiToken)
 export type { Message, RawEvent, MessagePart } from './chat-types'
 export {
+  getSession,
+  getSessionSandbox,
   getChatMessages,
   getChatEvents,
   sendChatMessage,
   stopChatStream,
   subscribeToChatStream,
+  retryChatSession,
+  streamSubagentSession,
 } from './chat-client'
+export type { SessionSandboxStatus } from './chat-client'

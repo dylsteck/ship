@@ -1,5 +1,6 @@
-import { API_URL } from '@/lib/config'
 import { github } from '@/lib/github'
+import { fetchGitHubOAuthUser, fetchPrimaryGitHubEmail } from '@/services/github'
+import { storeGitHubOAuthAccount, upsertOAuthUser } from '@/services/oauth'
 import { createSession } from '@/lib/session'
 import { cookies } from 'next/headers'
 
@@ -32,14 +33,8 @@ export async function GET(request: Request): Promise<Response> {
       expiresAtSec = null
     }
 
-    // Fetch GitHub user
-    const githubUserResponse = await fetch('https://api.github.com/user', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
-
-    if (!githubUserResponse.ok) {
+    const githubUser = await fetchGitHubOAuthUser(accessToken)
+    if (!githubUser) {
       return new Response(null, {
         status: 302,
         headers: {
@@ -47,53 +42,31 @@ export async function GET(request: Request): Promise<Response> {
         },
       })
     }
-
-    const githubUser = await githubUserResponse.json()
 
     // Get primary email if not public
     let email = githubUser.email
     if (!email) {
-      const emailsResponse = await fetch('https://api.github.com/user/emails', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-
-      if (emailsResponse.ok) {
-        const emails = await emailsResponse.json()
-        const primaryEmail = emails.find((e: { email: string; primary: boolean; verified: boolean }) => e.primary)
-        email = primaryEmail?.email ?? null
-      }
+      email = await fetchPrimaryGitHubEmail(accessToken)
     }
 
-    // Upsert user via API
-    const apiResponse = await fetch(`${API_URL}/users/upsert`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.API_SECRET}`,
-      },
-      body: JSON.stringify({
-        githubId: githubUser.id.toString(),
-        username: githubUser.login,
-        email,
-        avatarUrl: githubUser.avatar_url,
-        name: githubUser.name,
-      }),
+    const upsertResult = await upsertOAuthUser({
+      githubId: githubUser.id.toString(),
+      username: githubUser.login,
+      email: email ?? undefined,
+      avatarUrl: githubUser.avatar_url ?? undefined,
+      name: githubUser.name ?? undefined,
     })
 
-    if (!apiResponse.ok) {
-      if (apiResponse.status === 403) {
-        const body = await apiResponse.json()
-        if (body?.error === 'access_restricted') {
-          return new Response(null, {
-            status: 302,
-            headers: {
-              Location: '/login?error=access_restricted',
-            },
-          })
-        }
-      }
+    if (!upsertResult.ok && upsertResult.accessRestricted) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/login?error=access_restricted',
+        },
+      })
+    }
+
+    if (!upsertResult.ok) {
       return new Response(null, {
         status: 302,
         headers: {
@@ -102,24 +75,17 @@ export async function GET(request: Request): Promise<Response> {
       })
     }
 
-    const { userId, isNewUser } = await apiResponse.json()
+    const { userId, isNewUser } = upsertResult
 
     // Store GitHub account with access token for repo access
-    await fetch(`${API_URL}/accounts/github`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.API_SECRET}`,
-      },
-      body: JSON.stringify({
-        userId,
-        providerAccountId: githubUser.id.toString(),
-        accessToken,
-        refreshToken: refreshToken ?? undefined,
-        expiresAt: expiresAtSec ?? undefined,
-        tokenType: 'Bearer',
-        scope: 'repo,read:user,user:email',
-      }),
+    await storeGitHubOAuthAccount({
+      userId,
+      providerAccountId: githubUser.id.toString(),
+      accessToken,
+      refreshToken: refreshToken ?? undefined,
+      expiresAt: expiresAtSec ?? undefined,
+      tokenType: 'Bearer',
+      scope: 'repo,read:user,user:email',
     })
 
     // Create session
