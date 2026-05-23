@@ -34,6 +34,7 @@ function selectedModelForAgent(agent: AgentInfo | null, selectedModel: ModelInfo
 
 export function AgentModelSelector() {
   const {
+    activeSessionId,
     selectedAgent,
     selectedModel,
     onAgentSelect,
@@ -47,6 +48,17 @@ export function AgentModelSelector() {
   const loading = agentsLoading || modelsLoading
   const triggerHarness = loading ? 'Loading...' : selectedAgent?.name || 'Select harness'
   const triggerModel = selectedModelForAgent(selectedAgent, selectedModel)?.name ?? selectedModel?.name
+
+  if (activeSessionId) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground max-w-full overflow-hidden">
+        <span className="truncate font-medium">{triggerHarness}</span>
+        {triggerModel && !loading && (
+          <span className="truncate text-muted-foreground/70">/ {shortenModelName(triggerModel)}</span>
+        )}
+      </span>
+    )
+  }
 
   return (
     <DropdownMenu>
