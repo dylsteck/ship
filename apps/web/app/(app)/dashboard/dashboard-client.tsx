@@ -499,6 +499,7 @@ export function DashboardClient({
         composer={{ context: derived.composerContext }}
         rightSidebar={rightSidebar}
         rightSidebarData={rightSidebarData}
+        models={models}
         agentLabel={state.selectedAgent?.name ?? 'Ship'}
       />
     </DashboardLayout>

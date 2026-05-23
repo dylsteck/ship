@@ -2,12 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { useTheme } from 'next-themes'
+import { useTheme } from '@/components/providers/theme-context'
 import { HugeiconsIcon } from '@hugeicons/react'
-import {
-  Settings01Icon,
-  Logout01Icon,
-} from '@hugeicons/core-free-icons'
+import { Settings01Icon, Logout01Icon } from '@hugeicons/core-free-icons'
 import { cn } from '@ship/ui/utils'
 import {
   SidebarFooter as SidebarFooterPrimitive,
@@ -41,13 +38,7 @@ function UserAvatar({ user }: { user: User }) {
   return (
     <span className="w-6 h-6 rounded-full overflow-hidden bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground shrink-0">
       {user.avatarUrl ? (
-        <img
-          src={user.avatarUrl}
-          alt={user.username}
-          width={24}
-          height={24}
-          className="w-6 h-6 object-cover"
-        />
+        <img src={user.avatarUrl} alt={user.username} width={24} height={24} className="w-6 h-6 object-cover" />
       ) : (
         <span>{user.username[0].toUpperCase()}</span>
       )}
@@ -63,7 +54,13 @@ function UserDisplayName({ user }: { user: User }) {
   )
 }
 
-export function SidebarFooterSection({ user, groupBy, onGroupByChange, compact, onCompactChange }: SidebarFooterSectionProps) {
+export function SidebarFooterSection({
+  user,
+  groupBy,
+  onGroupByChange,
+  compact,
+  onCompactChange,
+}: SidebarFooterSectionProps) {
   const pathname = usePathname()
   const isSettingsActive = pathname === '/settings'
   const { theme, setTheme } = useTheme()
@@ -147,79 +144,79 @@ export function SidebarFooterSection({ user, groupBy, onGroupByChange, compact, 
         </ClientOnly>
 
         <div className="flex items-center gap-0.5 group-data-[collapsible=icon]:hidden">
-        {/* Filter dropdown */}
-        <ClientOnly
-          fallback={
-            <button
-              type="button"
-              className="p-1 rounded text-muted-foreground/40 group-data-[collapsible=icon]:hidden"
-              aria-label="Filter"
-            >
-              <ListFilterIcon className="size-3.5 text-muted-foreground" />
-            </button>
-          }
-        >
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className={cn(
-                    'p-1 rounded transition-colors cursor-pointer group-data-[collapsible=icon]:hidden',
-                    groupBy !== 'none'
-                      ? 'bg-sidebar-accent text-foreground'
-                      : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/50',
-                  )}
-                  title="Filter"
-                  aria-label="Filter and group options"
-                >
-                  <ListFilterIcon className="size-3.5 text-muted-foreground" />
-                </button>
-              }
-            />
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Group</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => onGroupByChange(v as typeof groupBy)}>
-                  <DropdownMenuRadioItem value="project" className="cursor-pointer">
-                    Project
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="date" className="cursor-pointer">
-                    Date
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="status" className="cursor-pointer">
-                    Status
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="none" className="cursor-pointer">
-                    None
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={compact}
-                onCheckedChange={(v) => onCompactChange(v === true)}
-                className="cursor-pointer"
+          {/* Filter dropdown */}
+          <ClientOnly
+            fallback={
+              <button
+                type="button"
+                className="p-1 rounded text-muted-foreground/40 group-data-[collapsible=icon]:hidden"
+                aria-label="Filter"
               >
-                Compact
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </ClientOnly>
-        {/* Settings link */}
-        <a
-          href="/settings"
-          className={cn(
-            'p-1 rounded transition-colors cursor-pointer',
-            isSettingsActive
-              ? 'bg-sidebar-accent text-foreground'
-              : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/50',
-          )}
-          title="Settings"
-          aria-label="Settings"
-        >
-          <HugeiconsIcon icon={Settings01Icon} className="size-3.5 text-muted-foreground" />
-        </a>
+                <ListFilterIcon className="size-3.5 text-muted-foreground" />
+              </button>
+            }
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className={cn(
+                      'p-1 rounded transition-colors cursor-pointer group-data-[collapsible=icon]:hidden',
+                      groupBy !== 'none'
+                        ? 'bg-sidebar-accent text-foreground'
+                        : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/50',
+                    )}
+                    title="Filter"
+                    aria-label="Filter and group options"
+                  >
+                    <ListFilterIcon className="size-3.5 text-muted-foreground" />
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Group</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => onGroupByChange(v as typeof groupBy)}>
+                    <DropdownMenuRadioItem value="project" className="cursor-pointer">
+                      Project
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="date" className="cursor-pointer">
+                      Date
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="status" className="cursor-pointer">
+                      Status
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="none" className="cursor-pointer">
+                      None
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={compact}
+                  onCheckedChange={(v) => onCompactChange(v === true)}
+                  className="cursor-pointer"
+                >
+                  Compact
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ClientOnly>
+          {/* Settings link */}
+          <a
+            href="/settings"
+            className={cn(
+              'p-1 rounded transition-colors cursor-pointer',
+              isSettingsActive
+                ? 'bg-sidebar-accent text-foreground'
+                : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/50',
+            )}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <HugeiconsIcon icon={Settings01Icon} className="size-3.5 text-muted-foreground" />
+          </a>
         </div>
       </div>
     </SidebarFooterPrimitive>

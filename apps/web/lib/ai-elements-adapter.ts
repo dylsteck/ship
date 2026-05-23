@@ -112,11 +112,7 @@ export function createToolInvocation(toolPart: ToolPart): ToolInvocation {
  * Apply a text delta to an existing message's content efficiently.
  * Returns a new messages array with the updated message.
  */
-export function streamTextDelta(
-  delta: string,
-  messageId: string,
-  messages: UIMessage[],
-): UIMessage[] {
+export function streamTextDelta(delta: string, messageId: string, messages: UIMessage[]): UIMessage[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m
     return { ...m, content: m.content + delta }
@@ -126,11 +122,7 @@ export function streamTextDelta(
 /**
  * Set full text content on a message (fallback when delta not available).
  */
-export function setMessageContent(
-  text: string,
-  messageId: string,
-  messages: UIMessage[],
-): UIMessage[] {
+export function setMessageContent(text: string, messageId: string, messages: UIMessage[]): UIMessage[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m
     return { ...m, content: text }
@@ -140,21 +132,14 @@ export function setMessageContent(
 /**
  * Update or add a tool invocation on a message.
  */
-export function updateToolInvocation(
-  toolPart: ToolPart,
-  messageId: string,
-  messages: UIMessage[],
-): UIMessage[] {
+export function updateToolInvocation(toolPart: ToolPart, messageId: string, messages: UIMessage[]): UIMessage[] {
   const invocation = createToolInvocation(toolPart)
 
   return messages.map((m) => {
     if (m.id !== messageId) return m
     const existing = m.toolInvocations || []
     const idx = existing.findIndex((t) => t.toolCallId === invocation.toolCallId)
-    const updated =
-      idx >= 0
-        ? existing.map((t, i) => (i === idx ? invocation : t))
-        : [...existing, invocation]
+    const updated = idx >= 0 ? existing.map((t, i) => (i === idx ? invocation : t)) : [...existing, invocation]
     return { ...m, toolInvocations: updated }
   })
 }
@@ -162,11 +147,7 @@ export function updateToolInvocation(
 /**
  * Set reasoning text on a message (replaces, not appends — SSE sends cumulative text).
  */
-export function setReasoning(
-  text: string,
-  messageId: string,
-  messages: UIMessage[],
-): UIMessage[] {
+export function setReasoning(text: string, messageId: string, messages: UIMessage[]): UIMessage[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m
     return { ...m, reasoning: [text] }
@@ -440,9 +421,7 @@ function extractTextContent(content: string): string {
     const parts = JSON.parse(content)
     if (Array.isArray(parts) && parts.length > 0 && parts[0]?.type === 'text') {
       return parts
-        .filter((p: { type: string; text?: string }) =>
-          p.type === 'text' && p.text && !p.text.startsWith('agentId:'),
-        )
+        .filter((p: { type: string; text?: string }) => p.type === 'text' && p.text && !p.text.startsWith('agentId:'))
         .map((p: { text: string }) => p.text)
         .join('\n\n')
     }
@@ -548,7 +527,12 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
       uiMsg.toolInvocations = msg.inlineTools.map((t) => ({
         toolCallId: `${msg.id}-${t.name}`,
         toolName: t.name,
-        state: t.status === 'completed' ? 'result' as const : t.status === 'failed' ? 'error' as const : 'call' as const,
+        state:
+          t.status === 'completed'
+            ? ('result' as const)
+            : t.status === 'failed'
+              ? ('error' as const)
+              : ('call' as const),
         args: t.input,
         result: t.output,
         duration: t.duration,
@@ -592,8 +576,10 @@ export function replayEventsToMessages(
   const msgIdToAsstIndex = new Map<string, number>()
   let asstIndex = 0
   for (const e of partEvents) {
-    const part = ((e.payload as Record<string, unknown>).properties as Record<string, unknown>)
-      ?.part as Record<string, unknown>
+    const part = ((e.payload as Record<string, unknown>).properties as Record<string, unknown>)?.part as Record<
+      string,
+      unknown
+    >
     const msgId = part?.messageID as string
     if (msgId && !msgIdToAsstIndex.has(msgId)) {
       msgIdToAsstIndex.set(msgId, asstIndex++)
@@ -616,7 +602,12 @@ export function replayEventsToMessages(
     const delta = props?.delta as string | undefined
     const msgId = (part as Record<string, unknown>)?.messageID as string
     const asstIdx = msgIdToAsstIndex.get(msgId)
-    if (asstIdx === undefined || asstIdx >= asstIndices.length) continue
+    if (asstIdx === undefined) continue
+    while (asstIdx >= asstIndices.length) {
+      const createdAt = typeof e.timestamp === 'number' ? new Date(e.timestamp) : new Date()
+      result.push({ id: `assistant-replay-${msgId || asstIndices.length}`, role: 'assistant', content: '', createdAt })
+      asstIndices.push(result.length - 1)
+    }
     const msgIdx = asstIndices[asstIdx]
     if (msgIdx !== lastMsgIdx) {
       mockTextRef.current = ''
@@ -627,7 +618,19 @@ export function replayEventsToMessages(
     result = processPartUpdated(part, delta, streamingMsgId, result, mockTextRef, mockReasoningRef)
   }
 
-  return result
+  return preserveFullPersistedAssistantText(base, result)
+}
+
+function preserveFullPersistedAssistantText(base: UIMessage[], replayed: UIMessage[]): UIMessage[] {
+  const baseAssistants = base.filter((m) => m.role === 'assistant')
+  let assistantIndex = 0
+  return replayed.map((message) => {
+    if (message.role !== 'assistant') return message
+    const persisted = baseAssistants[assistantIndex++]
+    if (!persisted?.content) return message
+    if ((message.content?.length ?? 0) >= persisted.content.length) return message
+    return { ...message, content: persisted.content }
+  })
 }
 
 // ============ UI Tool State Mapping ============
@@ -662,9 +665,7 @@ export function getStreamingStatus(messages: UIMessage[], streamingMessageId: st
   const msg = messages.find((m) => m.id === streamingMessageId)
   if (!msg) return 'Thinking...'
 
-  const activeTools = msg.toolInvocations?.filter(
-    (t) => t.state === 'call' || t.state === 'partial-call',
-  )
+  const activeTools = msg.toolInvocations?.filter((t) => t.state === 'call' || t.state === 'partial-call')
 
   if (activeTools && activeTools.length > 0) {
     const latest = activeTools[activeTools.length - 1]

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useIsMobile } from '@ship/ui'
 import type { RightSidebarTab } from '../types'
 
@@ -20,22 +20,21 @@ function readStorage(key: string, fallback: string): string {
 export function useRightSidebar() {
   const isMobile = useIsMobile()
 
-  const [desktopOpen, setDesktopOpen] = useState(() =>
-    readStorage(STORAGE_KEY, 'false') !== 'false',
-  )
+  const [desktopOpen, setDesktopOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const [activeTab, setActiveTabState] = useState<RightSidebarTab>(() => {
-    const saved = readStorage(TAB_STORAGE_KEY, 'overview')
-    const valid: RightSidebarTab[] = ['git', 'terminal', 'overview']
-    return valid.includes(saved as RightSidebarTab)
-      ? (saved as RightSidebarTab)
-      : 'overview'
-  })
+  const [activeTab, setActiveTabState] = useState<RightSidebarTab>('overview')
 
-  const [expanded, setExpanded] = useState(() =>
-    readStorage(EXPANDED_STORAGE_KEY, 'false') === 'true',
-  )
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    setDesktopOpen(readStorage(STORAGE_KEY, 'false') !== 'false')
+    setExpanded(readStorage(EXPANDED_STORAGE_KEY, 'false') === 'true')
+
+    const savedTab = readStorage(TAB_STORAGE_KEY, 'overview')
+    const valid: RightSidebarTab[] = ['git', 'terminal', 'overview']
+    setActiveTabState(valid.includes(savedTab as RightSidebarTab) ? (savedTab as RightSidebarTab) : 'overview')
+  }, [])
 
   const toggle = useCallback(() => {
     if (isMobile) {

@@ -3,8 +3,10 @@
  *
  * @remarks
  * OpenCode is the only ACP harness here with verified runtime model selection:
- * `opencode --model provider/model acp`. Other ACP CLIs stay on their configured
- * defaults until they advertise model config options or publish a stable model flag.
+ * its ACP process reads `model` from `OPENCODE_CONFIG_CONTENT`. Cursor accepts
+ * a CLI `--model` flag.
+ * Claude and Codex expose model selection through their own config/env layers and,
+ * when advertised, Ship also sets ACP `configOptions` before the first prompt.
  *
  * @packageDocumentation
  */
@@ -93,12 +95,99 @@ function openCodeModel(modelId: string, name: string, contextWindow?: number, is
     upstreamModelId,
     name,
     provider: isFree ? 'OpenCode Zen - Free' : 'OpenCode Zen',
-    description: '`opencode --model` selected before ACP startup.',
+    description: 'Selected through OpenCode ACP runtime config before startup.',
     contextWindow,
     isFree,
     source: 'opencode-zen',
   }
 }
+
+function harnessModel(
+  backend: AcpBackendKind,
+  upstreamModelId: string,
+  name: string,
+  provider: string,
+  description: string,
+  contextWindow = ACP_CONTEXT_WINDOW,
+  source = `${backend}-docs`,
+): AgentModel {
+  return {
+    id: acpModelId(backend, upstreamModelId),
+    upstreamModelId,
+    name,
+    provider,
+    description,
+    contextWindow,
+    source,
+  }
+}
+
+const CURSOR_MODELS: AgentModel[] = [
+  harnessModel('cursor', 'auto', 'Auto', 'Cursor CLI', 'Cursor chooses the best available model.'),
+  harnessModel('cursor', 'composer-2', 'Composer 2', 'Cursor CLI', 'Cursor agentic coding model.'),
+  harnessModel('cursor', 'gpt-5', 'GPT-5', 'Cursor CLI', '`agent --model` selected before ACP startup.'),
+  harnessModel(
+    'cursor',
+    'claude-4-sonnet-thinking',
+    'Claude Sonnet Thinking',
+    'Cursor CLI',
+    '`agent --model` selected before ACP startup.',
+  ),
+  harnessModel(
+    'cursor',
+    'claude-4-opus-thinking',
+    'Claude Opus Thinking',
+    'Cursor CLI',
+    '`agent --model` selected before ACP startup.',
+  ),
+  harnessModel('cursor', 'gemini-3-pro', 'Gemini 3 Pro', 'Cursor CLI', '`agent --model` selected before ACP startup.'),
+  harnessModel('cursor', 'grok', 'Grok', 'Cursor CLI', '`agent --model` selected before ACP startup.'),
+]
+
+const CLAUDE_MODELS: AgentModel[] = [
+  harnessModel('claude', 'opus', 'Opus', 'Claude Code', 'Claude Code alias for the latest Opus model.'),
+  harnessModel('claude', 'sonnet', 'Sonnet', 'Claude Code', 'Claude Code alias for the latest Sonnet model.'),
+  harnessModel('claude', 'sonnet[1m]', 'Sonnet 1M', 'Claude Code', 'Claude Code long-context Sonnet alias.', 1000000),
+  harnessModel('claude', 'haiku', 'Haiku', 'Claude Code', 'Claude Code alias for the latest Haiku model.'),
+  harnessModel('claude', 'claude-opus-4-7', 'Claude Opus 4.7', 'Claude Code', 'Pinned Claude Code model.'),
+  harnessModel('claude', 'claude-sonnet-4-6', 'Claude Sonnet 4.6', 'Claude Code', 'Pinned Claude Code model.'),
+  harnessModel(
+    'claude',
+    'claude-haiku-4-5-20251001',
+    'Claude Haiku 4.5',
+    'Claude Code',
+    'Pinned Claude Code model.',
+  ),
+]
+
+const CODEX_MODELS: AgentModel[] = [
+  harnessModel('codex', 'gpt-5.5', 'GPT-5.5', 'Codex', 'Set through Codex ACP model config when available.', 1000000),
+  harnessModel('codex', 'gpt-5.4', 'GPT-5.4', 'Codex', 'Set through Codex ACP model config when available.', 1000000),
+  harnessModel(
+    'codex',
+    'gpt-5.4-mini',
+    'GPT-5.4 Mini',
+    'Codex',
+    'Set through Codex ACP model config when available.',
+    400000,
+  ),
+  harnessModel(
+    'codex',
+    'gpt-5.3-codex',
+    'GPT-5.3 Codex',
+    'Codex',
+    'Set through Codex ACP model config when available.',
+    400000,
+  ),
+  harnessModel(
+    'codex',
+    'gpt-5.3-codex-spark',
+    'GPT-5.3 Codex Spark',
+    'Codex',
+    'Set through Codex ACP model config when available.',
+    128000,
+  ),
+]
 
 function fallbackModelName(modelId: string): string {
   return modelId
@@ -156,16 +245,6 @@ export async function listOpenCodeModels(fetcher: FetchLike = fetch): Promise<Ag
   return models
 }
 
-function configuredDefaultModel(backend: AcpBackendKind, provider: string, description: string): AgentModel {
-  return {
-    id: ACP_MODEL_IDS[backend],
-    name: 'Configured default',
-    provider,
-    description,
-    contextWindow: ACP_CONTEXT_WINDOW,
-  }
-}
-
 /** Registry of ACP harnesses exposed to the composer. */
 export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfig[]> {
   const openCodeModels = await listOpenCodeModels(fetcher)
@@ -182,39 +261,21 @@ export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfi
       name: 'Cursor Agent',
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
-      models: [
-        configuredDefaultModel(
-          'cursor',
-          'Selected by Cursor ACP',
-          '`agent acp` configured default; no verified model flag is wired yet.',
-        ),
-      ],
+      models: CURSOR_MODELS,
     },
     {
       id: 'claude',
       name: 'Claude Agent',
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
-      models: [
-        configuredDefaultModel(
-          'claude',
-          'Selected by Claude ACP',
-          '`claude-agent-acp` configured default; no verified model flag is wired yet.',
-        ),
-      ],
+      models: CLAUDE_MODELS,
     },
     {
       id: 'codex',
       name: 'Codex',
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
-      models: [
-        configuredDefaultModel(
-          'codex',
-          'Selected by Codex ACP',
-          '`codex-acp` configured default; no verified model flag is wired yet.',
-        ),
-      ],
+      models: CODEX_MODELS,
     },
   ]
 }

@@ -38,6 +38,10 @@ interface MessageRow extends Record<string, SqlStorageValue> {
   created_at: number
 }
 
+function isMissingPartsColumnError(error: unknown): boolean {
+  return String(error).includes('no column named parts') || String(error).includes('no such column: parts')
+}
+
 // Message types for chat
 export interface Message {
   id: string
@@ -227,6 +231,37 @@ export class SessionDO extends DurableObject<Env> {
         return (result.results as unknown as MessageRow[]).reverse()
       }
     } catch (e) {
+      if (isMissingPartsColumnError(e)) {
+        const result = await this.env.DB.prepare(
+          `SELECT id, role, content, created_at
+           FROM chat_messages WHERE session_id = ?
+           ORDER BY created_at DESC LIMIT ?`,
+        )
+          .bind(sessionId, limit)
+          .all()
+
+        if (result.results?.length) {
+          for (const row of result.results) {
+            this.sql.exec(
+              `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
+              row.id,
+              row.role,
+              row.content,
+              null,
+              row.created_at,
+            )
+          }
+          return result.results
+            .map((row) => ({
+              id: row.id as string,
+              role: row.role as string,
+              content: row.content as string,
+              parts: null,
+              created_at: row.created_at as number,
+            }))
+            .reverse()
+        }
+      }
       console.warn(`[SessionDO] Failed to load recent messages from D1: ${e}`)
     }
 
@@ -270,7 +305,16 @@ export class SessionDO extends DurableObject<Env> {
           .bind(saved.id, sessionId, saved.role, saved.content, saved.parts || null, saved.createdAt)
           .run()
       } catch (e) {
-        console.warn(`[SessionDO] Failed to write message to D1: ${e}`)
+        if (isMissingPartsColumnError(e)) {
+          await this.env.DB.prepare(
+            `INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+            .bind(saved.id, sessionId, saved.role, saved.content, saved.createdAt)
+            .run()
+        } else {
+          console.warn(`[SessionDO] Failed to write message to D1: ${e}`)
+        }
       }
     }
 
@@ -351,6 +395,34 @@ export class SessionDO extends DurableObject<Env> {
         }))
       }
     } catch (e) {
+      if (isMissingPartsColumnError(e)) {
+        const result = await this.env.DB.prepare(
+          `SELECT id, role, content, created_at as createdAt
+           FROM chat_messages WHERE session_id = ?
+           ORDER BY created_at DESC LIMIT ?`,
+        )
+          .bind(sessionId, limit)
+          .all()
+
+        if (result.results?.length) {
+          for (const row of result.results) {
+            this.sql.exec(
+              `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
+              row.id,
+              row.role,
+              row.content,
+              null,
+              row.createdAt,
+            )
+          }
+          return result.results.reverse().map((row) => ({
+            id: row.id as string,
+            role: row.role as Message['role'],
+            content: row.content as string,
+            createdAt: row.createdAt as number,
+          }))
+        }
+      }
       console.warn(`[SessionDO] Failed to load messages from D1: ${e}`)
     }
 

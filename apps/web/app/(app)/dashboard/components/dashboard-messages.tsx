@@ -57,9 +57,7 @@ export function DashboardMessages({
   const { showSessionSetup, firstAssistantBlockIndex } = React.useMemo(() => {
     const hasCompletedAssistant = messages.some(
       (m) =>
-        m.role === 'assistant' &&
-        m.id !== streamingMessageId &&
-        (m.content || (m.toolInvocations?.length ?? 0) > 0),
+        m.role === 'assistant' && m.id !== streamingMessageId && (m.content || (m.toolInvocations?.length ?? 0) > 0),
     )
     let firstIdx = -1
     for (let i = 0; i < messageGroups.length; i++) {
@@ -110,10 +108,9 @@ export function DashboardMessages({
   if (!activeSessionId) return null
 
   todoRenderedRef.current = false
-  const statusLabel = isStreaming
-    ? getStreamingStatus(messages, streamingMessageId) || streamingStatus
-    : ''
+  const statusLabel = isStreaming ? getStreamingStatus(messages, streamingMessageId) || streamingStatus : ''
   const hasContent = messages.some((m) => m.content || m.toolInvocations?.length)
+  const activeStreamingMessageId = isStreaming ? streamingMessageId : null
 
   const handleSubagentNavigate = (tool: ToolInvocation) => {
     const agentType = getSubagentType(tool) || String(tool.args?.subagent_type || 'Agent')
@@ -145,13 +142,7 @@ export function DashboardMessages({
   }
 
   if (resolvedSubagent) {
-    return (
-      <SubagentView
-        subagent={resolvedSubagent}
-        onBack={handleSubagentBack}
-        parentSessionId={activeSessionId}
-      />
-    )
+    return <SubagentView subagent={resolvedSubagent} onBack={handleSubagentBack} parentSessionId={activeSessionId} />
   }
 
   return (
@@ -166,7 +157,7 @@ export function DashboardMessages({
                 <MessageItem
                   key={group.message.id}
                   message={group.message}
-                  isCurrentlyStreaming={group.message.id === streamingMessageId}
+                  isCurrentlyStreaming={group.message.id === activeStreamingMessageId}
                   streamStartTime={streamStartTime}
                   streamingStatusSteps={streamingStatusSteps}
                   statusLabel={statusLabel}
@@ -186,7 +177,7 @@ export function DashboardMessages({
               <AssistantRunBlock
                 key={group.messages[0].id}
                 messages={group.messages}
-                streamingMessageId={streamingMessageId}
+                streamingMessageId={activeStreamingMessageId}
                 streamingStatusSteps={streamingStatusSteps}
                 statusLabel={statusLabel}
                 sessionTodos={sessionTodos}

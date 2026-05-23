@@ -73,6 +73,8 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
     clearStreamingStatusSteps,
   } = chat
   const streamStartTimeRef = useRef<number | null>(null)
+  const terminalStreamSessionsRef = useRef<Set<string>>(new Set())
+  const seenStreamEventKeysRef = useRef<Set<string>>(new Set())
 
   // Fix stale closure: track isStreaming via ref
   const isStreamingRef = useRef(isStreaming)
@@ -117,6 +119,19 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
     }
   }, [doFlush])
 
+  const claimStreamEvent = useCallback((sessionId: string, event: { type: string; [k: string]: unknown }) => {
+    const key = streamEventKey(sessionId, event)
+    if (!key) return true
+    const seen = seenStreamEventKeysRef.current
+    if (seen.has(key)) return false
+    seen.add(key)
+    if (seen.size > 600) {
+      const firstKey = seen.values().next().value
+      if (firstKey) seen.delete(firstKey)
+    }
+    return true
+  }, [])
+
   const handleSend = useCallback(
     async (content: string, modeOverride?: string, sessionIdOverride?: string) => {
       const targetSessionId = sessionIdOverride || activeSessionId
@@ -127,6 +142,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
         return
       }
 
+      terminalStreamSessionsRef.current.delete(targetSessionId)
       setIsStreaming(true)
       clearStreamingStatusSteps()
       assistantTextRef.current = ''
@@ -168,6 +184,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
             handleDoneOrIdle(ctx, streamStartTimeRef)
             sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Done' })
             postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
+            terminalStreamSessionsRef.current.add(targetSessionId)
             return
           }
           const msgId = streamingMessageRef.current
@@ -183,6 +200,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
           streamingMessageRef.current = null
           sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
           postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
+          terminalStreamSessionsRef.current.add(targetSessionId)
         }
       }
       let stallTimerId: ReturnType<typeof setTimeout> | null = setTimeout(onStall, STALL_TIMEOUT_MS)
@@ -241,6 +259,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
           setIsStreaming(false)
           setStreamingStatus('')
           streamingMessageRef.current = null
+          terminalStreamSessionsRef.current.add(targetSessionId)
           return
         }
 
@@ -291,6 +310,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
                 }
 
                 if (!event) continue
+                if (!claimStreamEvent(targetSessionId, event as { type: string; [k: string]: unknown })) continue
 
                 switch (event.type) {
                   case 'message.part.updated': {
@@ -395,12 +415,14 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
                       status: 'Done',
                       contentPreview: ctx.assistantTextRef.current || undefined,
                     })
+                    terminalStreamSessionsRef.current.add(targetSessionId)
                     break
                   }
 
                   case 'session.error':
                     handleSessionError((event as any).properties.error, ctx)
                     sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
+                    terminalStreamSessionsRef.current.add(targetSessionId)
                     break
 
                   case 'error': {
@@ -419,6 +441,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
                     } else {
                       handleGenericError(errEvt.error, ctx, errEvt.details, actionForChatErrorPayload(errEvt))
                       sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
+                      terminalStreamSessionsRef.current.add(targetSessionId)
                     }
                     break
                   }
@@ -495,17 +518,26 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
         setIsStreaming(false)
         setStreamingStatus('')
         streamingMessageRef.current = null
+        terminalStreamSessionsRef.current.add(targetSessionId)
       } finally {
         if (timeoutId) clearTimeout(timeoutId)
         if (stallTimerId) clearTimeout(stallTimerId)
       }
     },
-    [activeSessionId, activeSessionIdRef, modelIdRef],
+    [activeSessionId, activeSessionIdRef, modelIdRef, claimStreamEvent],
   )
 
   /** Process SSE event for a session when streamSessionInBackground receives it and user is viewing that session */
   const processStreamEventForSession = useCallback(
     (sessionId: string, event: { type: string; [k: string]: unknown }) => {
+      const isTerminalEvent =
+        event.type === 'done' ||
+        event.type === 'session.idle' ||
+        event.type === 'session.error' ||
+        event.type === 'error'
+      if (terminalStreamSessionsRef.current.has(sessionId) && !isTerminalEvent) return
+      if (!claimStreamEvent(sessionId, event)) return
+
       if (!streamingMessageRef.current) {
         const hasCompletedAssistant = messagesRef.current.some(
           (m) => m.role === 'assistant' && (m.content || m.toolInvocations?.length),
@@ -543,6 +575,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
           if (!(errEvt.retryable && typeof errEvt.attempt === 'number')) {
             handleGenericError(errEvt.error, ctxEarly, errEvt.details, actionForChatErrorPayload(errEvt))
             sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+            terminalStreamSessionsRef.current.add(sessionId)
           }
           return
         }
@@ -552,6 +585,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
             ctxEarly,
           )
           sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+          terminalStreamSessionsRef.current.add(sessionId)
           return
         }
         const isStreamingEvent = [
@@ -604,9 +638,13 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
         case 'done':
         case 'session.idle':
           handleDoneOrIdle(ctx, streamStartTimeRef)
+          sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
+          terminalStreamSessionsRef.current.add(sessionId)
           break
         case 'session.error':
           handleSessionError((event as any).properties?.error, ctx)
+          sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+          terminalStreamSessionsRef.current.add(sessionId)
           break
         case 'error': {
           const errEvt = event as {
@@ -621,6 +659,8 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
             ctx.setStreamingStatus(retryMsg, accumulateSetupStepsRef.current)
           } else {
             handleGenericError(errEvt.error, ctx, errEvt.details, actionForChatErrorPayload(errEvt))
+            sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+            terminalStreamSessionsRef.current.add(sessionId)
           }
           break
         }
@@ -682,6 +722,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
       assistantTextRef,
       reasoningRef,
       scheduleFlush,
+      claimStreamEvent,
     ],
   )
 
@@ -692,4 +733,42 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
   }, [])
 
   return { handleSend, processStreamEventForSession, resumeStream }
+}
+
+function streamEventKey(sessionId: string, event: { type: string; [k: string]: unknown }): string | null {
+  if (event.type === 'message.part.updated') {
+    const properties = event.properties as { part?: Record<string, unknown>; delta?: unknown } | undefined
+    const part = properties?.part
+    if (!part) return null
+    return [
+      sessionId,
+      event.type,
+      String(part.messageID ?? ''),
+      String(part.id ?? ''),
+      String(part.type ?? ''),
+      typeof properties?.delta === 'string' ? properties.delta : '',
+      typeof part.text === 'string' ? part.text : '',
+    ].join('|')
+  }
+
+  if (event.type === 'status' || event.type === 'session.status') {
+    return [
+      sessionId,
+      event.type,
+      typeof event.status === 'string' ? event.status : '',
+      typeof event.message === 'string' ? event.message : '',
+    ].join('|')
+  }
+
+  if (event.type === 'session.error') {
+    const properties = event.properties as { error?: { data?: { message?: string }; message?: string } } | undefined
+    return [sessionId, event.type, properties?.error?.data?.message ?? properties?.error?.message ?? ''].join('|')
+  }
+
+  if (event.type === 'error') {
+    return [sessionId, event.type, typeof event.error === 'string' ? event.error : ''].join('|')
+  }
+
+  if (event.type === 'done' || event.type === 'session.idle') return [sessionId, event.type].join('|')
+  return null
 }

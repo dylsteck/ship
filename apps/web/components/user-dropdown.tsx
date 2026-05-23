@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useTheme } from 'next-themes'
+import { useTheme } from '@/components/providers/theme-context'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,10 +65,7 @@ export function UserDropdown({ user }: UserDropdownProps) {
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup
-                value={mounted && theme ? theme : 'system'}
-                onValueChange={(v) => setTheme(v)}
-              >
+              <DropdownMenuRadioGroup value={mounted && theme ? theme : 'system'} onValueChange={(v) => setTheme(v)}>
                 <DropdownMenuRadioItem value="system" className="cursor-pointer">
                   System
                 </DropdownMenuRadioItem>

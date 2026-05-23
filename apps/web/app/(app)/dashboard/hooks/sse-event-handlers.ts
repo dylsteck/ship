@@ -111,8 +111,10 @@ export function handleDoneOrIdle(
     const startupSteps = ctx.streamingStatusStepsRef.current.length > 0
       ? [...ctx.streamingStatusStepsRef.current]
       : undefined
-    ctx.setMessages((prev) =>
-      prev.map((m) => {
+    const hasFinalOutput = Boolean(finalText.trim() || finalReasoning.trim())
+    ctx.setMessages((prev) => {
+      if (!hasFinalOutput) return prev.filter((m) => m.id !== finalMsgId)
+      return prev.map((m) => {
         if (m.id !== finalMsgId) return m
         return {
           ...m,
@@ -121,13 +123,15 @@ export function handleDoneOrIdle(
           ...(startupSteps ? { startupSteps } : {}),
           elapsed,
         }
-      }),
-    )
+      })
+    })
   }
   ctx.setIsStreaming(false)
   ctx.setStreamStartTime(null)
   ctx.setStreamingStatus('')
   ctx.clearStreamingStatusSteps()
+  ctx.assistantTextRef.current = ''
+  ctx.reasoningRef.current = ''
   ctx.streamingMessageRef.current = null
 }
 
@@ -143,10 +147,17 @@ export function handleSessionError(
   }
 
   const { category, retryable } = classifyError(errorMessage)
-  ctx.setMessages((prev) => [...prev, createErrorMessage(errorMessage, category, retryable)])
+  const msgId = ctx.streamingMessageRef.current
+  ctx.setMessages((prev) => {
+    const withoutPlaceholder = msgId ? prev.filter((m) => m.id !== msgId) : prev
+    return [...withoutPlaceholder, createErrorMessage(errorMessage, category, retryable)]
+  })
   ctx.setIsStreaming(false)
+  ctx.setStreamStartTime(null)
   ctx.setStreamingStatus('')
   ctx.clearStreamingStatusSteps()
+  ctx.assistantTextRef.current = ''
+  ctx.reasoningRef.current = ''
   ctx.streamingMessageRef.current = null
 }
 
@@ -188,8 +199,11 @@ export function handleGenericError(
     ]
   })
   ctx.setIsStreaming(false)
+  ctx.setStreamStartTime(null)
   ctx.setStreamingStatus('')
   ctx.clearStreamingStatusSteps()
+  ctx.assistantTextRef.current = ''
+  ctx.reasoningRef.current = ''
   ctx.streamingMessageRef.current = null
 }
 

@@ -3,6 +3,7 @@
 import type { ChatSession } from '@/lib/api/server'
 import type { WebSocketStatus } from '@/lib/websocket'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
+import type { ModelInfo } from '@/lib/api/types'
 import type { ComposerContextValue } from './composer/composer-context'
 import type { SessionPanelData, TodoItem, RightSidebarTab } from '../types'
 import { DashboardHeader } from './dashboard-header'
@@ -57,6 +58,7 @@ export interface DashboardMainColumnProps {
     toggleExpanded: () => void
   }
   rightSidebarData: SessionPanelData | null
+  models: ModelInfo[]
   /** When on homepage, optional agent label for session cards (e.g. "OpenCode") */
   agentLabel?: string
 }
@@ -75,6 +77,7 @@ export function DashboardMainColumn({
   composer,
   rightSidebar,
   rightSidebarData,
+  models,
   agentLabel = 'Ship',
 }: DashboardMainColumnProps) {
   const { activeSessionId, displayTitle, displayRepoLabel, wsStatus, sandboxStatus } = header
@@ -104,6 +107,7 @@ export function DashboardMainColumn({
           sandboxStatus={sandboxStatus ?? undefined}
           rightSidebarOpen={rightSidebar.desktopOpen}
           onToggleRightSidebar={rightSidebar.toggle}
+          onDeleteSession={sessions.onDeleteSession}
           user={user}
         />
 
@@ -161,6 +165,7 @@ export function DashboardMainColumn({
                   streamingStatus={messagesCtx.streamingStatus ?? ''}
                   streamingStatusSteps={messagesCtx.streamingStatusSteps}
                   agentLabel={agentLabel}
+                  models={models}
                   onSessionClick={sessions.onSessionClick}
                   onDeleteSession={sessions.onDeleteSession}
                   serverTimestamp={serverTimestamp}
@@ -183,6 +188,7 @@ export function DashboardMainColumn({
           onToggleExpanded={rightSidebar.toggleExpanded}
           onMobileOpenChange={rightSidebar.setMobileOpen}
           onTogglePanel={rightSidebar.toggle}
+          onDeleteSession={sessions.onDeleteSession}
         />
       )}
     </div>

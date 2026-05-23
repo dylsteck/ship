@@ -45,10 +45,12 @@ export function createAcpMultiplexer(
   >()
   let counter = 0
   let closed = false
+  let closedError: Error | null = null
 
   function rejectAll(error: Error): void {
     if (closed && pending.size === 0) return
     closed = true
+    closedError = error
     for (const [id, waiter] of pending) {
       clearTimeout(waiter.timer)
       waiter.reject(error)
@@ -138,7 +140,7 @@ export function createAcpMultiplexer(
 
   return {
     request(method, params, options) {
-      if (closed) return Promise.reject(new Error('ACP bridge is closed'))
+      if (closed) return Promise.reject(closedError ?? new Error('ACP bridge is closed'))
       const rid = String(++counter)
       ws.send(
         JSON.stringify({

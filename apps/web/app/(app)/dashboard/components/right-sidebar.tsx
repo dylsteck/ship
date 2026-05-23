@@ -8,6 +8,10 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@ship/ui'
 import { OverviewTab } from '@/components/chat/session-panel/overview-tab'
 import { GitTab } from '@/components/chat/session-panel/git-tab'
@@ -93,6 +97,7 @@ interface RightSidebarProps {
   onToggleExpanded: () => void
   onMobileOpenChange: (open: boolean) => void
   onTogglePanel: () => void
+  onDeleteSession: (sessionId: string) => Promise<void>
 }
 
 function useSessionPanelProps(data: SessionPanelData) {
@@ -133,11 +138,13 @@ function SidebarHeader({
   onTabChange,
   onToggleExpanded,
   onTogglePanel,
+  onDeleteSession,
 }: {
   activeTab: RightSidebarTab
   onTabChange: (tab: RightSidebarTab) => void
   onToggleExpanded: () => void
   onTogglePanel: () => void
+  onDeleteSession: () => void
 }) {
   return (
     <div className="flex items-center border-b border-border/40 px-1 shrink-0">
@@ -162,12 +169,27 @@ function SidebarHeader({
       </div>
 
       <div className="flex items-center gap-0.5 shrink-0">
-        <button
-          className="inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
-          aria-label="More options"
-        >
-          <EllipsisIcon className="size-3.5" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                aria-label="More options"
+              >
+                <EllipsisIcon className="size-3.5" />
+              </button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onClick={onDeleteSession}
+              className="cursor-pointer text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+            >
+              Delete session
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <button
           onClick={onToggleExpanded}
           className="inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
@@ -232,6 +254,7 @@ export function RightSidebar({
   onToggleExpanded,
   onMobileOpenChange,
   onTogglePanel,
+  onDeleteSession,
 }: RightSidebarProps) {
   const panelProps = useSessionPanelProps(data)
   const { sandbox, isReady } = useSandboxStatus(data.sessionId)
@@ -248,6 +271,9 @@ export function RightSidebar({
         onTabChange={onTabChange}
         onToggleExpanded={onToggleExpanded}
         onTogglePanel={onTogglePanel}
+        onDeleteSession={() => {
+          void onDeleteSession(data.sessionId)
+        }}
       />
       <div className="flex-1 overflow-y-auto no-scrollbar">
         <TabContent

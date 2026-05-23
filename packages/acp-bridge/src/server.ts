@@ -22,7 +22,7 @@ type BackendKind = 'codex' | 'claude' | 'cursor' | 'opencode'
 let child: ChildProcessWithoutNullStreams | null = null
 let stdoutBuf = ''
 let stderrRate: { count: number; resetAt: number } = { count: 0, resetAt: 0 }
-const bridgeVersion = '1'
+const bridgeVersion = '3'
 
 function parseArgs(argv: string[]): { port: number } {
   let port = 9847
@@ -54,12 +54,46 @@ function backendArgv(kind: BackendKind, model?: string): { cmd: string; args: st
     case 'claude':
       return { cmd: 'claude-agent-acp', args: [] }
     case 'cursor':
-      return { cmd: 'agent', args: ['acp'] }
+      return { cmd: 'agent', args: model ? ['--model', model, 'acp'] : ['acp'] }
     case 'opencode':
-      return { cmd: 'opencode', args: model ? ['--model', model, 'acp'] : ['acp'] }
+      return {
+        cmd: 'bash',
+        args: ['-lc', 'if command -v opencode >/dev/null 2>&1; then exec opencode acp; fi; exec npx -y opencode-ai@latest acp'],
+      }
     default:
       throw new Error(`unknown backend ${kind}`)
   }
+}
+
+function backendEnv(kind: BackendKind, model?: string): Record<string, string> {
+  if (!model) return {}
+  const common = { SHIP_ACP_SELECTED_MODEL: model }
+  switch (kind) {
+    case 'claude':
+      return { ...common, ANTHROPIC_MODEL: model }
+    case 'codex':
+      return { ...common, CODEX_MODEL: model, OPENAI_MODEL: model }
+    case 'cursor':
+      return { ...common, CURSOR_AGENT_MODEL: model }
+    case 'opencode':
+      return { ...common, OPENCODE_MODEL: model, OPENCODE_CONFIG_CONTENT: opencodeConfigContent(model) }
+    default:
+      return common
+  }
+}
+
+function opencodeConfigContent(model: string): string {
+  const raw = process.env.OPENCODE_CONFIG_CONTENT
+  if (!raw) return JSON.stringify({ model })
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return JSON.stringify({ ...(parsed as Record<string, unknown>), model })
+    }
+  } catch {
+    /* fall back to a minimal runtime override */
+  }
+  return JSON.stringify({ model })
 }
 
 function killChild(): void {
@@ -90,7 +124,7 @@ function spawnBackend(kind: BackendKind, client: WebSocket, model?: string): voi
     child = spawn(cmd, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...(model ? { SHIP_ACP_SELECTED_MODEL: model, OPENCODE_MODEL: model } : {}) },
+      env: { ...process.env, ...backendEnv(kind, model) },
     })
   } catch (err) {
     sendCtl(client, { op: 'spawn', status: 'error', backend: kind, message: `spawn failed: ${String(err)}` })

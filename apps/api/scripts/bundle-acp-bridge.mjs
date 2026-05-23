@@ -16,7 +16,8 @@ const result = await esbuild.build({
   bundle: true,
   platform: 'node',
   format: 'esm',
-  target: 'node22',
+  target: 'node20',
+  banner: { js: "import { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);" },
   write: false,
   logLevel: 'warning',
 })

@@ -14,6 +14,7 @@ import { ACP_BRIDGE_BUNDLE } from '../generated/acp-bridge-bundled'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 
 export const ACP_RELAY_PORT_DEFAULT = 9847
+const ACP_BRIDGE_VERSION = '3'
 
 function randomHex(bytes: number): string {
   const u = new Uint8Array(bytes)
@@ -59,8 +60,8 @@ async function checkBridgeHealth(input: {
       signal: AbortSignal.timeout(3000),
     })
     if (!res.ok) return false
-    const json = (await res.json()) as { ok?: boolean; cwd?: string }
-    return json.ok === true && json.cwd === input.workingDirectory
+    const json = (await res.json()) as { ok?: boolean; cwd?: string; version?: string }
+    return json.ok === true && json.cwd === input.workingDirectory && json.version === ACP_BRIDGE_VERSION
   } catch {
     return false
   }
@@ -111,7 +112,9 @@ export async function ensureAcpBridgeReady(input: {
     .join(' ; ')
 
   const startCmd = [
-    `pkill -f '[s]hip-acp-bridge.mjs' 2>/dev/null || true`,
+    `if [ -f /tmp/acp-bridge.pid ]; then kill "$(cat /tmp/acp-bridge.pid)" 2>/dev/null || true; fi`,
+    `pids="$(pgrep -f '^node /tmp/ship-acp-bridge\\.mjs' 2>/dev/null || true)"`,
+    `if [ -n "$pids" ]; then kill $pids 2>/dev/null || true; fi`,
     `rm -f /tmp/acp-bridge.pid`,
     `: > /tmp/acp-bridge.log`,
     exportsPrefix,

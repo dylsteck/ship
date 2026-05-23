@@ -6,7 +6,10 @@ import {
   cn,
   SidebarTrigger,
   useSidebar,
-  useIsMobile,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
@@ -21,10 +24,21 @@ interface DashboardHeaderProps {
   sandboxStatus?: string
   rightSidebarOpen?: boolean
   onToggleRightSidebar?: () => void
+  onDeleteSession?: (sessionId: string) => Promise<void>
   user?: {
     username: string
     avatarUrl: string | null
   }
+}
+
+function EllipsisIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </svg>
+  )
 }
 
 const sandboxStatusConfig: Record<string, { label: string; color: string; pulse?: boolean }> = {
@@ -55,9 +69,7 @@ function MobileNav({
           href="/"
           className={cn(
             'px-1.5 py-1 text-xs transition-colors',
-            isAgents
-              ? 'text-foreground font-medium'
-              : 'text-muted-foreground hover:text-foreground',
+            isAgents ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           Agents
@@ -66,9 +78,7 @@ function MobileNav({
           href="/settings"
           className={cn(
             'px-1.5 py-1 text-xs transition-colors',
-            isSettings
-              ? 'text-foreground font-medium'
-              : 'text-muted-foreground hover:text-foreground',
+            isSettings ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           Settings
@@ -87,44 +97,38 @@ export function DashboardHeader({
   sandboxStatus,
   rightSidebarOpen,
   onToggleRightSidebar,
+  onDeleteSession,
   user,
 }: DashboardHeaderProps) {
   const sbConfig = sandboxStatus ? sandboxStatusConfig[sandboxStatus] : null
   const { state } = useSidebar()
-  const isMobile = useIsMobile()
-  const showSidebarTrigger = state === 'collapsed' && !isMobile
+  const showSidebarTrigger = state === 'collapsed'
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
-      {(showSidebarTrigger || isMobile) && (
-        <div className="flex items-center gap-2 shrink-0">
-          {(showSidebarTrigger || isMobile) && (
-            <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
-            }}
-            className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-            title="Search (⌘K)"
-          >
-            <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
-          </button>
-          <Link
-            href="/"
-            className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-            title="New Agent"
-          >
-            <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
-          </Link>
-        </div>
-      )}
+      <div className={cn('flex items-center gap-2 shrink-0', !showSidebarTrigger && 'md:hidden')}>
+        <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
+        <button
+          type="button"
+          onClick={() => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+          }}
+          className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+          title="Search (⌘K)"
+        >
+          <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
+        </button>
+        <Link
+          href="/"
+          className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+          title="New Agent"
+        >
+          <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-3.5" />
+        </Link>
+      </div>
       {activeSessionId && (
         <div className="min-w-0 flex-1">
-          <div className="font-medium truncate text-xs text-muted-foreground">
-            {sessionTitle || 'Untitled session'}
-          </div>
+          <div className="font-medium truncate text-xs text-muted-foreground">{sessionTitle || 'Untitled session'}</div>
         </div>
       )}
 
@@ -152,16 +156,50 @@ export function DashboardHeader({
         )}
 
         {activeSessionId && onToggleRightSidebar && !rightSidebarOpen && (
-          <button
-            onClick={onToggleRightSidebar}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-transparent transition-colors"
-            title={rightSidebarOpen ? 'Hide context panel' : 'Show context panel'}
-          >
-            <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M15 3v18" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-0.5">
+            {onDeleteSession && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-transparent transition-colors"
+                      aria-label="More options"
+                    >
+                      <EllipsisIcon className="size-3.5" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      void onDeleteSession(activeSessionId)
+                    }}
+                    className="cursor-pointer text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+                  >
+                    Delete session
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <button
+              onClick={onToggleRightSidebar}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-transparent transition-colors"
+              title={rightSidebarOpen ? 'Hide context panel' : 'Show context panel'}
+            >
+              <svg
+                className="size-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M15 3v18" />
+              </svg>
+            </button>
+          </div>
         )}
 
         <MobileNav activeSessionId={activeSessionId} user={user} />

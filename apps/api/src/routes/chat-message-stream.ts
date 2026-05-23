@@ -14,7 +14,8 @@
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { chatPostBodySchema, parseJsonBody } from '../lib/api-schemas'
-import { ACP_MODEL_IDS, acpBackendFromModelId } from '../lib/acp-types'
+import { acpBackendFromModelId } from '../lib/acp-types'
+import { isKnownAcpModel } from '../lib/agent-registry'
 import { appendUserMessage, toChatTurnMessages, type PersistedMessage } from '../lib/chat-history'
 import { runChatTurn } from '../lib/chat-runner'
 import { writeError, writeStatus } from '../lib/chat-stream-helpers'
@@ -26,7 +27,6 @@ import { requireSessionOwner } from '../lib/session-authorization'
 
 const MAX_PROMPT_LENGTH = 100_000
 const DO_URL = 'https://do'
-const VALID_ACP_MODEL_IDS = new Set<string>(Object.values(ACP_MODEL_IDS))
 
 /** Hono handler for `POST /chat/:sessionId` — see file-level TSDoc. */
 export async function handleChatMessageStream(c: Context<AuthedEnv>) {
@@ -43,7 +43,7 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
   const requestedModel = body.model?.trim()
 
   if (!content) return c.json({ error: 'Message content required' }, 400)
-  if (requestedModel && !VALID_ACP_MODEL_IDS.has(requestedModel)) {
+  if (requestedModel && !(await isKnownAcpModel(requestedModel))) {
     return c.json({ error: 'Invalid model ID' }, 400)
   }
   if (content.length > MAX_PROMPT_LENGTH) {

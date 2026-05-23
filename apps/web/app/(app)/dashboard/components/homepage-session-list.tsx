@@ -3,6 +3,7 @@
 import { useCallback } from 'react'
 import { cn } from '@ship/ui'
 import type { ChatSession } from '@/lib/api/server'
+import type { ModelInfo } from '@/lib/api/types'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
 import { useSessionStatusStore, type SessionLiveStatus } from '../hooks/use-session-status-store'
 
@@ -84,6 +85,7 @@ export interface HomepageSessionListProps {
   streamingStatus: string
   streamingStatusSteps: string[]
   agentLabel?: string
+  models: ModelInfo[]
   onSessionClick: (session: ChatSession) => void
   onDeleteSession: (sessionId: string) => Promise<void>
   /** Stable timestamp for SSR-safe grouping/formatting */
@@ -97,6 +99,7 @@ export function HomepageSessionList({
   streamingStatus,
   streamingStatusSteps,
   agentLabel = 'Ship',
+  models,
   onSessionClick,
   onDeleteSession,
   serverTimestamp = Math.floor(Date.now() / 1000),
@@ -123,6 +126,7 @@ export function HomepageSessionList({
                   streamingStatus={streamingStatus}
                   streamingStatusSteps={streamingStatusSteps}
                   agentLabel={agentLabel}
+                  models={models}
                   onSessionClick={onSessionClick}
                   onDeleteSession={onDeleteSession}
                   now={now}
@@ -143,6 +147,7 @@ interface HomepageSessionCardProps {
   streamingStatus: string
   streamingStatusSteps: string[]
   agentLabel: string
+  models: ModelInfo[]
   onSessionClick: (session: ChatSession) => void
   onDeleteSession: (sessionId: string) => Promise<void>
   now: number
@@ -155,6 +160,7 @@ function HomepageSessionCard({
   streamingStatus,
   streamingStatusSteps,
   agentLabel,
+  models,
   onSessionClick,
   onDeleteSession,
   now,
@@ -165,6 +171,7 @@ function HomepageSessionCard({
 
   const title = liveStatus?.title || getSessionDisplayTitle(session) || session.repoName
   const repoPath = getSessionRepoLabel(session) || session.repoName
+  const modelLabel = getSessionModelLabel(session, models, agentLabel)
 
   // Determine if this session is actively running
   const isLive = liveStatus?.isRunning || (isStreaming && isActive)
@@ -220,10 +227,7 @@ function HomepageSessionCard({
           </div>
         ) : isLive ? (
           <div className="flex items-center gap-1.5">
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0"
-              aria-hidden
-            />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0" aria-hidden />
             <span className="text-[11px] font-medium text-primary truncate">
               {currentStatus || steps[steps.length - 1] || 'Starting...'}
             </span>
@@ -248,11 +252,47 @@ function HomepageSessionCard({
       <div className="flex-1 min-w-0 px-4 flex flex-col justify-center">
         <div className="text-base font-medium text-foreground truncate leading-tight">{title}</div>
         <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-          <span className="truncate">{agentLabel}</span>
+          <span className="truncate">{modelLabel}</span>
           <span className="shrink-0 truncate">{repoPath}</span>
           <span className="shrink-0">{timeLabel}</span>
         </div>
       </div>
     </button>
   )
+}
+
+function getSessionModelLabel(session: ChatSession, models: ModelInfo[], fallbackAgentLabel: string): string {
+  if (!session.model) return fallbackAgentLabel
+  const model = models.find((candidate) => candidate.id === session.model)
+  const agentName = agentNameFromModelId(session.model) || fallbackAgentLabel
+  if (!model) {
+    const modelName = modelNameFromModelId(session.model)
+    return modelName ? `${agentName} / ${modelName}` : agentName
+  }
+  if (model.name === 'Configured default') return `${agentName} / Configured default`
+  return `${agentName} / ${model.name}`
+}
+
+function agentNameFromModelId(modelId: string): string | null {
+  if (modelId.includes('ship-acp-opencode')) return 'OpenCode'
+  if (modelId.includes('ship-acp-cursor')) return 'Cursor Agent'
+  if (modelId.includes('ship-acp-claude')) return 'Claude Agent'
+  if (modelId.includes('ship-acp-codex')) return 'Codex'
+  return null
+}
+
+function modelNameFromModelId(modelId: string): string | null {
+  const upstreamModelId = modelId.includes(':') ? modelId.split(':').at(-1) : null
+  const slug = upstreamModelId?.split('/').at(-1)
+  if (!slug) return null
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => {
+      const upper = part.toUpperCase()
+      if (['GPT', 'API', 'AI'].includes(upper)) return upper
+      if (/^\d/.test(part)) return part
+      return `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+    })
+    .join(' ')
 }

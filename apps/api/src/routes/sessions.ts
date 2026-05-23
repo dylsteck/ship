@@ -33,6 +33,17 @@ interface SessionRow {
 
 const sessions = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
+async function getSessionMetadata(env: Env, sessionId: string): Promise<Record<string, string>> {
+  try {
+    const doId = env.SESSION_DO.idFromName(sessionId)
+    const doStub = env.SESSION_DO.get(doId)
+    return await doStub.getSessionMeta()
+  } catch (doError) {
+    console.warn(`[sessions] DO metadata failed for session ${sessionId}:`, doError)
+    return {}
+  }
+}
+
 /**
  * GET /sessions
  * List sessions for the authenticated user (JWT).
@@ -54,18 +65,26 @@ sessions.get('/', async (c) => {
       .bind(userId)
       .all<SessionRow>()
 
-    // Map to DTO (camelCase)
-    const sessionDTOs: SessionDTO[] = cursor.results.map((row) => ({
-      id: row.id,
-      userId: row.user_id,
-      repoOwner: row.repo_owner,
-      repoName: row.repo_name,
-      status: row.status,
-      lastActivity: row.last_activity,
-      createdAt: row.created_at,
-      archivedAt: row.archived_at,
-      title: row.title ?? undefined,
-    }))
+    // Map to DTO (camelCase). D1 owns durable list fields; per-session DO metadata
+    // owns harness/model selection until those columns are migrated into D1.
+    const sessionDTOs: SessionDTO[] = await Promise.all(
+      cursor.results.map(async (row) => {
+        const meta = await getSessionMetadata(c.env, row.id)
+        return {
+          id: row.id,
+          userId: row.user_id,
+          repoOwner: row.repo_owner,
+          repoName: row.repo_name,
+          status: row.status,
+          lastActivity: row.last_activity,
+          createdAt: row.created_at,
+          archivedAt: row.archived_at,
+          title: row.title ?? undefined,
+          model: meta['model'] || undefined,
+          agentType: meta['agent_type'] || undefined,
+        }
+      }),
+    )
 
     return c.json(sessionDTOs)
   } catch (error) {
@@ -126,9 +145,7 @@ sessions.post('/', async (c) => {
 
         // Store user name/email for git commit attribution
         try {
-          const userRow = await c.env.DB.prepare(
-            'SELECT name, email, username FROM users WHERE id = ? LIMIT 1',
-          )
+          const userRow = await c.env.DB.prepare('SELECT name, email, username FROM users WHERE id = ? LIMIT 1')
             .bind(userId)
             .first<{ name: string | null; email: string | null; username: string | null }>()
           if (userRow) {
@@ -239,7 +256,7 @@ sessions.get('/:id', async (c) => {
       const doStub = c.env.SESSION_DO.get(doId)
       const messages = await doStub.getRecentMessages(1000)
       messageCount = messages.length
-      meta = await doStub.getSessionMeta()
+      meta = await getSessionMetadata(c.env, id)
     } catch (doError) {
       console.warn(`[sessions] DO calls failed for session ${id}, returning partial data:`, doError)
     }
@@ -280,9 +297,7 @@ sessions.delete('/', async (c) => {
     const userId = userIdOrRes
 
     // Get all active sessions for this user
-    const cursor = await c.env.DB.prepare(
-      `SELECT id FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`,
-    )
+    const cursor = await c.env.DB.prepare(`SELECT id FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`)
       .bind(userId)
       .all<{ id: string }>()
 
@@ -297,11 +312,7 @@ sessions.delete('/', async (c) => {
     for (const sid of sessionIds) {
       await c.env.DB.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).bind(sid).run()
     }
-    await c.env.DB.prepare(
-      `DELETE FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`,
-    )
-      .bind(userId)
-      .run()
+    await c.env.DB.prepare(`DELETE FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`).bind(userId).run()
 
     // Best-effort sandbox termination in background
     c.executionCtx.waitUntil(

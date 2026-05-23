@@ -22,7 +22,7 @@ import {
   type StepFinishTotals,
 } from './agent-chunks'
 import type { ChatTurnMessage } from './chat-history'
-import { writeDone, writeSessionIdle, writeStatus, type SSEWriter } from './chat-stream-helpers'
+import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 import { ensureAcpBridgeReady, toBridgeWsUrl } from './acp-bridge-bootstrap'
 import { createAcpMultiplexer, openBridgeWebSocket, sendCtl } from './acp-json-rpc'
 import { DEFAULT_ACP_MODEL_ID, resolveAcpBackend, type AcpBackendKind } from './agent-registry'
@@ -79,8 +79,13 @@ async function readMeta(stub: { fetch: typeof fetch }): Promise<Record<string, s
 
 async function emitEvent(input: RunChatTurnInput, event: ShipSSEEvent): Promise<void> {
   await input.stream.writeSSE({ event: event.type, data: JSON.stringify(event) })
-  void broadcastToDurableObject(input.stub, event).catch(() => {})
-  void persistEventToDurableObject(input.stub, event).catch(() => {})
+  const results = await Promise.allSettled([
+    broadcastToDurableObject(input.stub, event),
+    persistEventToDurableObject(input.stub, event),
+  ])
+  for (const result of results) {
+    if (result.status === 'rejected') console.warn('[acp] failed to fan out event', result.reason)
+  }
 }
 
 async function broadcastToDurableObject(stub: { fetch: typeof fetch }, event: ShipSSEEvent): Promise<void> {
@@ -123,6 +128,21 @@ async function persistAssistantMessage(stub: { fetch: typeof fetch }, content: s
   )
 }
 
+async function persistRunnerErrorMessage(stub: { fetch: typeof fetch }, content: string): Promise<void> {
+  if (!content.trim()) return
+  await stub.fetch(
+    new Request(`${DO_URL}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: 'system',
+        content,
+        parts: JSON.stringify([{ type: 'error', category: 'persistent', retryable: true }]),
+      }),
+    }),
+  )
+}
+
 function sessionIdFromResult(raw: unknown): string {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
   return String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
@@ -139,6 +159,14 @@ function optionValue(option: unknown): string | undefined {
   const obj = option as Record<string, unknown>
   const value = obj.value ?? obj.id ?? obj.name
   return typeof value === 'string' ? value : undefined
+}
+
+function hasAuthMethod(init: Record<string, unknown>, methodId: string): boolean {
+  const methods = Array.isArray(init.authMethods) ? init.authMethods : []
+  return methods.some((method) => {
+    if (!method || typeof method !== 'object') return false
+    return (method as Record<string, unknown>).id === methodId
+  })
 }
 
 function findModelConfigOption(configOptions: unknown[] | undefined, upstreamModelId: string): string | undefined {
@@ -178,7 +206,7 @@ async function runHandshake(
   setSuppressNotifications: (value: boolean) => void,
 ): Promise<{ sessionId: string; loadedExisting: boolean; configOptions?: unknown[] }> {
   const initRaw = await rpc.request('initialize', {
-    protocolVersion: '2025-06-23',
+    protocolVersion: 1,
     clientCapabilities: {},
     clientInfo: { name: 'Ship', version: '2.0.0' },
   })
@@ -220,7 +248,7 @@ async function runHandshake(
       }
       break
     case 'opencode':
-      if (env.OPENCODE_API_KEY) {
+      if (env.OPENCODE_API_KEY && hasAuthMethod(init, 'opencode-api-key')) {
         await rpc.request('authenticate', {
           methodId: 'opencode-api-key',
           credentials: { apiKey: env.OPENCODE_API_KEY },
@@ -235,7 +263,7 @@ async function runHandshake(
   let loadedExisting = false
   let configOptions: unknown[] | undefined
   if (!sid) {
-    const raw = await rpc.request('session/new', { cwd })
+    const raw = await rpc.request('session/new', { cwd, mcpServers: [] })
     sid = sessionIdFromResult(raw)
     configOptions = configOptionsFromResult(raw)
     if (!sid) throw new Error('ACP session/new missing session id')
@@ -243,11 +271,11 @@ async function runHandshake(
   } else if (canLoadSession) {
     try {
       setSuppressNotifications(true)
-      const raw = await rpc.request('session/load', { sessionId: sid, cwd })
+      const raw = await rpc.request('session/load', { sessionId: sid, cwd, mcpServers: [] })
       configOptions = configOptionsFromResult(raw)
       loadedExisting = true
     } catch {
-      const raw = await rpc.request('session/new', { cwd })
+      const raw = await rpc.request('session/new', { cwd, mcpServers: [] })
       sid = sessionIdFromResult(raw)
       configOptions = configOptionsFromResult(raw)
       if (!sid) throw new Error('ACP session/new missing session id after load failure')
@@ -256,7 +284,7 @@ async function runHandshake(
       setSuppressNotifications(false)
     }
   } else {
-    const raw = await rpc.request('session/new', { cwd })
+    const raw = await rpc.request('session/new', { cwd, mcpServers: [] })
     sid = sessionIdFromResult(raw)
     configOptions = configOptionsFromResult(raw)
     if (!sid) throw new Error('ACP session/new missing session id without load support')
@@ -293,6 +321,8 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
   const translator = createAcpNotificationTranslator(input.sessionId)
   let assistantText = ''
   let suppressAcpNotifications = false
+  let sawVisibleAssistantOutput = false
+  const acpLogTail: string[] = []
 
   const emitTranslated = async (note: Record<string, unknown>) => {
     if (suppressAcpNotifications) return
@@ -303,10 +333,15 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
           delta?: string
           part?: { type?: string; text?: string }
         }
-        if (typeof props.delta === 'string') {
-          assistantText += props.delta
-        } else if (props.part?.type === 'text' && typeof props.part.text === 'string') {
-          assistantText = props.part.text
+        if (props.part?.type === 'text') {
+          if (typeof props.delta === 'string') {
+            assistantText += props.delta
+          } else if (typeof props.part.text === 'string') {
+            assistantText = props.part.text
+          }
+          sawVisibleAssistantOutput = true
+        } else if (props.part?.type && props.part.type !== 'reasoning' && props.part.type !== 'step-finish') {
+          sawVisibleAssistantOutput = true
         }
       }
       await emitEvent(input, event)
@@ -345,6 +380,11 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
   const rpc = createAcpMultiplexer(ws, {
     onAgentNotification: (note) => emitTranslated(note),
     onLog: (stream, data) => {
+      const trimmed = data.trim()
+      if (trimmed) {
+        acpLogTail.push(trimmed.slice(0, 1000))
+        if (acpLogTail.length > 8) acpLogTail.shift()
+      }
       console.warn(`[acp:${stream}]`, data.slice(0, 500))
     },
   })
@@ -416,19 +456,24 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
       waitingForPrompt = false
     }
 
-    await emitEvent(input, makeStepFinishEvent(input.sessionId, translator.messageId, emptyStepTotals(), 'stop'))
+    if (!assistantText.trim() && !sawVisibleAssistantOutput) {
+      const tail = acpLogTail.at(-1)
+      const detail = tail ? ` Last backend log: ${tail}` : ''
+      throw new Error(`ACP backend completed without returning assistant output.${detail}`)
+    }
 
     await persistAssistantMessage(input.stub, assistantText)
-    await writeSessionIdle(input.stream)
-    await writeDone(input.stream)
+    await emitEvent(input, makeStepFinishEvent(input.sessionId, translator.messageId, emptyStepTotals(), 'stop'))
+    await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
+    await emitEvent(input, { type: 'done' })
 
     return { assistantText, totals: emptyStepTotals(), hadToolCalls: false }
   } catch (error) {
     if (error instanceof AgentStoppedError || stoppedByRequest) {
       await patchMeta(input.stub, { agent_should_stop: 'false', agent_paused: 'false' })
       await writeStatus(input.stream, 'stopped', 'Agent stopped.')
-      await writeSessionIdle(input.stream)
-      await writeDone(input.stream)
+      await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
+      await emitEvent(input, { type: 'done' })
       return { assistantText, totals: emptyStepTotals(), hadToolCalls: false }
     }
     const msg = error instanceof Error ? error.message : String(error)
@@ -439,8 +484,11 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
         error: { name: 'AgentError', data: { message: msg } },
       },
     })
-    await writeSessionIdle(input.stream)
-    await writeDone(input.stream)
+    await persistRunnerErrorMessage(input.stub, msg).catch((persistError) => {
+      console.warn('[acp] failed to persist runner error message', persistError)
+    })
+    await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
+    await emitEvent(input, { type: 'done' })
     return { assistantText: '', totals: emptyStepTotals(), hadToolCalls: false }
   } finally {
     rpc.close()

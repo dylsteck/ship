@@ -11,22 +11,39 @@ import { makeMessagePartUpdated, type ShipSSEEvent } from './events'
 import { createTranslatorState, nextPartId, type TranslatorState } from './state'
 
 const STREAM_KEY = 'acp-text-stream'
+const REASONING_STREAM_KEY = 'acp-reasoning-stream'
+
+function extractContentText(content: unknown): string | null {
+  if (typeof content === 'string') return content
+  if (!content) return null
+  if (Array.isArray(content)) {
+    const texts = content
+      .filter((c) => c && typeof c === 'object')
+      .map((c) => {
+        const chunk = c as Record<string, unknown>
+        return typeof chunk.text === 'string' ? chunk.text : typeof chunk.content === 'string' ? chunk.content : ''
+      })
+      .filter(Boolean)
+    return texts.length ? texts.join('') : null
+  }
+  if (typeof content === 'object') {
+    const obj = content as Record<string, unknown>
+    if (typeof obj.text === 'string') return obj.text
+    if (typeof obj.content === 'string') return obj.content
+  }
+  return null
+}
 
 function extractDelta(params: Record<string, unknown> | undefined): string | null {
   if (!params) return null
   if (typeof params.delta === 'string') return params.delta
   if (typeof params.text === 'string') return params.text
-  const content = params.content
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    const chunks = content.filter((c) => c && typeof c === 'object') as Array<Record<string, unknown>>
-    const texts = chunks
-      .map((c) => (typeof c.text === 'string' ? c.text : typeof c.content === 'string' ? c.content : ''))
-      .filter(Boolean)
-    if (texts.length) return texts.join('')
-  }
+  const contentText = extractContentText(params.content)
+  if (contentText) return contentText
   const msg = params.message as Record<string, unknown> | undefined
   if (msg && typeof msg.content === 'string') return msg.content
+  const update = params.update as Record<string, unknown> | undefined
+  if (update) return extractContentText(update.content)
   return null
 }
 
@@ -72,16 +89,20 @@ function translate(state: TranslatorState, note: Record<string, unknown>): ShipS
   if (method.includes('permission')) return []
 
   const params = note.params as Record<string, unknown> | undefined
+  const update = params?.update as Record<string, unknown> | undefined
+  const sessionUpdate = typeof update?.sessionUpdate === 'string' ? update.sessionUpdate : ''
+  const partType = sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'text'
 
   const delta = extractDelta(params)
   if (!delta) return []
 
-  let buf = state.textBuffers.get(STREAM_KEY)
+  const key = partType === 'reasoning' ? REASONING_STREAM_KEY : STREAM_KEY
+  let buf = state.textBuffers.get(key)
   if (!buf) {
     buf = { partId: nextPartId(state), text: '' }
-    state.textBuffers.set(STREAM_KEY, buf)
+    state.textBuffers.set(key, buf)
   }
   buf.text += delta
 
-  return [makeMessagePartUpdated(state, { id: buf.partId, type: 'text', text: buf.text }, delta)]
+  return [makeMessagePartUpdated(state, { id: buf.partId, type: partType, text: buf.text }, delta)]
 }
