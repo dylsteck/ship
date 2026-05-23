@@ -10,8 +10,8 @@
 
 export type JsonRpcRecord = Record<string, unknown>
 
-export function sendCtl(ws: WebSocket, op: 'spawn' | 'reset', backend?: string): void {
-  ws.send(JSON.stringify({ type: 'ctl', op, ...(backend ? { backend } : {}) }))
+export function sendCtl(ws: WebSocket, op: 'spawn' | 'reset', backend?: string, model?: string): void {
+  ws.send(JSON.stringify({ type: 'ctl', op, ...(backend ? { backend } : {}), ...(model ? { model } : {}) }))
 }
 
 export interface AcpMultiplexer {

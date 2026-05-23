@@ -25,10 +25,11 @@ function acpHarnessForModel(model: ModelInfo): AcpHarnessId | null {
 
 function normalizeAcpModel(model: ModelInfo, harnessId: AcpHarnessId): ModelInfo {
   const harness = ACP_HARNESSES[harnessId]
+  const isLegacyHarnessModel = model.name === `${harness.name} (ACP)` || model.name === harness.name || model.name === 'Default'
   return {
     ...model,
-    name: model.name === `${harness.name} (ACP)` || model.name === harness.name ? 'Default' : model.name,
-    provider: harness.provider,
+    name: isLegacyHarnessModel ? 'Configured default' : model.name,
+    provider: isLegacyHarnessModel ? harness.provider : model.provider,
   }
 }
 

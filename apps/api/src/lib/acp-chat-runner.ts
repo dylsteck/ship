@@ -26,6 +26,7 @@ import { writeDone, writeSessionIdle, writeStatus, type SSEWriter } from './chat
 import { ensureAcpBridgeReady, toBridgeWsUrl } from './acp-bridge-bootstrap'
 import { createAcpMultiplexer, openBridgeWebSocket, sendCtl } from './acp-json-rpc'
 import { DEFAULT_ACP_MODEL_ID, resolveAcpBackend, type AcpBackendKind } from './agent-registry'
+import { parseAcpModelId } from './acp-types'
 
 export interface RunChatTurnInput {
   sessionId: string
@@ -122,6 +123,48 @@ async function persistAssistantMessage(stub: { fetch: typeof fetch }, content: s
   )
 }
 
+function sessionIdFromResult(raw: unknown): string {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  return String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
+}
+
+function configOptionsFromResult(raw: unknown): unknown[] | undefined {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  return Array.isArray(obj.configOptions) ? obj.configOptions : undefined
+}
+
+function optionValue(option: unknown): string | undefined {
+  if (typeof option === 'string') return option
+  if (!option || typeof option !== 'object') return undefined
+  const obj = option as Record<string, unknown>
+  const value = obj.value ?? obj.id ?? obj.name
+  return typeof value === 'string' ? value : undefined
+}
+
+function findModelConfigOption(configOptions: unknown[] | undefined, upstreamModelId: string): string | undefined {
+  for (const option of configOptions ?? []) {
+    if (!option || typeof option !== 'object') continue
+    const obj = option as Record<string, unknown>
+    const id = typeof obj.id === 'string' ? obj.id : ''
+    if (!/model/i.test(id)) continue
+    const options = Array.isArray(obj.options) ? obj.options : []
+    if (options.length === 0 || options.some((candidate) => optionValue(candidate) === upstreamModelId)) return id
+  }
+  return undefined
+}
+
+async function setAdvertisedModelConfig(
+  rpc: ReturnType<typeof createAcpMultiplexer>,
+  sessionId: string,
+  configOptions: unknown[] | undefined,
+  upstreamModelId: string | undefined,
+): Promise<void> {
+  if (!upstreamModelId) return
+  const configId = findModelConfigOption(configOptions, upstreamModelId)
+  if (!configId) return
+  await rpc.request('session/set_config_option', { sessionId, configId, value: upstreamModelId })
+}
+
 /**
  * `initialize` / `authenticate` / `session/new` | `session/load` sequence for one bridge connection.
  */
@@ -133,7 +176,7 @@ async function runHandshake(
   persistedSessionId: string | undefined,
   persistSessionId: (id: string) => Promise<void>,
   setSuppressNotifications: (value: boolean) => void,
-): Promise<{ sessionId: string; loadedExisting: boolean }> {
+): Promise<{ sessionId: string; loadedExisting: boolean; configOptions?: unknown[] }> {
   const initRaw = await rpc.request('initialize', {
     protocolVersion: '2025-06-23',
     clientCapabilities: {},
@@ -190,21 +233,23 @@ async function runHandshake(
 
   let sid = persistedSessionId
   let loadedExisting = false
+  let configOptions: unknown[] | undefined
   if (!sid) {
     const raw = await rpc.request('session/new', { cwd })
-    const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
-    sid = String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
+    sid = sessionIdFromResult(raw)
+    configOptions = configOptionsFromResult(raw)
     if (!sid) throw new Error('ACP session/new missing session id')
     await persistSessionId(sid)
   } else if (canLoadSession) {
     try {
       setSuppressNotifications(true)
-      await rpc.request('session/load', { sessionId: sid, cwd })
+      const raw = await rpc.request('session/load', { sessionId: sid, cwd })
+      configOptions = configOptionsFromResult(raw)
       loadedExisting = true
     } catch {
       const raw = await rpc.request('session/new', { cwd })
-      const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
-      sid = String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
+      sid = sessionIdFromResult(raw)
+      configOptions = configOptionsFromResult(raw)
       if (!sid) throw new Error('ACP session/new missing session id after load failure')
       await persistSessionId(sid)
     } finally {
@@ -212,13 +257,13 @@ async function runHandshake(
     }
   } else {
     const raw = await rpc.request('session/new', { cwd })
-    const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
-    sid = String(obj.sessionId ?? obj.session_id ?? obj.id ?? '')
+    sid = sessionIdFromResult(raw)
+    configOptions = configOptionsFromResult(raw)
     if (!sid) throw new Error('ACP session/new missing session id without load support')
     await persistSessionId(sid)
   }
 
-  return { sessionId: sid, loadedExisting }
+  return { sessionId: sid, loadedExisting, configOptions }
 }
 
 async function waitForStopRequest(
@@ -270,12 +315,14 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
 
   const meta = await readMeta(input.stub)
   const pickerId = input.modelId || meta['model'] || DEFAULT_ACP_MODEL_ID
+  const modelSelection = parseAcpModelId(pickerId)
   const backend = resolveAcpBackend(pickerId)
   const workingDirectory = input.sandbox.workingDirectory
   const canReuseProtocolSession =
     meta['acp_protocol_session_id'] &&
     meta['acp_protocol_session_backend'] === backend &&
-    meta['acp_protocol_session_cwd'] === workingDirectory
+    meta['acp_protocol_session_cwd'] === workingDirectory &&
+    meta['model'] === pickerId
   if (meta['acp_backend_kind'] !== backend || !canReuseProtocolSession) {
     await patchMeta(input.stub, {
       acp_backend_kind: backend,
@@ -309,7 +356,7 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
   }
 
   try {
-    sendCtl(ws, 'spawn', backend)
+    sendCtl(ws, 'spawn', backend, modelSelection.upstreamModelId)
     await delay(450)
 
     const handshake = await runHandshake(
@@ -329,6 +376,9 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
       },
     )
     const sid = handshake.sessionId
+    await setAdvertisedModelConfig(rpc, sid, handshake.configOptions, modelSelection.upstreamModelId).catch((err) => {
+      console.warn('[acp] failed to set advertised model config', err)
+    })
 
     const transcript = input.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n---\n')
     const latestUserPrompt = [...input.messages].reverse().find((message) => message.role === 'user')?.content

@@ -1,45 +1,21 @@
 import { Hono } from 'hono'
 import type { Env } from '../env.d'
-import { listAgents, getDefaultAgentId } from '../lib/agent-registry'
-import { ACP_MODEL_IDS, acpBackendFromModelId } from '../lib/acp-types'
+import {
+  DEFAULT_ACP_MODEL_ID,
+  getDefaultAgentId,
+  isKnownAcpModel,
+  listAgents,
+  listAvailableModels,
+} from '../lib/agent-registry'
+import { acpBackendFromModelId } from '../lib/acp-types'
 import { requireJwtUserId, requireSessionOwner } from '../lib/session-authorization'
 
 const models = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
-const DEFAULT_MODEL = ACP_MODEL_IDS.opencode
+const DEFAULT_MODEL = DEFAULT_ACP_MODEL_ID
 
-const STATIC_ACP_MODELS = [
-  {
-    id: ACP_MODEL_IDS.opencode,
-    name: 'OpenCode',
-    provider: 'ACP — OpenCode',
-    description: 'Sandbox `opencode acp` backend',
-    isDefault: true,
-  },
-  {
-    id: ACP_MODEL_IDS.cursor,
-    name: 'Cursor Agent',
-    provider: 'ACP — Cursor',
-    description: 'Sandbox `agent acp` backend',
-  },
-  {
-    id: ACP_MODEL_IDS.claude,
-    name: 'Claude Agent',
-    provider: 'ACP — Claude',
-    description: 'Sandbox `claude-agent-acp` backend',
-  },
-  {
-    id: ACP_MODEL_IDS.codex,
-    name: 'Codex',
-    provider: 'ACP — Codex',
-    description: 'Sandbox `codex-acp` backend',
-  },
-]
-
-function validateModelWithFallback(modelId: string): boolean {
-  if (STATIC_ACP_MODELS.some((m) => m.id === modelId)) return true
-  const agents = listAgents()
-  return agents.some((a) => a.models.some((m) => m.id === modelId))
+async function validateModelWithFallback(modelId: string): Promise<boolean> {
+  return isKnownAcpModel(modelId)
 }
 
 /**
@@ -51,7 +27,8 @@ models.get('/available', async (c) => {
   if (typeof userIdOrRes !== 'string') {
     return userIdOrRes
   }
-  return c.json(STATIC_ACP_MODELS)
+  const availableModels = await listAvailableModels()
+  return c.json(availableModels.map((model) => ({ ...model, isDefault: model.id === DEFAULT_MODEL })))
 })
 
 /**
@@ -74,7 +51,7 @@ models.get('/default', async (c) => {
     const defaultModel = result?.value || DEFAULT_MODEL
 
     // Validate model exists
-    const isValid = validateModelWithFallback(defaultModel)
+    const isValid = await validateModelWithFallback(defaultModel)
     if (!isValid) {
       // Fall back to default if stored model is invalid
       return c.json({ model: DEFAULT_MODEL })
@@ -106,7 +83,7 @@ models.post('/default', async (c) => {
     }
 
     // Validate model exists
-    const isValid = validateModelWithFallback(model)
+    const isValid = await validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }
@@ -147,7 +124,7 @@ models.post('/sessions/:id', async (c) => {
     }
 
     // Validate model exists
-    const isValid = validateModelWithFallback(model)
+    const isValid = await validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }
@@ -216,8 +193,8 @@ models.get('/sessions/:id', async (c) => {
  * GET /models/agents
  * List all available agents with their models and modes
  */
-models.get('/agents', (c) => {
-  const agents = listAgents()
+models.get('/agents', async (c) => {
+  const agents = await listAgents()
   return c.json(agents)
 })
 
@@ -237,7 +214,7 @@ models.get('/default-agent', async (c) => {
       .bind(userId, 'default_agent')
       .first<{ value: string }>()
 
-    const agents = listAgents()
+    const agents = await listAgents()
     const storedAgentId = result?.value
     const agentId =
       storedAgentId && agents.some((agent) => agent.id === storedAgentId) ? storedAgentId : getDefaultAgentId()
@@ -268,7 +245,7 @@ models.post('/default-agent', async (c) => {
     }
 
     // Validate agent exists
-    const agents = listAgents()
+    const agents = await listAgents()
     if (!agents.some((a) => a.id === agentId)) {
       return c.json({ error: 'Invalid agent ID' }, 400)
     }
@@ -341,13 +318,13 @@ models.post('/default-agent-model', async (c) => {
     }
 
     // Validate agent exists
-    const agents = listAgents()
+    const agents = await listAgents()
     if (!agents.some((a) => a.id === agentId)) {
       return c.json({ error: 'Invalid agent ID' }, 400)
     }
 
     // Validate model exists
-    const isValid = validateModelWithFallback(model)
+    const isValid = await validateModelWithFallback(model)
     if (!isValid) {
       return c.json({ error: 'Invalid model ID' }, 400)
     }

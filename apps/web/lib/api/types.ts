@@ -71,6 +71,9 @@ export interface ModelInfo {
   contextWindow?: number
   maxTokens?: number
   isDefault?: boolean
+  isFree?: boolean
+  source?: string
+  upstreamModelId?: string
 }
 
 export interface DefaultModelResponse {

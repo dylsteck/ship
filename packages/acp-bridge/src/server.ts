@@ -36,7 +36,7 @@ function parseArgs(argv: string[]): { port: number } {
   return { port }
 }
 
-function backendArgv(kind: BackendKind): { cmd: string; args: string[] } {
+function backendArgv(kind: BackendKind, model?: string): { cmd: string; args: string[] } {
   const overrides: Partial<Record<BackendKind, string>> = {
     codex: process.env.SHIP_ACP_CODEX_CMD || '',
     claude: process.env.SHIP_ACP_CLAUDE_CMD || '',
@@ -56,7 +56,7 @@ function backendArgv(kind: BackendKind): { cmd: string; args: string[] } {
     case 'cursor':
       return { cmd: 'agent', args: ['acp'] }
     case 'opencode':
-      return { cmd: 'opencode', args: ['acp'] }
+      return { cmd: 'opencode', args: model ? ['--model', model, 'acp'] : ['acp'] }
     default:
       throw new Error(`unknown backend ${kind}`)
   }
@@ -82,22 +82,22 @@ function sendCtl(ws: WebSocket, payload: Record<string, unknown>): void {
   }
 }
 
-function spawnBackend(kind: BackendKind, client: WebSocket): void {
+function spawnBackend(kind: BackendKind, client: WebSocket, model?: string): void {
   killChild()
   const cwd = process.env.SHIP_REPO_CWD || process.cwd()
-  const { cmd, args } = backendArgv(kind)
+  const { cmd, args } = backendArgv(kind, model)
   try {
     child = spawn(cmd, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: { ...process.env, ...(model ? { SHIP_ACP_SELECTED_MODEL: model, OPENCODE_MODEL: model } : {}) },
     })
   } catch (err) {
     sendCtl(client, { op: 'spawn', status: 'error', backend: kind, message: `spawn failed: ${String(err)}` })
     return
   }
 
-  sendCtl(client, { op: 'spawn', status: 'ok', backend: kind, pid: child.pid })
+  sendCtl(client, { op: 'spawn', status: 'ok', backend: kind, pid: child.pid, ...(model ? { model } : {}) })
 
   child.stdout?.on('data', (chunk: Buffer) => {
     stdoutBuf += chunk.toString('utf8')
@@ -173,13 +173,13 @@ function authorize(req: http.IncomingMessage, expected: string | undefined): boo
   return !!bearer && bearer === expected
 }
 
-function handleCtl(ws: WebSocket, msg: { op?: string; backend?: string }): void {
+function handleCtl(ws: WebSocket, msg: { op?: string; backend?: string; model?: string }): void {
   if (msg.op === 'reset') {
     killChild()
     return
   }
   if (msg.op === 'spawn' && msg.backend) {
-    spawnBackend(msg.backend as BackendKind, ws as unknown as WebSocket)
+    spawnBackend(msg.backend as BackendKind, ws as unknown as WebSocket, msg.model)
   }
 }
 

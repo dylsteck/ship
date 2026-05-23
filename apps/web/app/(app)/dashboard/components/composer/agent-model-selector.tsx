@@ -21,6 +21,13 @@ function shortenModelName(name: string): string {
   return name.replace(/^Claude\s+/i, '')
 }
 
+function modelSubtitle(model: ModelInfo): string {
+  const parts = [model.provider]
+  if (model.isFree && !/free/i.test(model.provider)) parts.push('Free')
+  if (model.contextWindow) parts.push(`${Math.round(model.contextWindow / 1000)}K ctx`)
+  return parts.join(' - ')
+}
+
 function selectedModelForAgent(agent: AgentInfo | null, selectedModel: ModelInfo | null): ModelInfo | undefined {
   return agent?.models?.find((model) => model.id === selectedModel?.id)
 }
@@ -88,7 +95,7 @@ export function AgentModelSelector() {
                     <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="shrink-0 text-foreground" />
                   )}
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-[220px]">
+                <DropdownMenuSubContent className="w-[260px] max-h-[360px] overflow-y-auto">
                   {agentModels.map((model) => {
                     const isModelSelected = isAgentSelected && selectedModel?.id === model.id
                     return (
@@ -105,7 +112,7 @@ export function AgentModelSelector() {
                       >
                         <span className="min-w-0">
                           <span className="block truncate text-xs">{model.name}</span>
-                          <span className="block truncate text-[11px] text-muted-foreground">{model.provider}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">{modelSubtitle(model)}</span>
                         </span>
                         {isModelSelected && (
                           <HugeiconsIcon

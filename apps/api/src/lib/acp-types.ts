@@ -15,10 +15,33 @@ export const ACP_MODEL_IDS = {
   opencode: 'ship-acp-opencode',
 } as const
 
-export function acpBackendFromModelId(modelId: string | undefined): AcpBackendKind {
+/** Parsed Ship ACP model id, including an optional backend-specific model id. */
+export interface AcpModelSelection {
+  backend: AcpBackendKind
+  /** Backend-native model id, for example `opencode/gpt-5.5`. */
+  upstreamModelId?: string
+}
+
+/** Builds a Ship model id for a concrete ACP backend model. */
+export function acpModelId(backend: AcpBackendKind, upstreamModelId?: string): string {
+  const base = ACP_MODEL_IDS[backend]
+  return upstreamModelId ? `${base}:${upstreamModelId}` : base
+}
+
+/** Parses legacy harness ids and concrete `ship-acp-*:provider/model` ids. */
+export function parseAcpModelId(modelId: string | undefined): AcpModelSelection {
   const m = modelId ?? ''
-  if (m === ACP_MODEL_IDS.codex || m.endsWith('-codex')) return 'codex'
-  if (m === ACP_MODEL_IDS.claude || m.endsWith('-claude')) return 'claude'
-  if (m === ACP_MODEL_IDS.cursor || m.endsWith('-cursor')) return 'cursor'
-  return 'opencode'
+  const entries = Object.entries(ACP_MODEL_IDS) as Array<[AcpBackendKind, string]>
+  for (const [backend, baseId] of entries) {
+    if (m === baseId || m.endsWith(`-${backend}`)) return { backend }
+    if (m.startsWith(`${baseId}:`)) {
+      const upstreamModelId = m.slice(baseId.length + 1).trim()
+      return upstreamModelId ? { backend, upstreamModelId } : { backend }
+    }
+  }
+  return { backend: 'opencode' }
+}
+
+export function acpBackendFromModelId(modelId: string | undefined): AcpBackendKind {
+  return parseAcpModelId(modelId).backend
 }
