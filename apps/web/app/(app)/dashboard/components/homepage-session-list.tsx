@@ -1,11 +1,11 @@
 'use client'
 
-import { useCallback } from 'react'
+import { memo, useCallback } from 'react'
 import { cn } from '@ship/ui'
 import type { ChatSession } from '@/lib/api/server'
 import type { ModelInfo } from '@/lib/api/types'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
-import { useSessionStatusStore, type SessionLiveStatus } from '../hooks/use-session-status-store'
+import { useSessionStatus, type SessionLiveStatus } from '../hooks/use-session-status-store'
 
 function BranchBadge() {
   return (
@@ -153,7 +153,7 @@ interface HomepageSessionCardProps {
   now: number
 }
 
-function HomepageSessionCard({
+const HomepageSessionCard = memo(function HomepageSessionCard({
   session,
   isActive,
   isStreaming,
@@ -166,8 +166,7 @@ function HomepageSessionCard({
   now,
 }: HomepageSessionCardProps) {
   const handleClick = useCallback(() => onSessionClick(session), [onSessionClick, session])
-  const { getStatus } = useSessionStatusStore()
-  const liveStatus = getStatus(session.id)
+  const liveStatus = useSessionStatus(session.id)
 
   const title = liveStatus?.title || getSessionDisplayTitle(session) || (liveStatus?.isRunning ? 'New Agent' : session.repoName)
   const repoPath = getSessionRepoLabel(session) || session.repoName
@@ -259,7 +258,7 @@ function HomepageSessionCard({
       </div>
     </button>
   )
-}
+})
 
 function getSessionModelLabel(session: ChatSession, models: ModelInfo[], fallbackAgentLabel: string): string {
   if (!session.model) return fallbackAgentLabel

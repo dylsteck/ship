@@ -13,6 +13,13 @@ import { sessionStatusStore } from './use-session-status-store'
 import { eventsStore } from './use-events-store'
 import { postSessionSync } from '@/lib/session-sync-channel'
 
+function isStreamingTextDelta(eventType: string, rawData: Record<string, unknown>): boolean {
+  if (eventType !== 'message.part.updated') return false
+  const props = rawData.properties as { part?: { type?: string } } | undefined
+  const partType = props?.part?.type
+  return partType === 'text' || partType === 'reasoning'
+}
+
 const DEFAULT_MODES: AgentMode[] = [
   { id: 'build', label: 'build' },
   { id: 'plan', label: 'plan' },
@@ -129,6 +136,7 @@ export function useDashboardState({
   const streamSessionInBackground = useCallback(
     async (sessionId: string, content: string, sessionMode: string, modelId?: string) => {
       sessionStatusStore.update(sessionId, { isRunning: true, status: 'Starting...', steps: [], contentPreview: '' })
+      postSessionSync({ type: 'session-streaming', sessionId })
       let accumulatedText = ''
       try {
         const response = await sendChatMessage(
@@ -166,7 +174,7 @@ export function useDashboardState({
                 rawData.type = 'error'
               }
               const eventType: string = typeof rawData.type === 'string' ? rawData.type : currentEventType || 'unknown'
-              if (isAgentHarnessEvent(eventType, rawData)) {
+              if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
                 eventsStore.addEvent(sessionId, {
                   id: crypto.randomUUID(),
                   type: eventType,
@@ -189,33 +197,36 @@ export function useDashboardState({
                 processStreamEventForSession(sessionId, event as { type: string; [k: string]: unknown })
               }
 
-              // Capture assistant text content for preview
+              // Batch text preview + status into one store notification
               const textDelta = extractTextDelta(event)
-              if (textDelta) {
-                accumulatedText += textDelta
-                sessionStatusStore.update(sessionId, { contentPreview: accumulatedText })
-              }
+              if (textDelta) accumulatedText += textDelta
 
-              // Use getEventStatus to extract human-readable labels from all event types
               const eventStatus = getEventStatus(event as any)
-              if (eventStatus) {
-                sessionStatusStore.update(sessionId, { status: eventStatus.label })
-                // Don't add heartbeat "Waiting (Xs)" as steps — they accumulate and replace real progress
-                if (type === 'heartbeat') {
-                  // status updated above; skip addStep
-                } else if (type !== 'status' && type !== 'session.status') {
-                  sessionStatusStore.addStep(sessionId, eventStatus.label)
-                }
+              const isHeartbeat = type === 'heartbeat'
+              const isStatusEvent = type === 'status' || type === 'session.status'
+              const statusMsg = isStatusEvent
+                ? ((event as { message?: string; status?: string }).message ??
+                   (event as { message?: string; status?: string }).status)
+                : null
+
+              if (textDelta || eventStatus || (isStatusEvent && statusMsg)) {
+                sessionStatusStore.update(sessionId, {
+                  ...(textDelta ? { contentPreview: accumulatedText } : {}),
+                  ...(eventStatus && !isStatusEvent
+                    ? {
+                        status: eventStatus.label,
+                        // Don't add heartbeat steps — they accumulate and replace real progress
+                        ...(!isHeartbeat ? { step: eventStatus.label } : {}),
+                      }
+                    : {}),
+                  ...(isStatusEvent && typeof statusMsg === 'string'
+                    ? { status: statusMsg, step: statusMsg }
+                    : {}),
+                })
               }
 
               if (type === 'status' || type === 'session.status') {
-                const msg =
-                  (event as { message?: string; status?: string }).message ??
-                  (event as { message?: string; status?: string }).status
-                if (typeof msg === 'string') {
-                  sessionStatusStore.update(sessionId, { status: msg })
-                  sessionStatusStore.addStep(sessionId, msg)
-                }
+                // handled in batch above
               } else if (type === 'session.updated') {
                 const info = (event as any).properties?.info
                 if (info?.title) {

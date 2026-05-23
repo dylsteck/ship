@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect, useSyncExternalStore } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
 import { getApiToken } from '@/lib/api/client'
 import { stopChatStream, getChatMessages, getChatEvents, type Message as APIMessage } from '@/lib/api/chat-client'
@@ -14,7 +14,7 @@ import {
 import type { ChatSession } from '@/lib/api/server'
 import { API_URL } from '@/lib/config'
 import { useSessionPersistence } from './use-session-persistence'
-import { sessionStatusStore } from './use-session-status-store'
+import { sessionStatusStore, useSessionStatus } from './use-session-status-store'
 import { hydrateEventsFromMessages, eventsStore } from './use-events-store'
 
 export interface UseDashboardChatOptions {
@@ -54,12 +54,8 @@ export function useDashboardChat(
   const [messageQueue, setMessageQueue] = useState<string[]>([])
 
   // Sync with sessionStatusStore for sessions started from homepage (streamSessionInBackground)
-  const storeMap = useSyncExternalStore(
-    sessionStatusStore.subscribe,
-    sessionStatusStore.getSnapshot,
-    sessionStatusStore.getSnapshot,
-  )
-  const storeSessionRunning = Boolean(activeSessionId && storeMap.get(activeSessionId)?.isRunning)
+  const liveSessionStatus = useSessionStatus(activeSessionId ?? '')
+  const storeSessionRunning = Boolean(activeSessionId && liveSessionStatus?.isRunning)
   const isStreaming = internalIsStreaming || storeSessionRunning
 
   // Sidebar / session persistence state

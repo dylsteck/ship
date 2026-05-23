@@ -144,6 +144,7 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
 
       terminalStreamSessionsRef.current.delete(targetSessionId)
       setIsStreaming(true)
+      postSessionSync({ type: 'session-streaming', sessionId: targetSessionId })
       clearStreamingStatusSteps()
       assistantTextRef.current = ''
       reasoningRef.current = ''
@@ -300,8 +301,10 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
                 const event = parseSSEEvent(rawData)
 
                 // Only capture raw events from agent harness (exclude sandbox-ready, heartbeat, etc.)
+                // Skip text/reasoning streaming deltas — they're collapsed in the events panel and
+                // each one would fire a global eventsStore notification (383+ per turn).
                 const eventType = event?.type ?? (typeof rawData.type === 'string' ? rawData.type : 'unknown')
-                if (isAgentHarnessEvent(eventType, rawData)) {
+                if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
                   eventsStore.addEvent(targetSessionId, {
                     id: crypto.randomUUID(),
                     type: eventType,
@@ -316,16 +319,14 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
                 switch (event.type) {
                   case 'message.part.updated': {
                     handleMessagePartUpdated(event as any, ctx, scheduleFlush)
+                    // Batch all status updates into one notification instead of 3
                     const textDelta = extractTextDelta(event as any)
-                    if (textDelta) {
-                      sessionStatusStore.update(targetSessionId, {
-                        contentPreview: ctx.assistantTextRef.current,
-                      })
-                    }
                     const eventStatus = getEventStatus(event as any)
-                    if (eventStatus) {
-                      sessionStatusStore.update(targetSessionId, { status: eventStatus.label })
-                      sessionStatusStore.addStep(targetSessionId, eventStatus.label)
+                    if (textDelta || eventStatus) {
+                      sessionStatusStore.update(targetSessionId, {
+                        ...(textDelta ? { contentPreview: ctx.assistantTextRef.current } : {}),
+                        ...(eventStatus ? { status: eventStatus.label, step: eventStatus.label } : {}),
+                      })
                     }
                     break
                   }
@@ -748,6 +749,14 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
   }, [])
 
   return { handleSend, processStreamEventForSession, resumeStream }
+}
+
+/** Returns true for text/reasoning streaming deltas that are too noisy to store in eventsStore. */
+function isStreamingTextDelta(eventType: string, rawData: Record<string, unknown>): boolean {
+  if (eventType !== 'message.part.updated') return false
+  const props = rawData.properties as { part?: { type?: string } } | undefined
+  const partType = props?.part?.type
+  return partType === 'text' || partType === 'reasoning'
 }
 
 function streamEventKey(sessionId: string, event: { type: string; [k: string]: unknown }): string | null {

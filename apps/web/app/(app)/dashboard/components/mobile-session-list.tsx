@@ -11,7 +11,7 @@ import {
 } from '@ship/ui'
 import type { ChatSession } from '@/lib/api/server'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
-import { useSessionStatusStore } from '../hooks/use-session-status-store'
+import { useSessionStatus } from '../hooks/use-session-status-store'
 
 function formatRelativeTime(timestamp: number, now: number): string {
   const seconds = Math.floor(now - timestamp)
@@ -155,8 +155,7 @@ function SessionRow({
   onCancelDelete,
   now,
 }: SessionRowProps) {
-  const { getStatus } = useSessionStatusStore()
-  const liveStatus = getStatus(session.id)
+  const liveStatus = useSessionStatus(session.id)
   const isLive = liveStatus?.isRunning || (isStreaming && isActive)
 
   const sessionName = getSessionDisplayTitle(session) || session.repoName

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 
 export interface SessionLiveStatus {
   status: string
@@ -12,19 +12,27 @@ export interface SessionLiveStatus {
   title?: string
 }
 
+/** Internal update shape — `step` is consumed and merged into `steps` */
+type SessionLiveStatusUpdate = Partial<SessionLiveStatus> & { step?: string }
+
 type Listener = () => void
 
-/**
- * Lightweight store for per-session live status on the homepage.
- * Each session that's started from the homepage gets its status tracked here
- * by reading the SSE stream in the background.
- */
 function createSessionStatusStore() {
   const statuses = new Map<string, SessionLiveStatus>()
   const listeners = new Set<Listener>()
 
+  // Global version for full-store subscribers (dashboard-client cross-tab sync)
+  let globalVersion = 0
+  // Per-session versions for isolated card subscriptions
+  const sessionVersions = new Map<string, number>()
+
   function notify() {
     for (const l of listeners) l()
+  }
+
+  function bumpSession(sessionId: string) {
+    sessionVersions.set(sessionId, (sessionVersions.get(sessionId) ?? 0) + 1)
+    globalVersion++
   }
 
   return {
@@ -32,23 +40,37 @@ function createSessionStatusStore() {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    /** Global snapshot — changes on ANY session update. Used by dashboard-client. */
     getSnapshot() {
-      return statuses
+      return globalVersion
     },
-    update(sessionId: string, partial: Partial<SessionLiveStatus>) {
+    /** Per-session snapshot factory. Returns a stable function per sessionId. */
+    getSessionSnapshot(sessionId: string) {
+      return () => sessionVersions.get(sessionId) ?? 0
+    },
+    /** Merge partial update. Optional `step` is appended to the steps list. */
+    update(sessionId: string, partial: SessionLiveStatusUpdate) {
       const existing = statuses.get(sessionId) ?? { status: '', steps: [], isRunning: false }
-      statuses.set(sessionId, { ...existing, ...partial })
+      const { step, ...rest } = partial
+      const steps = step
+        ? [...existing.steps, step].filter((s, i, arr) => arr.indexOf(s) === i).slice(-5)
+        : existing.steps
+      statuses.set(sessionId, { ...existing, ...rest, steps })
+      bumpSession(sessionId)
       notify()
     },
     addStep(sessionId: string, step: string) {
       const existing = statuses.get(sessionId) ?? { status: '', steps: [], isRunning: false }
-      // Keep last 5 steps, avoid duplicates
       const steps = [...existing.steps, step].filter((s, i, arr) => arr.indexOf(s) === i).slice(-5)
       statuses.set(sessionId, { ...existing, steps })
+      bumpSession(sessionId)
       notify()
     },
     get(sessionId: string): SessionLiveStatus | undefined {
       return statuses.get(sessionId)
+    },
+    getAll() {
+      return statuses
     },
   }
 }
@@ -56,21 +78,22 @@ function createSessionStatusStore() {
 // Singleton
 const store = createSessionStatusStore()
 
-export function useSessionStatusStore() {
-  const storeRef = useRef(store)
-  const map = useSyncExternalStore(
-    storeRef.current.subscribe,
-    storeRef.current.getSnapshot,
-    storeRef.current.getSnapshot,
-  )
+/**
+ * Subscribe to a single session's live status.
+ * Only re-renders when that specific session changes — not on any other session update.
+ */
+export function useSessionStatus(sessionId: string): SessionLiveStatus | undefined {
+  const snapshot = useMemo(() => store.getSessionSnapshot(sessionId), [sessionId])
+  useSyncExternalStore(store.subscribe, snapshot, snapshot)
+  return store.get(sessionId)
+}
 
-  const getStatus = useCallback((sessionId: string): SessionLiveStatus | undefined => map.get(sessionId), [map])
-
-  return {
-    getStatus,
-    update: storeRef.current.update,
-    addStep: storeRef.current.addStep,
-  }
+/**
+ * Returns the global version counter.
+ * Only use when you need to react to ANY session change (e.g. dashboard-client cross-tab sync).
+ */
+export function useSessionStatusVersion(): number {
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
 }
 
 export { store as sessionStatusStore }

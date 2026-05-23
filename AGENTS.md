@@ -298,7 +298,7 @@ Pure functions (no hooks) that dispatch SSE events to React state. All take an `
 
 **Cross-tab sync**: `BroadcastChannel` syncs session lifecycle (created/deleted/streaming/stopped). When Tab B receives `session-streaming` for its currently-viewed session, it calls `resumeStream()` to independently subscribe to the live SSE stream.
 
-**Events inspector**: All raw SSE events are captured in `eventsStore` (singleton, per-session arrays capped at 500). The `EventsSection` component in the Overview tab displays events as a collapsible list with colored dots by category, timestamps, and expand-to-JSON for each event.
+**Events inspector**: SSE events are captured in `eventsStore` (singleton, per-session arrays capped at 500). Text and reasoning streaming deltas (`message.part.updated` with `part.type === 'text' | 'reasoning'`) are excluded — only tool calls, status events, session lifecycle events, and errors are stored. The `EventsSection` component in the Overview tab groups consecutive same-type streaming events and displays the rest as a collapsible list with colored dots by category, timestamps, and expand-to-JSON.
 
 **Permission/Question prompts**: Rendered as inline `system` role messages with `type: 'permission'` or `type: 'question'`. Status tracked in `promptData.status` field ('pending' → 'granted'/'denied'/'replied'/'rejected').
 

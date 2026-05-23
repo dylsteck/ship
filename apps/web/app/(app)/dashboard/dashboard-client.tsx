@@ -2,8 +2,7 @@
 
 import { useCallback, useRef, useEffect, useState, useMemo } from 'react'
 import { postSessionSync, subscribeSessionSync } from '@/lib/session-sync-channel'
-import { useSyncExternalStore } from 'react'
-import { sessionStatusStore } from './hooks/use-session-status-store'
+import { sessionStatusStore, useSessionStatusVersion } from './hooks/use-session-status-store'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
@@ -208,35 +207,19 @@ export function DashboardClient({
     })
   }, [mutateSessions])
 
-  // Cross-tab streaming: broadcast when our sessions start/stop
-  const storeMap = useSyncExternalStore(
-    sessionStatusStore.subscribe,
-    sessionStatusStore.getSnapshot,
-    sessionStatusStore.getSnapshot,
-  )
-  const prevStoreRef = useRef<Map<string, { isRunning: boolean }>>(new Map())
-  useEffect(() => {
-    const toPost: Array<{ type: 'session-streaming' | 'session-stopped'; sessionId: string }> = []
-    for (const [sessionId, status] of storeMap) {
-      const prev = prevStoreRef.current.get(sessionId)?.isRunning ?? false
-      if (status.isRunning !== prev) {
-        toPost.push({ type: status.isRunning ? 'session-streaming' : 'session-stopped', sessionId })
-      }
-      prevStoreRef.current.set(sessionId, { isRunning: status.isRunning })
-    }
-    for (const msg of toPost) {
-      postSessionSync(msg)
-    }
-  }, [storeMap])
-
+  // session-streaming / session-stopped signals are now posted directly from
+  // handleSend and streamSessionInBackground at the source, so we don't need
+  // a global store subscription + Effect here. We still read running sessions
+  // reactively via the version counter to build streamingSessionIds.
+  const statusVersion = useSessionStatusVersion()
   const streamingSessionIds = useMemo(() => {
     const ids = new Set(streamingFromOtherTabs)
     if (chat.activeSessionId && chat.isStreaming) ids.add(chat.activeSessionId)
-    for (const [sessionId, status] of storeMap) {
+    for (const [sessionId, status] of sessionStatusStore.getAll()) {
       if (status.isRunning) ids.add(sessionId)
     }
     return ids
-  }, [streamingFromOtherTabs, chat.activeSessionId, chat.isStreaming, storeMap])
+  }, [streamingFromOtherTabs, chat.activeSessionId, chat.isStreaming, statusVersion, sessionStatusStore])
 
   const state = useDashboardState({
     chat,
