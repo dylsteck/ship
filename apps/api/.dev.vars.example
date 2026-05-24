@@ -29,6 +29,12 @@ OPENAI_API_KEY=sk-...
 # OpenCode CLI (`opencode acp`)
 # OPENCODE_API_KEY=
 
+# Optional ACP command overrides for pinned/custom sandbox installs
+# SHIP_ACP_CURSOR_CMD=/home/user/.local/bin/agent acp
+# SHIP_ACP_CODEX_CMD=codex-acp
+# SHIP_ACP_CLAUDE_CMD=claude-agent-acp
+# SHIP_ACP_OPENCODE_CMD=opencode acp
+
 # Allowed CORS Origins (comma-separated)
 # In production, set via: wrangler secret put ALLOWED_ORIGINS --env production
 # Optional patterns: *.vercel.app (scoped to VERCEL_PROJECT_NAME), *.workers.dev (any workers.dev origin)

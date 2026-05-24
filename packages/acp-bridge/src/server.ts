@@ -13,16 +13,14 @@
  */
 
 import * as http from 'node:http'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { URL } from 'node:url'
 import { WebSocketServer, type WebSocket } from 'ws'
-
-type BackendKind = 'codex' | 'claude' | 'cursor' | 'opencode'
+import { backendArgv, backendEnv, BRIDGE_VERSION, type BackendKind } from './backends.js'
 
 let child: ChildProcessWithoutNullStreams | null = null
 let stdoutBuf = ''
 let stderrRate: { count: number; resetAt: number } = { count: 0, resetAt: 0 }
-const bridgeVersion = '3'
 
 function parseArgs(argv: string[]): { port: number } {
   let port = 9847
@@ -34,66 +32,6 @@ function parseArgs(argv: string[]): { port: number } {
   }
   if (!Number.isFinite(port)) port = 9847
   return { port }
-}
-
-function backendArgv(kind: BackendKind, model?: string): { cmd: string; args: string[] } {
-  const overrides: Partial<Record<BackendKind, string>> = {
-    codex: process.env.SHIP_ACP_CODEX_CMD || '',
-    claude: process.env.SHIP_ACP_CLAUDE_CMD || '',
-    cursor: process.env.SHIP_ACP_CURSOR_CMD || '',
-    opencode: process.env.SHIP_ACP_OPENCODE_CMD || '',
-  }
-  const raw = overrides[kind]?.trim()
-  if (raw) {
-    const parts = raw.split(/\s+/).filter(Boolean)
-    return { cmd: parts[0]!, args: parts.slice(1) }
-  }
-  switch (kind) {
-    case 'codex':
-      return { cmd: 'codex-acp', args: [] }
-    case 'claude':
-      return { cmd: 'claude-agent-acp', args: [] }
-    case 'cursor':
-      return { cmd: 'agent', args: model ? ['--model', model, 'acp'] : ['acp'] }
-    case 'opencode':
-      return {
-        cmd: 'bash',
-        args: ['-lc', 'if command -v opencode >/dev/null 2>&1; then exec opencode acp; fi; exec npx -y opencode-ai@latest acp'],
-      }
-    default:
-      throw new Error(`unknown backend ${kind}`)
-  }
-}
-
-function backendEnv(kind: BackendKind, model?: string): Record<string, string> {
-  if (!model) return {}
-  const common = { SHIP_ACP_SELECTED_MODEL: model }
-  switch (kind) {
-    case 'claude':
-      return { ...common, ANTHROPIC_MODEL: model }
-    case 'codex':
-      return { ...common, CODEX_MODEL: model, OPENAI_MODEL: model }
-    case 'cursor':
-      return { ...common, CURSOR_AGENT_MODEL: model }
-    case 'opencode':
-      return { ...common, OPENCODE_MODEL: model, OPENCODE_CONFIG_CONTENT: opencodeConfigContent(model) }
-    default:
-      return common
-  }
-}
-
-function opencodeConfigContent(model: string): string {
-  const raw = process.env.OPENCODE_CONFIG_CONTENT
-  if (!raw) return JSON.stringify({ model })
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return JSON.stringify({ ...(parsed as Record<string, unknown>), model })
-    }
-  } catch {
-    /* fall back to a minimal runtime override */
-  }
-  return JSON.stringify({ model })
 }
 
 function killChild(): void {
@@ -116,10 +54,62 @@ function sendCtl(ws: WebSocket, payload: Record<string, unknown>): void {
   }
 }
 
+function sendLog(ws: WebSocket, stream: string, data: string): void {
+  if (!data) return
+  try {
+    ws.send(JSON.stringify({ type: 'log', stream, data }))
+  } catch {
+    /* socket closing */
+  }
+}
+
+function prepareBackend(kind: BackendKind, client: WebSocket, cwd: string): boolean {
+  if (kind !== 'cursor') return true
+  const script = [
+    'export PATH="$HOME/.local/bin:$PATH"',
+    'if command -v agent >/dev/null 2>&1; then exit 0; fi',
+    'if ! command -v curl >/dev/null 2>&1; then',
+    '  echo "Cursor CLI missing and curl is not available to install it." >&2',
+    '  exit 127',
+    'fi',
+    'echo "[ship-acp-bridge] installing Cursor CLI" >&2',
+    'curl https://cursor.com/install -fsS | bash',
+    'export PATH="$HOME/.local/bin:$PATH"',
+    'command -v agent >/dev/null 2>&1',
+  ].join('\n')
+  const result = spawnSync('bash', ['-lc', script], {
+    cwd,
+    env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH ?? ''}` },
+    encoding: 'utf8',
+    timeout: 120_000,
+    maxBuffer: 1024 * 1024,
+  })
+  sendLog(client, 'stdout', result.stdout ?? '')
+  sendLog(client, 'stderr', result.stderr ?? '')
+  if (result.error) {
+    sendCtl(client, { op: 'spawn', status: 'error', backend: kind, message: result.error.message })
+    return false
+  }
+  if (result.status !== 0) {
+    sendCtl(client, {
+      op: 'spawn',
+      status: 'error',
+      backend: kind,
+      message: `Cursor CLI install check failed with exit ${result.status}`,
+    })
+    return false
+  }
+  return true
+}
+
 function spawnBackend(kind: BackendKind, client: WebSocket, model?: string): void {
   killChild()
   const cwd = process.env.SHIP_REPO_CWD || process.cwd()
+  if (!prepareBackend(kind, client, cwd)) return
   const { cmd, args } = backendArgv(kind, model)
+  if (kind === 'cursor') {
+    sendLog(client, 'stderr', `[ship-acp-bridge] launching Cursor ACP (model=${model && model !== 'auto' ? model : 'default'})\n`)
+  }
   try {
     child = spawn(cmd, args, {
       cwd,
@@ -237,7 +227,7 @@ const server = http.createServer((req, res) => {
     res.end(
       JSON.stringify({
         ok: true,
-        version: bridgeVersion,
+        version: BRIDGE_VERSION,
         cwd: process.env.SHIP_REPO_CWD || process.cwd(),
         pid: process.pid,
         childPid: child?.pid ?? null,

@@ -164,8 +164,10 @@ async function runPromptPhase(
   }
 
   try {
+    await writeStatus(input.stream, 'agent-starting', `Starting ${backend} agent…`)
     sendCtl(ws, 'spawn', backend, modelSelection.upstreamModelId)
     await delay(450)
+    await writeStatus(input.stream, 'agent-connecting', `Connecting to ${backend} agent…`)
 
     const handshake = await runAcpHandshake(
       rpc,
