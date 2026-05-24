@@ -34,7 +34,7 @@ export function Tool({
   const isReadTool = isFileReadTool(name, input, output)
   const inputSummary = input && Object.keys(input).length > 0 ? getInputSummary(name, input) : null
   const hasOutput = output !== undefined && (typeof output !== 'string' || output.length > 0)
-  const hasDetails = (input && Object.keys(input).length > 0 && !isReadTool) || hasOutput
+  const hasDetails = (input && Object.keys(input).length > 0) || hasOutput
 
   const [truncatedOutput, isOutputTruncated] = output !== undefined ? formatOutput(output) : ['', false]
   const fullOutputText = output !== undefined ? getFullOutputText(output) : ''

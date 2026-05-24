@@ -129,11 +129,14 @@ function tryExtractToolCall(
       ? (src.args as Record<string, unknown>)
     : {}
 
-  // Output — rawOutput, output, result
-  const output =
+  // Output — rawOutput, output, result (accept string or object, stringify objects)
+  const output: string | undefined =
     typeof src.rawOutput === 'string' ? src.rawOutput :
+    (src.rawOutput && typeof src.rawOutput === 'object') ? JSON.stringify(src.rawOutput) :
     typeof src.output === 'string' ? src.output :
-    typeof src.result === 'string' ? src.result : undefined
+    (src.output && typeof src.output === 'object') ? JSON.stringify(src.output) :
+    typeof src.result === 'string' ? src.result :
+    (src.result && typeof src.result === 'object') ? JSON.stringify(src.result) : undefined
 
   return { toolCallId, name, rawStatus, input, output }
 }
