@@ -147,7 +147,16 @@ async function runPromptPhase(
   const ws = await openBridgeWebSocket(wsUrl)
 
   const rpc = createAcpMultiplexer(ws, {
-    onAgentNotification: (note) => createEmitTranslated(input, runtime)(note),
+    onAgentNotification: (note) => {
+      const method = typeof note.method === 'string' ? note.method : ''
+      const params = note.params as Record<string, unknown> | undefined
+      const update = params?.update as Record<string, unknown> | undefined
+      const sessionUpdate = typeof update?.sessionUpdate === 'string' ? update.sessionUpdate : ''
+      if (sessionUpdate.includes('tool') || method.includes('tool')) {
+        console.warn('[acp:tool-note]', JSON.stringify(note).slice(0, 2000))
+      }
+      return createEmitTranslated(input, runtime)(note)
+    },
     onLog: (stream, data) => {
       const trimmed = data.trim()
       if (trimmed) {

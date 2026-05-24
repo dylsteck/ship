@@ -131,9 +131,7 @@ const HomepageSessionCard = memo(function HomepageSessionCard({
           'shrink-0 w-[160px] min-h-[100px] rounded-xl border flex flex-col justify-end gap-1 p-3 overflow-hidden',
           isStreamingNow
             ? 'border-primary/30 bg-primary/5'
-            : liveStatus?.status === 'Done'
-              ? 'border-emerald-500/30 bg-emerald-500/5'
-              : 'border-border/50 bg-muted/20',
+            : 'border-border/50 bg-muted/20',
         )}
       >
         <SessionPreviewPanel
