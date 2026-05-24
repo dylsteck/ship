@@ -69,7 +69,7 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
   const isMobile = useIsMobile()
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { sessions: swrSessions } = useSessions(true, { revalidateOnFocus: true })
+  const { sessions: swrSessions } = useSessions(true, { refetchOnFocus: true })
   const sessions = swrSessions.length > 0 ? swrSessions : initialSessions
 
   const handleNewChat = useCallback(() => {

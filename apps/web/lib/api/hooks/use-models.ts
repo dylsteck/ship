@@ -1,7 +1,6 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRMutation from 'swr/mutation'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getModelsAvailable,
   getModelsDefault,
@@ -14,15 +13,18 @@ import {
   type ModelInfo,
 } from '@ship/sdk'
 import { modelsWithFallback } from '../acp-catalog'
+import { queryKeys } from '../query-keys'
 
 const PROVIDER_ORDER = ['ACP — OpenCode', 'ACP — Cursor', 'ACP — Claude', 'ACP — Codex', 'Other']
 
 export function useModels(fetchEnabled = true) {
-  const { data, error, isLoading, mutate } = useSWR<ModelInfo[]>(
-    fetchEnabled ? ['models-available'] : null,
-    async () => unwrapSdkData(await getModelsAvailable()),
-    { revalidateOnFocus: false, dedupingInterval: 60000 },
-  )
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.models,
+    queryFn: async () => unwrapSdkData(await getModelsAvailable()),
+    enabled: fetchEnabled,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
   const models = fetchEnabled ? modelsWithFallback(data) : []
 
   const groupedByProvider = (() => {
@@ -51,14 +53,14 @@ export function useModels(fetchEnabled = true) {
     isLoading,
     isError: !!error && !models.length,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 export function useDefaultModel(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR(
-    fetchEnabled ? ['models-default'] : null,
-    async () => {
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.modelsDefault,
+    queryFn: async () => {
       try {
         return unwrapSdkData(await getModelsDefault())
       } catch (err: unknown) {
@@ -66,21 +68,22 @@ export function useDefaultModel(fetchEnabled: boolean | undefined) {
         throw err
       }
     },
-  )
+    enabled: Boolean(fetchEnabled),
+  })
 
   return {
     defaultModelId: data?.model ?? null,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 export function useSessionModel(sessionId: string | undefined) {
-  const { data, error, isLoading, mutate } = useSWR(
-    sessionId ? ['session-model', sessionId] : null,
-    async () => {
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.sessionModel(sessionId ?? ''),
+    queryFn: async () => {
       try {
         return unwrapSdkData(await getModelsSessionsBySessionId({ path: { sessionId: sessionId! } }))
       } catch (err: unknown) {
@@ -88,21 +91,22 @@ export function useSessionModel(sessionId: string | undefined) {
         throw err
       }
     },
-  )
+    enabled: Boolean(sessionId),
+  })
 
   return {
     sessionModelId: data?.model ?? null,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 export function useAgentDefaultModel(agentId: string | undefined, fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR(
-    fetchEnabled && agentId ? ['agent-default-model', agentId] : null,
-    async () => {
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.agentDefaultModel(agentId ?? ''),
+    queryFn: async () => {
       try {
         return unwrapSdkData(await getModelsDefaultAgentModel({ query: { agentId: agentId! } }))
       } catch (err: unknown) {
@@ -110,82 +114,100 @@ export function useAgentDefaultModel(agentId: string | undefined, fetchEnabled: 
         throw err
       }
     },
-  )
+    enabled: Boolean(fetchEnabled && agentId),
+  })
 
   return {
     defaultModelId: data?.model ?? null,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 export function useAgentDefaultModels(agentIds: string[], fetchEnabled: boolean | undefined) {
-  const key = fetchEnabled && agentIds.length > 0 ? ['agent-default-models', ...agentIds] : null
-  const { data, error, isLoading, mutate } = useSWR<Record<string, string | null>>(
-    key,
-    async ([, ...ids]: string[]) => {
-      const entries = await Promise.all(
-        ids.map(async (agentId) => {
-          try {
-            const response = unwrapSdkData(await getModelsDefaultAgentModel({ query: { agentId } }))
-            return [agentId, response.model ?? null] as const
-          } catch (err: unknown) {
-            if ((err as { status?: number })?.status === 404) return [agentId, null] as const
-            throw err
-          }
-        }),
-      )
-      return Object.fromEntries(entries)
-    },
-    { revalidateOnFocus: false },
-  )
+  const results = useQueries({
+    queries: agentIds.map((agentId) => ({
+      queryKey: queryKeys.agentDefaultModel(agentId),
+      queryFn: async () => {
+        try {
+          const response = unwrapSdkData(await getModelsDefaultAgentModel({ query: { agentId } }))
+          return [agentId, response.model ?? null] as const
+        } catch (err: unknown) {
+          if ((err as { status?: number })?.status === 404) return [agentId, null] as const
+          throw err
+        }
+      },
+      enabled: Boolean(fetchEnabled),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    })),
+  })
+
+  const isLoading = results.some((r) => r.isLoading)
+  const error = results.find((r) => r.error)?.error ?? null
+  const defaultModelIdsByAgent = Object.fromEntries(
+    results.flatMap((r) => (r.data ? [r.data] : [])),
+  ) as Record<string, string | null>
+
+  const refetch = async () => {
+    await Promise.all(results.map((r) => r.refetch()))
+  }
 
   return {
-    defaultModelIdsByAgent: data ?? {},
+    defaultModelIdsByAgent,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 export function useSetAgentDefaultModel() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'set-agent-default-model',
-    async (_key: string, { arg }: { arg: { agentId: string; modelId: string } }) =>
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { agentId: string; modelId: string }) =>
       unwrapSdkData(
         await postModelsDefaultAgentModel({
           body: { agentId: arg.agentId, model: arg.modelId },
         }),
       ),
-  )
+    onSuccess: (_data, arg) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentDefaultModel(arg.agentId) })
+    },
+  })
 
-  return { setAgentDefaultModel: trigger, isSetting: isMutating, error }
+  return { setAgentDefaultModel: mutation.mutateAsync, isSetting: mutation.isPending, error: mutation.error }
 }
 
 export function useSetDefaultModel() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'set-default-model',
-    async (_key: string, { arg }: { arg: { modelId: string } }) =>
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { modelId: string }) =>
       unwrapSdkData(await postModelsDefault({ body: { model: arg.modelId } })),
-  )
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.modelsDefault })
+    },
+  })
 
-  return { setDefaultModel: trigger, isSetting: isMutating, error }
+  return { setDefaultModel: mutation.mutateAsync, isSetting: mutation.isPending, error: mutation.error }
 }
 
 export function useSetSessionModel() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'set-session-model',
-    async (_key: string, { arg }: { arg: { sessionId: string; modelId: string } }) =>
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { sessionId: string; modelId: string }) =>
       unwrapSdkData(
         await postModelsSessionsBySessionId({
           path: { sessionId: arg.sessionId },
           body: { model: arg.modelId },
         }),
       ),
-  )
+    onSuccess: (_data, arg) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessionModel(arg.sessionId) })
+    },
+  })
 
-  return { setSessionModel: trigger, isSetting: isMutating, error }
+  return { setSessionModel: mutation.mutateAsync, isSetting: mutation.isPending, error: mutation.error }
 }

@@ -1,7 +1,6 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRMutation from 'swr/mutation'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getConnectors,
   postConnectorsByNameDisable,
@@ -9,39 +8,47 @@ import {
   unwrapSdkData,
   type Connector,
 } from '@ship/sdk'
+import { queryKeys } from '../query-keys'
 
 export function useConnectors(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR(
-    fetchEnabled ? ['connectors'] : null,
-    async () => unwrapSdkData(await getConnectors()),
-    { revalidateOnFocus: true },
-  )
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.connectors,
+    queryFn: async () => unwrapSdkData(await getConnectors()),
+    enabled: Boolean(fetchEnabled),
+    refetchOnWindowFocus: true,
+  })
 
   return {
     connectors: (data?.connectors ?? []) as Connector[],
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 export function useEnableConnector() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'enable-connector',
-    async (_key: string, { arg }: { arg: { name: string } }) =>
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { name: string }) =>
       unwrapSdkData(await postConnectorsByNameEnable({ path: { name: arg.name } })),
-  )
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors })
+    },
+  })
 
-  return { enableConnector: trigger, isEnabling: isMutating, error }
+  return { enableConnector: mutation.mutateAsync, isEnabling: mutation.isPending, error: mutation.error }
 }
 
 export function useDisableConnector() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'disable-connector',
-    async (_key: string, { arg }: { arg: { name: string } }) =>
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { name: string }) =>
       unwrapSdkData(await postConnectorsByNameDisable({ path: { name: arg.name } })),
-  )
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors })
+    },
+  })
 
-  return { disableConnector: trigger, isDisabling: isMutating, error }
+  return { disableConnector: mutation.mutateAsync, isDisabling: mutation.isPending, error: mutation.error }
 }

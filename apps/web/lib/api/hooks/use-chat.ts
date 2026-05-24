@@ -1,7 +1,6 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRMutation from 'swr/mutation'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   getChatBySessionIdEvents,
   getChatBySessionIdGitState,
@@ -19,6 +18,7 @@ import {
 } from '@ship/sdk'
 import type { Message, RawEvent } from '../chat-types'
 import { normalizeChatEvent, normalizeChatMessage } from '../normalize'
+import { queryKeys } from '../query-keys'
 
 /**
  * Hook to fetch chat messages (API returns array directly).
@@ -27,9 +27,9 @@ export function useChatMessages(
   sessionId: string | undefined,
   options?: { limit?: number; before?: string },
 ) {
-  const { data, error, isLoading, mutate } = useSWR<Message[]>(
-    sessionId ? ['chat-messages', sessionId, options?.limit, options?.before] : null,
-    async () => {
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.chatMessages(sessionId ?? '', options?.limit, options?.before),
+    queryFn: async () => {
       const rows = unwrapSdkData(
         await getChatBySessionIdMessages({
           path: { sessionId: sessionId! },
@@ -38,7 +38,8 @@ export function useChatMessages(
       )
       return rows.map(normalizeChatMessage)
     },
-  )
+    enabled: Boolean(sessionId),
+  })
 
   return {
     messages: data ?? [],
@@ -47,41 +48,45 @@ export function useChatMessages(
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 /** Hook to fetch tasks for a session */
 export function useChatTasks(sessionId: string | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<ChatTask[]>(
-    sessionId ? ['chat-tasks', sessionId] : null,
-    async () => unwrapSdkData(await getChatBySessionIdTasks({ path: { sessionId: sessionId! } })),
-    { refreshInterval: 10000 },
-  )
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.chatTasks(sessionId ?? ''),
+    queryFn: async () => unwrapSdkData(await getChatBySessionIdTasks({ path: { sessionId: sessionId! } })),
+    enabled: Boolean(sessionId),
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: false,
+  })
 
   return {
     tasks: data ?? [],
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
 /** Hook to fetch git state for a session */
 export function useGitState(sessionId: string | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<GitState>(
-    sessionId ? ['git-state', sessionId] : null,
-    async () => unwrapSdkData(await getChatBySessionIdGitState({ path: { sessionId: sessionId! } })),
-    { refreshInterval: 15000 },
-  )
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.gitState(sessionId ?? ''),
+    queryFn: async () => unwrapSdkData(await getChatBySessionIdGitState({ path: { sessionId: sessionId! } })),
+    enabled: Boolean(sessionId),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: false,
+  })
 
   return {
     gitState: data,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
@@ -98,52 +103,49 @@ export function useGitDiff(_sessionId: string | undefined) {
 
 /** Mutation hook to stop chat streaming */
 export function useStopChat(sessionId: string | undefined) {
-  const { trigger, isMutating, error } = useSWRMutation(
-    sessionId ? `stop-chat-${sessionId}` : null,
-    async () => {
+  const mutation = useMutation({
+    mutationFn: async () => {
       if (!sessionId) throw new Error('No session ID')
       unwrapSdkData(await postChatBySessionIdStop({ path: { sessionId } }))
     },
-  )
+  })
 
   return {
-    stopChat: trigger,
-    isStopping: isMutating,
-    error,
+    stopChat: mutation.mutateAsync,
+    isStopping: mutation.isPending,
+    error: mutation.error,
   }
 }
 
 /** Mutation hook to mark PR as ready for review */
 export function useMarkPRReady(sessionId: string | undefined) {
-  const { trigger, isMutating, error } = useSWRMutation(
-    sessionId ? `mark-pr-ready-${sessionId}` : null,
-    async () => {
+  const mutation = useMutation({
+    mutationFn: async () => {
       if (!sessionId) throw new Error('No session ID')
       unwrapSdkData(await postChatBySessionIdGitPrReady({ path: { sessionId } }))
     },
-  )
+  })
 
   return {
-    markPRReady: trigger,
-    isMarking: isMutating,
-    error,
+    markPRReady: mutation.mutateAsync,
+    isMarking: mutation.isPending,
+    error: mutation.error,
   }
 }
 
 /** Mutation hook to retry a failed chat operation */
 export function useRetryChat(sessionId: string | undefined) {
-  const { trigger, isMutating, error } = useSWRMutation(
-    sessionId ? `retry-chat-${sessionId}` : null,
-    async () => {
+  const mutation = useMutation({
+    mutationFn: async () => {
       if (!sessionId) throw new Error('No session ID')
       unwrapSdkData(await postChatBySessionIdRetry({ path: { sessionId } }))
     },
-  )
+  })
 
   return {
-    retryChat: trigger,
-    isRetrying: isMutating,
-    error,
+    retryChat: mutation.mutateAsync,
+    isRetrying: mutation.isPending,
+    error: mutation.error,
   }
 }
 

@@ -1,7 +1,8 @@
 'use client'
 
-import useSWRInfinite from 'swr/infinite'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { getAccountsGithubRepos, unwrapSdkData, type GitHubRepo } from '@ship/sdk'
+import { queryKeys } from '../query-keys'
 
 const REPOS_PER_PAGE = 50
 
@@ -12,41 +13,37 @@ export interface ReposPageResponse {
 }
 
 export function useGitHubRepos(fetchEnabled: boolean | undefined) {
-  const getKey = (pageIndex: number, previousPageData: ReposPageResponse | null) => {
-    if (!fetchEnabled) return null
-    if (pageIndex > 0 && previousPageData && !previousPageData.hasMore) return null
-    return ['github-repos', pageIndex + 1] as const
+  const { data, error, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
+    useInfiniteQuery({
+      queryKey: ['github-repos'],
+      queryFn: async ({ pageParam }) =>
+        unwrapSdkData(
+          await getAccountsGithubRepos({
+            query: { page: String(pageParam), per_page: String(REPOS_PER_PAGE) },
+          }),
+        ),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage) => (lastPage.hasMore ? (lastPage.nextPage ?? undefined) : undefined),
+      enabled: Boolean(fetchEnabled),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    })
+
+  const repos = data ? data.pages.flatMap((p) => p.repos) : []
+  const hasMore = hasNextPage ?? false
+  const loadMore = () => {
+    if (hasNextPage) void fetchNextPage()
   }
-
-  const { data, error, size, setSize, isLoading, isValidating } = useSWRInfinite<ReposPageResponse>(
-    getKey,
-    async ([, page]: readonly ['github-repos', number]) =>
-      unwrapSdkData(
-        await getAccountsGithubRepos({
-          query: { page: String(page), per_page: String(REPOS_PER_PAGE) },
-        }),
-      ),
-    {
-      revalidateOnFocus: false,
-      revalidateFirstPage: false,
-      dedupingInterval: 60000,
-    },
-  )
-
-  const repos = data ? data.flatMap((p) => p.repos) : []
-  const isLoadingMore = isLoading || (size > 0 && data && typeof data[size - 1] === 'undefined')
-  const hasMore = data && data.length > 0 ? (data[data.length - 1]?.hasMore ?? false) : true
-  const loadMore = () => setSize(size + 1)
 
   return {
     repos,
     isLoading,
-    isLoadingMore,
+    isLoadingMore: isFetchingNextPage,
     hasMore,
     loadMore,
     isError: !!error,
     error,
-    mutate: () => setSize(1),
+    mutate: refetch,
   }
 }
 

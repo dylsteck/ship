@@ -29,16 +29,19 @@ export function useSseTextFlush({ sessionId, setMessages }: UseSseTextFlushParam
 
     const text = refs.assistantTextRef.current
     const reasoning = refs.reasoningRef.current
-    setMessages((prev) =>
-      prev.map((m) => {
+    setMessages((prev) => {
+      let changed = false
+      const next = prev.map((m) => {
         if (m.id !== msgId) return m
         const updates: Partial<typeof m> = {}
         if (m.content !== text) updates.content = text
         if (reasoning && m.reasoning?.[0] !== reasoning) updates.reasoning = [reasoning]
         if (Object.keys(updates).length === 0) return m
+        changed = true
         return { ...m, ...updates }
-      }),
-    )
+      })
+      return changed ? next : prev
+    })
   }, [sessionId, setMessages])
 
   const scheduleFlush = useCallback(() => {

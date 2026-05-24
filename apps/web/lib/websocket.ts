@@ -83,11 +83,17 @@ export function createReconnectingWebSocket(options: WebSocketOptions): Reconnec
     }
 
     ws.onmessage = (event: MessageEvent): void => {
+      let data: unknown
       try {
-        const data = JSON.parse(event.data)
-        options.onMessage(data)
+        data = JSON.parse(event.data)
       } catch {
-        console.error('Failed to parse WebSocket message:', event.data)
+        console.error('Failed to parse WebSocket message JSON:', event.data)
+        return
+      }
+      try {
+        options.onMessage(data)
+      } catch (error) {
+        console.error('WebSocket message handler error:', error, data)
       }
     }
 
