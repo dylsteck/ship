@@ -1,43 +1,19 @@
-export type ErrorCategory = 'transient' | 'persistent' | 'user-action' | 'fatal'
+export {
+  classifyErrorFromMessage,
+  type ErrorCategory,
+  type ErrorCode,
+  type ClassifiedError,
+} from '@ship/contracts'
 
+import { classifyErrorFromMessage, type ErrorCategory } from '@ship/contracts'
+
+/** Classify an error message for UI treatment and retry behavior. */
 export function classifyError(errorMessage: string): {
   category: ErrorCategory
   retryable: boolean
 } {
-  const lower = errorMessage.toLowerCase()
-
-  if (
-    (lower.includes('clone') || lower.includes('repository') || lower.includes('git')) &&
-    (lower.includes('403') ||
-      lower.includes('private') ||
-      lower.includes('access denied') ||
-      lower.includes('authentication failed') ||
-      lower.includes('could not read from remote'))
-  ) {
-    return { category: 'user-action', retryable: false }
-  }
-
-  if (lower.includes('credit balance') || lower.includes('anthropic api')) {
-    return { category: 'user-action', retryable: false }
-  }
-  if (
-    lower.includes('rate limit') ||
-    lower.includes('too many requests') ||
-    lower.includes('too many api requests') ||
-    lower.includes('worker invocation')
-  ) {
-    return { category: 'transient', retryable: true }
-  }
-  if (
-    lower.includes('network') ||
-    lower.includes('connection') ||
-    lower.includes('timeout') ||
-    lower.includes('overloaded') ||
-    lower.includes('529')
-  ) {
-    return { category: 'transient', retryable: true }
-  }
-  return { category: 'persistent', retryable: false }
+  const { category, retryable } = classifyErrorFromMessage(errorMessage)
+  return { category, retryable }
 }
 
 /** Parse a potentially JSON-wrapped error string into a clean message. */

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild src/server.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/bundle.mjs",
-    "type-check": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "ws": "^8.18.3"

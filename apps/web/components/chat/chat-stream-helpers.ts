@@ -1,4 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { SessionSummary } from '@ship/contracts'
 import type { AgentStatus } from '@/components/session/status-indicator'
 import {
   type UIMessage,
@@ -101,10 +102,29 @@ export function handleWebSocketEvent(
     details?: string
     category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
     retryable?: boolean
+    properties?: { summary?: SessionSummary }
+    event?: { type?: string; properties?: { summary?: SessionSummary } }
   },
   setMessages: Dispatch<SetStateAction<UIMessage[]>>,
   onStatusChange?: (status: AgentStatus, currentTool?: string) => void,
+  onSummary?: (summary: SessionSummary) => void,
 ): void {
+  if (event.type === 'session.summary.updated') {
+    const summary = event.properties?.summary
+    if (summary) {
+      onSummary?.(summary)
+    }
+    return
+  }
+
+  if (event.type === 'opencode-event' && event.event?.type === 'session.summary.updated') {
+    const summary = event.event.properties?.summary
+    if (summary) {
+      onSummary?.(summary)
+    }
+    return
+  }
+
   if (event.type === 'message') {
     const msg = event.message as Message
     const uiMsg = mapApiMessageToUI(msg)

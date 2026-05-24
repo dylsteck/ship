@@ -13,8 +13,11 @@
       "cache": false,
       "persistent": true
     },
-    "type-check": {
-      "dependsOn": ["^type-check"]
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "test": {
+      "dependsOn": ["^test"]
     }
   }
 }

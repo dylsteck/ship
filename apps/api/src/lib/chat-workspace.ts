@@ -72,6 +72,11 @@ export async function prepareWorkspace(input: PrepareWorkspaceInput): Promise<Pr
   const e2b = await E2BSandbox.connect(sandboxId, { apiKey: input.env.E2B_API_KEY })
   await e2b.setTimeout(10 * 60 * 1000)
 
+  if (repoMeta && input.meta['repo_url']) {
+    const branch = input.meta['current_branch'] || repoMeta.branchName || repoMeta.baseBranch
+    await writeStatus(input.stream, 'repo-ready', `Repository ready. Branch: ${branch}`)
+  }
+
   if (repoMeta && !input.meta['repo_url']) {
     const cloneResult = await cloneRepoOrError(input, e2b, repoMeta, sandboxId)
     if (!cloneResult.ok) return cloneResult

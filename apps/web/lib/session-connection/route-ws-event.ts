@@ -1,22 +1,33 @@
+import type { Dispatch, SetStateAction } from 'react'
+import type { SessionSummary } from '@ship/contracts'
+
 import type { Message as APIMessage } from '@/lib/api/chat-client'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
-import { createErrorMessage } from '@/lib/ai-elements-adapter'
+import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
+import { SessionSummarySchema } from '@ship/contracts'
 
-export interface ChatWebSocketHandlers {
-  setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
+/** Handlers for dashboard WebSocket frames routed through {@link SessionConnection}. */
+export interface RouteWebSocketEventHandlers {
+  setMessages: Dispatch<SetStateAction<UIMessage[]>>
   streamingMessageRef: React.MutableRefObject<string | null>
   setAgentUrl: (url: string) => void
   setAgentSessionId: (id: string) => void
   setSandboxStatus: (status: string) => void
-  onAgentEventRef?: React.MutableRefObject<
-    ((sessionId: string, event: { type: string; [k: string]: unknown }) => void) | null
-  >
+  onSummary?: (summary: SessionSummary) => void
+  onAgentEvent?: (sessionId: string, event: { type: string; [k: string]: unknown }) => void
 }
 
-export function handleChatWebSocketMessage(
+/**
+ * Route a SessionDO WebSocket payload to dashboard state updaters.
+ *
+ * @param sessionId - Active chat session id
+ * @param data - Parsed WebSocket JSON payload
+ * @param handlers - React setters and side-channel callbacks
+ */
+export function routeWebSocketEvent(
   sessionId: string,
   data: unknown,
-  handlers: ChatWebSocketHandlers,
+  handlers: RouteWebSocketEventHandlers,
 ): void {
   const event = data as {
     type: string
@@ -27,11 +38,27 @@ export function handleChatWebSocketMessage(
     url?: string
     agentSessionId?: string
     status?: string
+    properties?: { summary?: unknown }
     event?: { type: string; [k: string]: unknown }
   }
 
-  const { setMessages, streamingMessageRef, setAgentUrl, setAgentSessionId, setSandboxStatus, onAgentEventRef } =
-    handlers
+  const {
+    setMessages,
+    streamingMessageRef,
+    setAgentUrl,
+    setAgentSessionId,
+    setSandboxStatus,
+    onSummary,
+    onAgentEvent,
+  } = handlers
+
+  if (event.type === 'session.summary.updated') {
+    const parsed = SessionSummarySchema.safeParse(event.properties?.summary)
+    if (parsed.success) {
+      onSummary?.(parsed.data)
+    }
+    return
+  }
 
   if (event.type === 'message') {
     const msg = event.message as APIMessage
@@ -47,7 +74,7 @@ export function handleChatWebSocketMessage(
           m.id === streamingMessageRef.current ? { ...m, content: uiMsg.content, createdAt: uiMsg.createdAt } : m,
         )
       }
-      const exists = prev.some((m) => m.id === uiMsg.id || (m.role === uiMsg.role && m.content === uiMsg.content))
+      const exists = prev.some((m) => m.id === uiMsg.id)
       if (exists) return prev
       return [...prev, uiMsg]
     })
@@ -55,13 +82,11 @@ export function handleChatWebSocketMessage(
   }
 
   if (event.type === 'error') {
+    const content = typeof event.message === 'string' ? event.message : 'An error occurred'
+    const { category, retryable } = classifyError(content)
     setMessages((prev) => [
       ...prev,
-      createErrorMessage(
-        typeof event.message === 'string' ? event.message : 'An error occurred',
-        event.category || 'persistent',
-        event.retryable || false,
-      ),
+      createErrorMessage(content, event.category || category, event.retryable ?? retryable),
     ])
     return
   }
@@ -104,6 +129,6 @@ export function handleChatWebSocketMessage(
   }
 
   if (event.type === 'agent-event' && event.event) {
-    onAgentEventRef?.current?.(sessionId, event.event)
+    onAgentEvent?.(sessionId, event.event)
   }
 }

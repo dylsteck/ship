@@ -8,9 +8,22 @@
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.d'
 import { SandboxManager, type SandboxInfo } from '../lib/e2b'
-import { createAgentExecutor, type AgentExecutor, type ErrorEvent } from '../lib/agent-executor'
+import type { AgentExecutor } from '../lib/agent-executor'
 import type { Sandbox } from '@e2b/code-interpreter'
 import { handleSessionFetch } from './session-fetch-handlers'
+import {
+  initializeAgentExecutor as initializeAgentExecutorBinding,
+} from './session-agent-bindings'
+import {
+  getBranchName as getBranchNameStore,
+  getPullRequest as getPullRequestStore,
+  getRepoUrl as getRepoUrlStore,
+  markFirstCommit as markFirstCommitStore,
+  markReadyForReview as markReadyForReviewStore,
+  setBranchName as setBranchNameStore,
+  setPullRequest as setPullRequestStore,
+  setRepoUrl as setRepoUrlStore,
+} from './session-git-meta-store'
 import {
   getMessageCount as getMessageCountStore,
   getMessages as getMessagesStore,
@@ -39,9 +52,26 @@ import {
   handleWebSocketMessage,
   handleWebSocketUpgrade,
 } from './session-websocket'
+import {
+  appendSessionEvent as appendSessionEventStore,
+  completeTurn as completeTurnStore,
+  createTurn as createTurnStore,
+  getRecentEvents as getRecentEventsStore,
+  getTurns as getTurnsStore,
+  type SessionEventRow,
+  type TurnRow,
+} from './session-turn-store'
+import {
+  broadcastSessionSummary as broadcastSessionSummaryStore,
+  buildSessionSummary,
+  type BuildSessionSummaryOptions,
+} from './session-summary'
+import type { SessionSummary, TurnStatus } from '@ship/contracts'
 import type { Message, SessionMetaRow, Task } from './session-types'
 
 export type { Message, MessagePart, Task } from './session-types'
+export type { TurnRow, SessionEventRow } from './session-turn-store'
+export type { BuildSessionSummaryOptions } from './session-summary'
 
 
 export class SessionDO extends DurableObject<Env> {
@@ -94,6 +124,24 @@ export class SessionDO extends DurableObject<Env> {
 
       CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at);
+
+      CREATE TABLE IF NOT EXISTS turns (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        status TEXT NOT NULL,
+        diff_summary TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS session_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        occurred_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, started_at);
     `)
   }
 
@@ -172,6 +220,34 @@ export class SessionDO extends DurableObject<Env> {
     return getTasksStore(this, options)
   }
 
+  async createTurn(sessionId: string, turnId: string): Promise<TurnRow> {
+    return createTurnStore(this, sessionId, turnId)
+  }
+
+  async completeTurn(turnId: string, status: TurnStatus, diffSummaryJson?: string): Promise<void> {
+    completeTurnStore(this, turnId, status, diffSummaryJson)
+  }
+
+  async getTurns(sessionId: string, limit?: number) {
+    return getTurnsStore(this, sessionId, limit)
+  }
+
+  async appendSessionEvent(type: string, payloadJson: string): Promise<SessionEventRow> {
+    return appendSessionEventStore(this, type, payloadJson)
+  }
+
+  async getRecentSessionEvents(limit?: number): Promise<SessionEventRow[]> {
+    return getRecentEventsStore(this, limit)
+  }
+
+  buildSessionSummary(meta: Record<string, string>, opts?: BuildSessionSummaryOptions): SessionSummary {
+    return buildSessionSummary(meta, opts)
+  }
+
+  broadcastSessionSummary(summary: SessionSummary): void {
+    broadcastSessionSummaryStore(this, summary)
+  }
+
   getSandboxManager(): SandboxManager | null {
     return this.sandboxManager
   }
@@ -205,51 +281,35 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   async setBranchName(name: string): Promise<void> {
-    await this.setSessionMeta('branch_name', name)
-    await this.setSessionMeta('current_branch', name)
+    return setBranchNameStore(this, name)
   }
 
   async getBranchName(): Promise<string | null> {
-    const meta = await this.getSessionMeta()
-    return meta['branch_name'] || meta['current_branch'] || null
+    return getBranchNameStore(this)
   }
 
   async markFirstCommit(): Promise<boolean> {
-    const meta = await this.getSessionMeta()
-    const wasFirstCommit = !meta['first_commit_done']
-    if (wasFirstCommit) {
-      await this.setSessionMeta('first_commit_done', 'true')
-    }
-    return wasFirstCommit
+    return markFirstCommitStore(this)
   }
 
   async setPullRequest(number: number, url: string, draft: boolean): Promise<void> {
-    await this.setSessionMeta('pr_number', number.toString())
-    await this.setSessionMeta('pr_url', url)
-    await this.setSessionMeta('pr_draft', draft.toString())
+    return setPullRequestStore(this, number, url, draft)
   }
 
   async getPullRequest(): Promise<{ number: number; url: string; draft: boolean } | null> {
-    const meta = await this.getSessionMeta()
-    if (!meta['pr_number']) return null
-    return {
-      number: parseInt(meta['pr_number']),
-      url: meta['pr_url'],
-      draft: meta['pr_draft'] === 'true',
-    }
+    return getPullRequestStore(this)
   }
 
   async markReadyForReview(): Promise<void> {
-    await this.setSessionMeta('pr_draft', 'false')
+    return markReadyForReviewStore(this)
   }
 
   async setRepoUrl(url: string): Promise<void> {
-    await this.setSessionMeta('repo_url', url)
+    return setRepoUrlStore(this, url)
   }
 
   async getRepoUrl(): Promise<string | null> {
-    const meta = await this.getSessionMeta()
-    return meta['repo_url'] || null
+    return getRepoUrlStore(this)
   }
 
   async initializeAgentExecutor(
@@ -257,35 +317,7 @@ export class SessionDO extends DurableObject<Env> {
     githubToken: string,
     gitUser: { name: string; email: string },
   ): Promise<AgentExecutor> {
-    const repoUrl = await this.getRepoUrl()
-    if (!repoUrl) {
-      throw new Error('Repository URL not set')
-    }
-
-    const sessionId = this.ctx.id.toString()
-
-    this.agentExecutor = createAgentExecutor({
-      sessionDO: this,
-      sandbox,
-      githubToken,
-      repoUrl,
-      gitUser,
-      sessionId,
-      onError: (event: ErrorEvent) => {
-        this.broadcast({
-          type: 'error',
-          message: event.error.message,
-          category: event.category,
-          context: event.context,
-          retryable: event.retryable,
-          attempt: event.attempt,
-        })
-      },
-      onStatus: (status: string, details?: string) => {
-        this.broadcast({ type: 'agent-status', status, details })
-      },
-    })
-
+    this.agentExecutor = await initializeAgentExecutorBinding(this, sandbox, githubToken, gitUser)
     return this.agentExecutor
   }
 

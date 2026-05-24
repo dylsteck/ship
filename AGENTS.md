@@ -24,11 +24,11 @@ pnpm dev
 
 ```bash
 pnpm build        # Build all apps
-pnpm type-check   # Type check only
+pnpm typecheck   # Type check only
 pnpm lint         # Lint all packages
 ```
 
-> **After making changes:** always run `pnpm build && pnpm lint && pnpm type-check` before finishing. Fix any errors before considering the task done.
+> **After making changes:** always run `pnpm build && pnpm lint && pnpm typecheck` before finishing. Fix any errors before considering the task done.
 
 ### Deployment
 
@@ -57,7 +57,9 @@ Secrets must be set via `wrangler secret put`:
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put API_SECRET
 npx wrangler secret put E2B_API_KEY
-npx wrangler secret put OPENAI_API_KEY      # Optional, for Codex agent
+npx wrangler secret put OPENAI_API_KEY      # Optional, Codex API-key auth
+npx wrangler secret put CODEX_AUTH_JSON      # Optional, personal ChatGPT sub (~/.codex/auth.json)
+npx wrangler secret put CODEX_ACCESS_TOKEN  # Optional, enterprise Codex (see codex/auth docs)
 ```
 
 ## Ports
@@ -74,8 +76,11 @@ ship/
 │   │   ├── app/(app)/dashboard       # Dashboard with chat UI
 │   │   ├── components/chat/markdown.tsx  # Streamdown wrapper (animated fade-in)
 │   │   ├── lib/
+│   │   │   ├── session-logic.ts          # Pure timeline/approval/collapse derivations (Vitest)
+│   │   │   ├── chat-store/               # Zustand streaming state + selectors
+│   │   │   ├── session-connection/       # Unified WS + SSE lifecycle hooks
 │   │   │   ├── ai-elements-adapter.ts    # SSE → UIMessage adapter
-│   │   │   ├── sse-types.ts              # Wire-format event types
+│   │   │   ├── sse-types.ts              # Wire-format event types (prefer @ship/contracts for new code)
 │   │   │   └── api/                      # API client functions
 │   │   └── components/               # Shared React components
 │   └── api/                          # Cloudflare Worker (backend)
@@ -116,6 +121,7 @@ ship/
 │           │   └── session.ts                   # Session Durable Object (SQLite + WS)
 │           └── env.d.ts                         # Worker env bindings
 └── packages/
+    ├── contracts/                  # @ship/contracts — Zod wire schemas, branded IDs, errors
     ├── acp-bridge/                 # `ship-acp-bridge` sources (esbuild-bundled into the Worker)
     │   └── src/
     │       └── server.ts           # Localhost HTTP + WS → NDJSON stdio
@@ -149,7 +155,7 @@ Ship runs **ACP agent CLIs inside the E2B sandbox**. The Worker connects to **`s
 | OpenCode | `opencode acp` | `OPENCODE_API_KEY` optional on Worker |
 | Cursor | `agent acp` | Cursor auth per docs |
 | Claude | `claude-agent-acp` | Anthropic env optional |
-| Codex | `codex-acp` | Often `OPENAI_API_KEY` |
+| Codex | `codex-acp` | `CODEX_AUTH_JSON` (personal sub) or `CODEX_ACCESS_TOKEN` (enterprise) or `OPENAI_API_KEY` (API billing) |
 
 See `scripts/e2b-template/README.md` for baking CLIs into a custom template.
 
@@ -166,6 +172,19 @@ User prompt → Worker → bridge (WSS) → ACP backend (stdio) → repo workspa
                 ▼
       ACP notification translator → SSE → web
 ```
+
+## Shared contracts & session logic
+
+**`@ship/contracts`** (`packages/contracts`) is the single source of truth for wire-format data shared between `apps/api` and `apps/web`:
+
+- Branded IDs (`SessionId`, `MessageId`, `TurnId`, `ToolCallId`)
+- SSE event Zod schemas including `session.summary.updated`
+- Shared `classifyErrorFromMessage()` and stable `ErrorCode` values
+- Turn/diff summaries, session meta, approval policies, tool presentation helpers
+
+**`apps/web/lib/session-logic.ts`** holds pure derivations (timeline, pending prompts, tool collapse) covered by Vitest. React hooks should delegate to these functions rather than embed business rules.
+
+**SessionDO** stores append-only `session_events`, first-class `turns`, and broadcasts lightweight `session.summary.updated` over WebSocket for sidebar/shell consumers (t3code `subscribeShell` analogue). Turn streaming still uses POST SSE per chat turn.
 
 ## Frontend Architecture
 
@@ -448,7 +467,9 @@ ANTHROPIC_API_KEY=...
 API_SECRET=...
 SESSION_SECRET=...        # must match the web app
 E2B_API_KEY=...
-OPENAI_API_KEY=...        # optional (for OpenAI models)
+OPENAI_API_KEY=...        # optional (Codex API-key auth)
+# CODEX_AUTH_JSON=...       # optional (personal ChatGPT sub — cat ~/.codex/auth.json)
+# CODEX_ACCESS_TOKEN=...    # optional (enterprise Codex — see developers.openai.com/codex/auth)
 ALLOWED_ORIGINS=http://localhost:3000
 ```
 

@@ -1,4 +1,5 @@
 import { parseSSEEvent } from '@/lib/sse-parser'
+import { consumeSSEBody } from '@/lib/session-connection'
 import { isAgentHarnessEvent } from '@/lib/sse-types'
 import { eventsStore } from './use-events-store'
 import { dispatchParsedSSEEvent, dispatchRawDataFallbacks } from './sse-event-dispatch'
@@ -24,54 +25,28 @@ export async function readChatSSEStream({
   dispatchOptions,
   onEvent,
 }: ReadChatStreamParams): Promise<void> {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
+  await consumeSSEBody(body, (rawData) => {
+    onEvent?.()
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    let currentEventType = ''
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEventType = line.slice(7).trim()
-        continue
-      }
-      if (!line.startsWith('data: ')) continue
-      try {
-        onEvent?.()
-        const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
-        if (!rawData.type && currentEventType) rawData.type = currentEventType
-        if (!rawData.type && typeof rawData.error === 'string') rawData.type = 'error'
-
-        const eventType = (rawData.type as string) ?? (currentEventType || 'unknown')
-        if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
-          eventsStore.addEvent(targetSessionId, {
-            id: crypto.randomUUID(),
-            type: eventType,
-            timestamp: Date.now(),
-            payload: rawData,
-          })
-        }
-
-        const event = parseSSEEvent(rawData)
-        if (!event) continue
-        if (!claimStreamEvent(targetSessionId, event as { type: string; [k: string]: unknown })) continue
-
-        dispatchParsedSSEEvent(event as { type: string; [k: string]: unknown }, {
-          ctx,
-          targetSessionId,
-          ...dispatchOptions,
-        })
-        dispatchRawDataFallbacks(rawData, ctx)
-      } catch {
-        // Ignore parse errors
-      }
+    const eventType = (rawData.type as string) ?? 'unknown'
+    if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
+      eventsStore.addEvent(targetSessionId, {
+        id: crypto.randomUUID(),
+        type: eventType,
+        timestamp: Date.now(),
+        payload: rawData,
+      })
     }
-  }
+
+    const event = parseSSEEvent(rawData)
+    if (!event) return
+    if (!claimStreamEvent(targetSessionId, event as { type: string; [k: string]: unknown })) return
+
+    dispatchParsedSSEEvent(event as { type: string; [k: string]: unknown }, {
+      ctx,
+      targetSessionId,
+      ...dispatchOptions,
+    })
+    dispatchRawDataFallbacks(rawData, ctx)
+  })
 }

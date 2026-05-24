@@ -1,34 +1,34 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
+import { getStreamingRefs, useChatStore } from '@/lib/chat-store/store'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 
 const FLUSH_INTERVAL_MS = 33
 
 export interface UseSseTextFlushParams {
+  sessionId: string | null
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
-  streamingMessageRef: React.MutableRefObject<string | null>
-  assistantTextRef: React.MutableRefObject<string>
-  reasoningRef: React.MutableRefObject<string>
 }
 
 /** Throttled flush: batch rapid text deltas into a single React render (~30fps). */
-export function useSseTextFlush({
-  setMessages,
-  streamingMessageRef,
-  assistantTextRef,
-  reasoningRef,
-}: UseSseTextFlushParams) {
+export function useSseTextFlush({ sessionId, setMessages }: UseSseTextFlushParams) {
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFlushTimeRef = useRef(0)
 
   const doFlush = useCallback(() => {
     flushTimerRef.current = null
     lastFlushTimeRef.current = performance.now()
-    const msgId = streamingMessageRef.current
+    if (!sessionId) return
+
+    const refs = getStreamingRefs(sessionId)
+    const msgId = refs.streamingMessageRef.current
     if (!msgId) return
-    const text = assistantTextRef.current
-    const reasoning = reasoningRef.current
+
+    useChatStore.getState().flushStreamingBuffer(sessionId)
+
+    const text = refs.assistantTextRef.current
+    const reasoning = refs.reasoningRef.current
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m
@@ -39,7 +39,7 @@ export function useSseTextFlush({
         return { ...m, ...updates }
       }),
     )
-  }, [setMessages, streamingMessageRef, assistantTextRef, reasoningRef])
+  }, [sessionId, setMessages])
 
   const scheduleFlush = useCallback(() => {
     if (flushTimerRef.current != null) return

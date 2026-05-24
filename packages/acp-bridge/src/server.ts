@@ -12,11 +12,18 @@
  * @packageDocumentation
  */
 
+import * as fs from 'node:fs'
 import * as http from 'node:http'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { URL } from 'node:url'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { backendArgv, backendEnv, BRIDGE_VERSION, type BackendKind } from './backends.js'
+
+const CODEX_AUTH_PATH = '/home/user/.codex/auth.json'
+
+function codexUsesChatGptAuth(): boolean {
+  return process.env.SHIP_CODEX_CHATGPT_AUTH === '1' || fs.existsSync(CODEX_AUTH_PATH)
+}
 
 let child: ChildProcessWithoutNullStreams | null = null
 let stdoutBuf = ''
@@ -111,10 +118,23 @@ function spawnBackend(kind: BackendKind, client: WebSocket, model?: string): voi
     sendLog(client, 'stderr', `[ship-acp-bridge] launching Cursor ACP (model=${model && model !== 'auto' ? model : 'default'})\n`)
   }
   try {
+    const spawnEnv: Record<string, string | undefined> = {
+      ...process.env,
+      ...backendEnv(kind, model),
+    }
+    if (kind === 'codex') {
+      spawnEnv.HOME = spawnEnv.HOME || '/home/user'
+      spawnEnv.CODEX_HOME = `${spawnEnv.HOME}/.codex`
+      spawnEnv.NO_BROWSER = '1'
+      if (codexUsesChatGptAuth()) {
+        delete spawnEnv.OPENAI_API_KEY
+        delete spawnEnv.CODEX_API_KEY
+      }
+    }
     child = spawn(cmd, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...backendEnv(kind, model) },
+      env: spawnEnv as NodeJS.ProcessEnv,
     })
   } catch (err) {
     sendCtl(client, { op: 'spawn', status: 'error', backend: kind, message: `spawn failed: ${String(err)}` })
@@ -281,6 +301,6 @@ wss.on('connection', (ws: WebSocket) => {
   })
 })
 
-server.listen(port, '127.0.0.1', () => {
-  process.stderr.write(`[ship-acp-bridge] listening 127.0.0.1:${port}\n`)
+server.listen(port, '0.0.0.0', () => {
+  process.stderr.write(`[ship-acp-bridge] listening 0.0.0.0:${port}\n`)
 })

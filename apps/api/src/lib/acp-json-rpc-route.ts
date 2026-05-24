@@ -9,6 +9,20 @@ export type JsonRpcRecord = Record<string, unknown>
 export function errorFromUnknown(value: unknown): Error {
   if (value instanceof Error) return value
   if (typeof value === 'string') return new Error(value)
+  if (value && typeof value === 'object') {
+    const obj = value as { message?: string; data?: unknown; code?: number }
+    const dataText =
+      typeof obj.data === 'string'
+        ? obj.data
+        : obj.data && typeof obj.data === 'object' && 'message' in obj.data
+          ? String((obj.data as { message?: unknown }).message ?? '')
+          : obj.data != null
+            ? JSON.stringify(obj.data)
+            : ''
+    if (typeof obj.message === 'string' && obj.message) {
+      return new Error(dataText ? `${obj.message}: ${dataText}` : obj.message)
+    }
+  }
   return new Error(JSON.stringify(value))
 }
 

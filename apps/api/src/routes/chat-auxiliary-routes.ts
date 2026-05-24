@@ -64,7 +64,7 @@ function registerSubscribeRoute(app: Hono<AuthedEnv>): void {
 
 /** Read-only history passthroughs (events / messages / tasks). */
 function registerHistoryRoutes(app: Hono<AuthedEnv>): void {
-  for (const path of ['/events', '/messages', '/tasks'] as const) {
+  for (const path of ['/events', '/messages', '/tasks', '/turns'] as const) {
     app.get(`/:sessionId${path}`, async (c) => {
       const gate = await requireSessionOwner(c, c.req.param('sessionId'))
       if (!gate.ok) return gate.response

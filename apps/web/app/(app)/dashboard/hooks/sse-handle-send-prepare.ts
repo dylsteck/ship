@@ -4,6 +4,7 @@ import {
   createUserMessage,
   createAssistantPlaceholder,
 } from '@/lib/ai-elements-adapter'
+import { getStreamingRefs } from '@/lib/chat-store/store'
 import { createSSEHandlerContext } from './sse-handler-context'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { UseSseHandleSendParams } from './use-sse-handle-send'
@@ -19,8 +20,9 @@ export function prepareChatSend(
   chat.setIsStreaming(true)
   postSessionSync({ type: 'session-streaming', sessionId: targetSessionId })
   chat.clearStreamingStatusSteps()
-  chat.assistantTextRef.current = ''
-  chat.reasoningRef.current = ''
+  const streamingRefs = getStreamingRefs(targetSessionId)
+  streamingRefs.assistantTextRef.current = ''
+  streamingRefs.reasoningRef.current = ''
   chat.setLastStepCost(null)
   const now = Date.now()
   streamStartTimeRef.current = now
@@ -44,7 +46,7 @@ export function prepareChatSend(
   chat.setMessages((prev) => [...prev, createUserMessage(content)])
 
   const assistantMessage = createAssistantPlaceholder()
-  chat.streamingMessageRef.current = assistantMessage.id
+  streamingRefs.streamingMessageRef.current = assistantMessage.id
   chat.setMessages((prev) => [...prev, assistantMessage])
 
   const ctx = createSSEHandlerContext(chat, targetSessionId, accumulateSetupStepsRef)

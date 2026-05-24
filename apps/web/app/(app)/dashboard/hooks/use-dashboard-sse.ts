@@ -1,6 +1,9 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
+import { createAssistantPlaceholder } from '@/lib/ai-elements-adapter'
+import { getStreamingRefs } from '@/lib/chat-store/store'
+import { sessionStatusStore } from './use-session-status-store'
 import { useSseTextFlush } from './use-sse-text-flush'
 import { streamEventKey } from './sse-stream-utils'
 import { useSseHandleSend } from './use-sse-handle-send'
@@ -15,7 +18,7 @@ export interface UseDashboardSSEParams {
 }
 
 export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEParams) {
-  const { isStreaming, setMessages, streamingMessageRef, assistantTextRef, reasoningRef } = chat
+  const { isStreaming, setMessages, activeSessionId } = chat
 
   const streamStartTimeRef = useRef<number | null>(null)
   const terminalStreamSessionsRef = useRef<Set<string>>(new Set())
@@ -24,10 +27,8 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
   isStreamingRef.current = isStreaming
 
   const { scheduleFlush, clearPendingFlush, flushTimerRef } = useSseTextFlush({
+    sessionId: activeSessionId,
     setMessages,
-    streamingMessageRef,
-    assistantTextRef,
-    reasoningRef,
   })
 
   const claimStreamEvent = useCallback((sessionId: string, event: { type: string; [k: string]: unknown }) => {
@@ -65,10 +66,27 @@ export function useDashboardSSE({ chat, modeRef, modelIdRef }: UseDashboardSSEPa
     terminalStreamSessionsRef,
   })
 
-  /** Active turns are replayed through the SessionDO WebSocket `agent-event` path. */
-  const resumeStream = useCallback((_sessionId: string) => {
-    // The old `/subscribe` endpoint is intentionally not used.
-  }, [])
+  /** Passive tabs catch up via SessionDO WebSocket `agent-event` broadcasts — not `/subscribe`. */
+  const resumeStream = useCallback(
+    (sessionId: string) => {
+      const status = sessionStatusStore.get(sessionId)
+      if (!status?.isRunning) return
+
+      chat.connectWebSocket(sessionId)
+      chat.setIsStreaming(true)
+
+      const streamingRefs = getStreamingRefs(sessionId)
+      const hasPlaceholder = chat.messagesRef.current.some(
+        (m) => m.role === 'assistant' && !m.content && !m.toolInvocations?.length && !m.reasoning?.length,
+      )
+      if (!hasPlaceholder) {
+        const placeholder = createAssistantPlaceholder()
+        streamingRefs.streamingMessageRef.current = placeholder.id
+        chat.setMessages((prev) => [...prev, placeholder])
+      }
+    },
+    [chat],
+  )
 
   return { handleSend, processStreamEventForSession, resumeStream }
 }
