@@ -108,6 +108,7 @@ export function DashboardClientShell({
         rightSidebarData={rightSidebarData}
         models={models}
         agentLabel={state.selectedAgent?.name ?? 'Ship'}
+        streamingSessionIds={streamingSessionIds}
       />
     </DashboardLayout>
   )

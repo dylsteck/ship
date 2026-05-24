@@ -60,6 +60,7 @@ export interface DashboardMainColumnProps {
   rightSidebarData: SessionPanelData | null
   models: ModelInfo[]
   agentLabel?: string
+  streamingSessionIds?: Set<string>
 }
 
 export function DashboardMainColumn({
@@ -74,6 +75,7 @@ export function DashboardMainColumn({
   rightSidebarData,
   models,
   agentLabel = 'Ship',
+  streamingSessionIds,
 }: DashboardMainColumnProps) {
   const { activeSessionId, displayTitle, wsStatus, sandboxStatus } = header
 
@@ -127,6 +129,7 @@ export function DashboardMainColumn({
               models={models}
               agentLabel={agentLabel}
               serverTimestamp={serverTimestamp}
+              streamingSessionIds={streamingSessionIds}
             />
           </div>
         </div>

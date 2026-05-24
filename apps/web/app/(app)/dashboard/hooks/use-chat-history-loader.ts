@@ -32,11 +32,13 @@ export function useChatHistoryLoader({
   setMessages,
 }: UseChatHistoryLoaderParams) {
   const historyLoadedRef = useRef<string | null>(null)
+  const onResumeStreamRef = useRef(onResumeStream)
+  onResumeStreamRef.current = onResumeStream
 
   useEffect(() => {
     if (!activeSessionId) {
-      setMessages([])
       historyLoadedRef.current = null
+      setMessages((prev) => (prev.length === 0 ? prev : []))
       return
     }
 
@@ -54,7 +56,7 @@ export function useChatHistoryLoader({
           hydrateEventsFromMessages(activeSessionId, initialApiMessages)
         }
       })
-      onResumeStream?.(activeSessionId)
+      onResumeStreamRef.current?.(activeSessionId)
       return
     }
 
@@ -71,7 +73,7 @@ export function useChatHistoryLoader({
         } else {
           hydrateEventsFromMessages(activeSessionId, apiMessages)
         }
-        onResumeStream?.(activeSessionId)
+        onResumeStreamRef.current?.(activeSessionId)
       })
       .catch((err) => {
         console.error('Failed to load messages:', err)
@@ -80,5 +82,5 @@ export function useChatHistoryLoader({
     return () => {
       historyLoadedRef.current = null
     }
-  }, [activeSessionId, initialActiveSessionId, rawInitialMessages, initialApiMessages, onResumeStream, setMessages])
+  }, [activeSessionId, initialActiveSessionId, rawInitialMessages, initialApiMessages, setMessages])
 }

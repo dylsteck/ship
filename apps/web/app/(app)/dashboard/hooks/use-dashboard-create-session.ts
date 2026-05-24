@@ -20,7 +20,7 @@ export function useDashboardCreateSession(params: {
   onSessionCreated?: (sessionId: string) => void
 }) {
   const {
-    chat,
+    chat: { setLocalSessions },
     prompt,
     setPrompt,
     selectedModel,
@@ -63,7 +63,7 @@ export function useDashboardCreateSession(params: {
           model: newSession.model ?? data.model ?? selectedModel?.id,
           agentType: newSession.agentType ?? selectedAgent?.id,
         }
-        chat.setLocalSessions((prev) => [newSessionData, ...prev])
+        setLocalSessions((prev) => [newSessionData, ...prev])
         mutateSessions?.()
         onSessionCreated?.(newSession.id)
 
@@ -76,7 +76,7 @@ export function useDashboardCreateSession(params: {
       }
     },
     [
-      chat,
+      setLocalSessions,
       createSession,
       mode,
       mutateSessions,

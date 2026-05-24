@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { postSessionSync } from '@/lib/session-sync-channel'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -67,6 +67,18 @@ export function useDashboardClientCore(
     dataHooks.mutateSessions,
   )
 
+  const onSessionCreated = useCallback(
+    (sessionId: string) => {
+      pendingCreateIdsRef.current.add(sessionId)
+      postSessionSync({ type: 'session-created' })
+    },
+    [pendingCreateIdsRef],
+  )
+
+  const onSessionDeleted = useCallback(() => {
+    postSessionSync({ type: 'session-deleted' })
+  }, [])
+
   const streamingFromOtherTabs = useDashboardCrossTabSync(chat, dataHooks.mutateSessions, refs.resumeStreamRef)
   const streamingSessionIds = useStreamingSessionIds(streamingFromOtherTabs, chat.activeSessionId, chat.isStreaming)
 
@@ -79,11 +91,8 @@ export function useDashboardClientCore(
       deleteSession: dataHooks.deleteSession,
       user,
       mutateSessions: dataHooks.mutateSessions,
-      onSessionCreated: (sessionId) => {
-        pendingCreateIdsRef.current.add(sessionId)
-        postSessionSync({ type: 'session-created' })
-      },
-      onSessionDeleted: () => postSessionSync({ type: 'session-deleted' }),
+      onSessionCreated,
+      onSessionDeleted,
     },
     data: dataHooks.stateData,
   })
@@ -103,7 +112,7 @@ export function useDashboardClientRefs() {
   const modelIdRef = useRef<string | null>(null)
   const onAgentEventRef = useRef<((sessionId: string, event: { type: string; [k: string]: unknown }) => void) | null>(null)
   const resumeStreamRef = useRef<((sessionId: string) => void) | null>(null)
-  const onResumeStream = (id: string) => resumeStreamRef.current?.(id)
+  const onResumeStream = useCallback((id: string) => resumeStreamRef.current?.(id), [])
 
   return { modeRef, modelIdRef, onAgentEventRef, resumeStreamRef, onResumeStream }
 }

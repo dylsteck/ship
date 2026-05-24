@@ -99,6 +99,7 @@ export function DashboardDesktopContent({
   models,
   agentLabel,
   serverTimestamp,
+  streamingSessionIds,
 }: {
   activeSessionId: string | null
   messagesProps: DashboardMessagesPropsBundle
@@ -111,6 +112,7 @@ export function DashboardDesktopContent({
   models: ModelInfo[]
   agentLabel: string
   serverTimestamp: number
+  streamingSessionIds?: Set<string>
 }) {
   if (activeSessionId) {
     return (
@@ -130,6 +132,7 @@ export function DashboardDesktopContent({
         sessions={sessions.localSessions}
         activeSessionId={activeSessionId}
         isStreaming={messagesProps.isStreaming}
+        streamingSessionIds={streamingSessionIds}
         streamingStatus={messagesProps.streamingStatus ?? ''}
         streamingStatusSteps={messagesProps.streamingStatusSteps}
         agentLabel={agentLabel}

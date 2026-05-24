@@ -29,6 +29,7 @@ function applySessionStatusUpdate(
 
   if (textDelta || eventStatus || (isStatusEvent && statusMsg)) {
     sessionStatusStore.update(sessionId, {
+      ...(!isHeartbeat ? { isRunning: true } : {}),
       ...(textDelta ? { contentPreview: accumulatedText } : {}),
       ...(eventStatus && !isStatusEvent
         ? { status: eventStatus.label, ...(!isHeartbeat ? { step: eventStatus.label } : {}) }

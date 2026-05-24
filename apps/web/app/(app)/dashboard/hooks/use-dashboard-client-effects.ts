@@ -22,7 +22,7 @@ export function useDashboardSessionEffects(
     const stillExists = swrSessions.some((s) => s.id === activeSessionId)
     if (!stillExists) {
       setActiveSessionId(null)
-      setMessages([])
+      setMessages((prev) => (prev.length === 0 ? prev : []))
       router.push('/')
     }
   }, [swrSessions, activeSessionId, sessionsLoading, router, setActiveSessionId, setMessages])
