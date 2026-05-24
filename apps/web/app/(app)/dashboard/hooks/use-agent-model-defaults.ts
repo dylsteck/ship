@@ -63,7 +63,7 @@ export function useAgentModelDefaults({
   }, [agents, defaultModelIdsByAgent, globalDefaultModelId])
 
   useEffect(() => {
-    if (activeSessionId || !selectedAgent || globalDefaultModelLoading) return
+    if (activeSessionId || !selectedAgent || globalDefaultModelLoading || agentDefaultModelsLoading) return
     const defaultModel = agentDefaultModels[selectedAgent.id]
     if (!defaultModel) return
 
@@ -74,6 +74,7 @@ export function useAgentModelDefaults({
   }, [
     activeSessionId,
     agentDefaultModels,
+    agentDefaultModelsLoading,
     globalDefaultModelLoading,
     selectedAgent,
     selectedModel?.id,

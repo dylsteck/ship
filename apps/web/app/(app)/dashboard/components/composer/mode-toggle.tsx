@@ -48,11 +48,18 @@ export function ModeToggle() {
     <div className="flex items-center gap-1.5">
       <DropdownMenu>
         <DropdownMenuTrigger render={plusButton} />
-        <DropdownMenuContent align="start" className="w-[140px]">
+        <DropdownMenuContent
+          align="start"
+          className="w-[140px] rounded-[14px] border border-border/60 bg-card/95 p-1.5 shadow-2xl shadow-black/35 ring-0 backdrop-blur-xl"
+        >
           {availableModes
             .filter((m) => m.id !== defaultMode?.id)
             .map((m) => (
-              <DropdownMenuItem key={m.id} onClick={() => onModeChange(m.id)}>
+              <DropdownMenuItem
+                key={m.id}
+                className="cursor-pointer rounded-[8px] px-2.5 py-2 hover:bg-muted/70 focus:bg-muted/70"
+                onClick={() => onModeChange(m.id)}
+              >
                 {m.label}
               </DropdownMenuItem>
             ))}

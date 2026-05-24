@@ -41,7 +41,7 @@ export function RepoSelectorList({
     <div className="max-h-[280px] overflow-y-auto" onScroll={onScroll}>
       <DropdownMenuGroup>
         {allowNone && (
-          <DropdownMenuItem onClick={onClear}>
+          <DropdownMenuItem className="cursor-pointer rounded-[8px] px-2.5 py-2" onClick={onClear}>
             <span className="text-muted-foreground italic text-xs">None</span>
           </DropdownMenuItem>
         )}
@@ -50,7 +50,10 @@ export function RepoSelectorList({
           return (
             <DropdownMenuItem
               key={repo.id}
-              className={cn('flex items-center justify-between cursor-pointer', isSelected && 'bg-accent')}
+              className={cn(
+                'flex items-center justify-between cursor-pointer rounded-[8px] px-2.5 py-2 hover:bg-muted/70 focus:bg-muted/70',
+                isSelected && 'bg-muted/70',
+              )}
               onClick={() => onRepoSelect(repo)}
             >
               <span className="truncate flex-1 text-xs">{repo.fullName}</span>
@@ -81,7 +84,7 @@ export function RepoSelectorSearch({
   onSearchChange: (value: string) => void
 }) {
   return (
-    <div className="p-2 pb-1">
+    <div className="p-1.5 pb-1">
       <Input
         placeholder={searchPlaceholder}
         value={repoSearch}

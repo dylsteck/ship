@@ -52,7 +52,10 @@ export function AgentModelMenuItems({
           <div key={agent.id}>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger
-                className={cn('cursor-pointer gap-2 [&>svg.ml-auto]:hidden', isAgentSelected && 'bg-accent')}
+                className={cn(
+                  'cursor-pointer gap-2 rounded-[8px] px-2.5 py-2 hover:bg-muted/70 focus:bg-muted/70 data-popup-open:bg-muted/70 [&>svg.ml-auto]:hidden',
+                  isAgentSelected && 'bg-muted/70',
+                )}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium">{agent.name}</span>
@@ -64,15 +67,15 @@ export function AgentModelMenuItems({
                   <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="shrink-0 text-foreground" />
                 )}
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-[260px] max-h-[360px] overflow-y-auto">
+              <DropdownMenuSubContent className="w-[260px] max-h-[360px] overflow-y-auto rounded-[14px] border border-border/60 bg-card/95 p-1.5 shadow-2xl shadow-black/35 ring-0 backdrop-blur-xl">
                 {agentModels.map((model) => {
                   const isModelSelected = isAgentSelected && selectedAgentModel?.id === model.id
                   return (
                     <DropdownMenuItem
                       key={model.id}
                       className={cn(
-                        'flex items-center justify-between gap-2 cursor-pointer',
-                        isModelSelected && 'bg-accent',
+                        'flex items-center justify-between gap-2 cursor-pointer rounded-[8px] px-2.5 py-2 hover:bg-muted/70 focus:bg-muted/70',
+                        isModelSelected && 'bg-muted/70',
                       )}
                       onClick={() => {
                         if (!isAgentSelected) onAgentSelect(agent)

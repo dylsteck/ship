@@ -78,7 +78,10 @@ export function AgentModelSelector() {
           </Button>
         }
       />
-      <DropdownMenuContent align="start" className="w-[220px]">
+      <DropdownMenuContent
+        align="start"
+        className="w-[220px] rounded-[14px] border border-border/60 bg-card/95 p-1.5 shadow-2xl shadow-black/35 ring-0 backdrop-blur-xl"
+      >
         <AgentModelMenuItems
           agents={agents}
           selectedAgent={selectedAgent}
