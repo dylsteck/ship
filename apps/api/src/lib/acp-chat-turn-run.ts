@@ -168,7 +168,15 @@ async function runPromptPhase(
   try {
     await writeStatus(input.stream, 'agent-starting', `Starting ${backend} agent…`)
     sendCtl(ws, 'spawn', backend, modelSelection.upstreamModelId)
-    await delay(450)
+    const spawnWarmupMs = backend === 'codex' ? 12_000 : 450
+    await writeStatus(
+      input.stream,
+      'agent-starting',
+      backend === 'codex'
+        ? 'Starting Codex agent (first run may download packages)…'
+        : `Starting ${backend} agent…`,
+    )
+    await delay(spawnWarmupMs)
     await writeStatus(input.stream, 'agent-connecting', `Connecting to ${backend} agent…`)
 
     const handshake = await runAcpHandshake(
@@ -194,6 +202,7 @@ async function runPromptPhase(
       },
     )
 
+    await writeStatus(input.stream, 'agent-running', `Running ${backend} agent…`)
     await sendPrompt(rpc, ws, input, runtime, handshake)
   } finally {
     rpc.close()

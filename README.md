@@ -73,7 +73,8 @@ Edit `.dev.vars`:
 | `SESSION_SECRET`                  | Same as web app; for JWT verification                                   |
 | `ALLOWED_ORIGINS`                 | `http://localhost:3000`                                                 |
 | `OPENAI_API_KEY`                  | _(optional)_ Codex API-key auth (`openai-api-key` ACP method)                       |
-| `CODEX_ACCESS_TOKEN`              | _(optional)_ Codex ChatGPT-sub auth — [Codex auth docs](https://developers.openai.com/codex/auth) |
+| `CODEX_AUTH_JSON`                 | _(optional)_ Personal ChatGPT sub — paste `~/.codex/auth.json` after `codex login` |
+| `CODEX_ACCESS_TOKEN`              | _(optional)_ Enterprise Codex token from [chatgpt.com/admin/access-tokens](https://chatgpt.com/admin/access-tokens) |
 | `CURSOR_API_KEY` / `CURSOR_AUTH_TOKEN` | _(optional)_ Cursor `agent acp` auth                                         |
 | `OPENCODE_API_KEY`                | _(optional)_ OpenCode `opencode acp`                                              |
 | `LOGIN_RESTRICTED_TO_SINGLE_USER` | _(optional)_ `true` to restrict login to one user                       |
@@ -278,7 +279,8 @@ npx wrangler secret put E2B_API_KEY --env production
 npx wrangler secret put SESSION_SECRET --env production  # Must match web app
 # Optional, for Codex agent:
 # npx wrangler secret put OPENAI_API_KEY --env production
-# npx wrangler secret put CODEX_ACCESS_TOKEN --env production  # Codex ChatGPT sub (optional)
+# npx wrangler secret put CODEX_AUTH_JSON --env production   # personal ChatGPT sub (optional)
+# npx wrangler secret put CODEX_ACCESS_TOKEN --env production  # enterprise Codex (optional)
 
 # Deploy
 npx wrangler deploy --env production

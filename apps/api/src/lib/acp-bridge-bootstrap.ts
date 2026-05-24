@@ -10,12 +10,18 @@
 
 import type { Sandbox } from '@ship/sandbox'
 import type { Env } from '../env.d'
-import { ACP_BRIDGE_BUNDLE } from '../generated/acp-bridge-bundled'
-import { codexAccessTokenLoginBody, codexAccessTokenLoginShell } from './codex-auth-bootstrap'
+import {
+  ACP_BRIDGE_VERSION,
+  checkBridgeHealthInSandbox,
+  installBridgeBundle,
+  readBridgeLogTail,
+  startBridgeProcess,
+} from './acp-bridge-install'
+import { codexAccessTokenLoginShell, ensureCodexAuthInSandbox, hasCodexSubscriptionAuth } from './codex-auth-bootstrap'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 
+export { ACP_BRIDGE_VERSION }
 export const ACP_RELAY_PORT_DEFAULT = 9847
-const ACP_BRIDGE_VERSION = '8'
 
 function randomHex(bytes: number): string {
   const u = new Uint8Array(bytes)
@@ -51,14 +57,14 @@ function healthUrl(httpsOrigin: string, token: string): string {
   return u.toString()
 }
 
-async function checkBridgeHealth(input: {
+async function checkBridgeHealthExternal(input: {
   httpsOrigin: string
   token: string
   workingDirectory: string
 }): Promise<boolean> {
   try {
     const res = await fetch(healthUrl(input.httpsOrigin, input.token), {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(4_000),
     })
     if (!res.ok) return false
     const json = (await res.json()) as { ok?: boolean; cwd?: string; version?: string }
@@ -68,23 +74,40 @@ async function checkBridgeHealth(input: {
   }
 }
 
-async function runCodexAccessTokenLogin(input: {
+async function isBridgeHealthy(input: {
   sandbox: Sandbox
-  env: Env
+  cwd: string
+  port: number
+  token: string
   workingDirectory: string
-}): Promise<void> {
-  if (!input.env.CODEX_ACCESS_TOKEN) return
+  httpsOrigin: string
+}): Promise<boolean> {
+  if (await checkBridgeHealthInSandbox(input)) return true
+  return checkBridgeHealthExternal({
+    httpsOrigin: input.httpsOrigin,
+    token: input.token,
+    workingDirectory: input.workingDirectory,
+  })
+}
 
-  const cmd = [shellExport('CODEX_ACCESS_TOKEN', input.env.CODEX_ACCESS_TOKEN), codexAccessTokenLoginBody()]
+function bridgeEnvExports(token: string, input: { env: Env; workingDirectory: string }): string {
+  return [
+    shellExport('SHIP_BRIDGE_TOKEN', token),
+    shellExport('SHIP_REPO_CWD', input.workingDirectory),
+    shellExport('CURSOR_API_KEY', input.env.CURSOR_API_KEY),
+    shellExport('CURSOR_AUTH_TOKEN', input.env.CURSOR_AUTH_TOKEN),
+    shellExport('OPENCODE_API_KEY', input.env.OPENCODE_API_KEY),
+    shellExport('OPENAI_API_KEY', input.env.OPENAI_API_KEY),
+    ...(hasCodexSubscriptionAuth(input.env) ? [shellExport('SHIP_CODEX_CHATGPT_AUTH', '1')] : []),
+    shellExport('CODEX_ACCESS_TOKEN', input.env.CODEX_AUTH_JSON ? undefined : input.env.CODEX_ACCESS_TOKEN),
+    shellExport('ANTHROPIC_API_KEY', input.env.ANTHROPIC_API_KEY),
+    shellExport('SHIP_ACP_CURSOR_CMD', input.env.SHIP_ACP_CURSOR_CMD),
+    shellExport('SHIP_ACP_CODEX_CMD', input.env.SHIP_ACP_CODEX_CMD),
+    shellExport('SHIP_ACP_CLAUDE_CMD', input.env.SHIP_ACP_CLAUDE_CMD),
+    shellExport('SHIP_ACP_OPENCODE_CMD', input.env.SHIP_ACP_OPENCODE_CMD),
+  ]
     .filter(Boolean)
     .join(' ; ')
-
-  const run = await input.sandbox.exec(cmd, input.workingDirectory, 120_000)
-  if (!run.success) {
-    throw new Error(
-      `Codex access-token login failed (exit ${run.exitCode}): ${run.stderr || run.stdout || 'missing ~/.codex/auth.json'}`,
-    )
-  }
 }
 
 export async function ensureAcpBridgeReady(input: {
@@ -94,7 +117,7 @@ export async function ensureAcpBridgeReady(input: {
   workingDirectory: string
   stream: SSEWriter
 }): Promise<{ httpsOrigin: string; token: string; port: number }> {
-  await writeStatus(input.stream, 'sandbox-ready', 'Starting ACP bridge…')
+  await writeStatus(input.stream, 'bridge-starting', 'Starting ACP bridge…')
 
   const meta = await readMeta(input.stub)
 
@@ -112,74 +135,51 @@ export async function ensureAcpBridgeReady(input: {
   if (!Number.isFinite(port)) port = ACP_RELAY_PORT_DEFAULT
 
   const httpsOrigin = domainFn.call(input.sandbox, port)
+  const healthInput = {
+    sandbox: input.sandbox,
+    cwd: input.workingDirectory,
+    port,
+    token,
+    workingDirectory: input.workingDirectory,
+    httpsOrigin,
+  }
 
-  await runCodexAccessTokenLogin(input)
+  if (hasCodexSubscriptionAuth(input.env)) {
+    await writeStatus(input.stream, 'bridge-auth', 'Configuring Codex auth…')
+    await ensureCodexAuthInSandbox(input)
+  }
 
-  if (await checkBridgeHealth({ httpsOrigin, token, workingDirectory: input.workingDirectory })) {
+  const forceBridgeRestart = hasCodexSubscriptionAuth(input.env)
+  if (!forceBridgeRestart && (await isBridgeHealthy(healthInput))) {
+    await writeStatus(input.stream, 'bridge-ready', 'ACP bridge ready')
     return { httpsOrigin, token, port }
   }
 
   await patchMeta(input.stub, { acp_relay_port: portStr })
-  await input.sandbox.writeFile('/tmp/ship-acp-bridge.mjs', ACP_BRIDGE_BUNDLE, 'utf-8')
+  await writeStatus(input.stream, 'bridge-install', 'Installing ACP bridge…')
+  await installBridgeBundle(input.sandbox, input.workingDirectory)
 
-  const exportsPrefix = [
-    shellExport('SHIP_BRIDGE_TOKEN', token),
-    shellExport('SHIP_REPO_CWD', input.workingDirectory),
-    shellExport('CURSOR_API_KEY', input.env.CURSOR_API_KEY),
-    shellExport('CURSOR_AUTH_TOKEN', input.env.CURSOR_AUTH_TOKEN),
-    shellExport('OPENCODE_API_KEY', input.env.OPENCODE_API_KEY),
-    shellExport('OPENAI_API_KEY', input.env.OPENAI_API_KEY),
-    shellExport('CODEX_ACCESS_TOKEN', input.env.CODEX_ACCESS_TOKEN),
-    shellExport('ANTHROPIC_API_KEY', input.env.ANTHROPIC_API_KEY),
-    shellExport('SHIP_ACP_CURSOR_CMD', input.env.SHIP_ACP_CURSOR_CMD),
-    shellExport('SHIP_ACP_CODEX_CMD', input.env.SHIP_ACP_CODEX_CMD),
-    shellExport('SHIP_ACP_CLAUDE_CMD', input.env.SHIP_ACP_CLAUDE_CMD),
-    shellExport('SHIP_ACP_OPENCODE_CMD', input.env.SHIP_ACP_OPENCODE_CMD),
-  ]
-    .filter(Boolean)
-    .join(' ; ')
+  await writeStatus(input.stream, 'bridge-launch', 'Launching ACP bridge…')
+  await startBridgeProcess({
+    sandbox: input.sandbox,
+    cwd: input.workingDirectory,
+    port,
+    envExports: bridgeEnvExports(token, input),
+    codexLoginShell: codexAccessTokenLoginShell(),
+  })
 
-  const startCmd = [
-    `if [ -f /tmp/acp-bridge.pid ]; then kill "$(cat /tmp/acp-bridge.pid)" 2>/dev/null || true; fi`,
-    `pids="$(pgrep -f '^node /tmp/ship-acp-bridge\\.mjs' 2>/dev/null || true)"`,
-    `if [ -n "$pids" ]; then kill $pids 2>/dev/null || true; fi`,
-    `rm -f /tmp/acp-bridge.pid`,
-    `: > /tmp/acp-bridge.log`,
-    exportsPrefix,
-    `${codexAccessTokenLoginShell()} && nohup node /tmp/ship-acp-bridge.mjs --port ${port} > /tmp/acp-bridge.log 2>&1 & echo $! > /tmp/acp-bridge.pid`,
-    `sleep 1`,
-    `kill -0 $(cat /tmp/acp-bridge.pid) 2>/dev/null || { cat /tmp/acp-bridge.log ; exit 1 ; }`,
-    `echo bridge_started`,
-  ]
-    .filter(Boolean)
-    .join(' ; ')
-
-  const run = await input.sandbox.exec(startCmd, input.workingDirectory, 120_000)
-  if (!run.success) {
-    const tail = await input.sandbox.exec(
-      `tail -n 60 /tmp/acp-bridge.log 2>/dev/null || true`,
-      input.workingDirectory,
-      30_000,
-    )
-    throw new Error(
-      `ACP bridge failed to start (exit ${run.exitCode}): ${run.stderr || run.stdout}. Log tail:\n${tail.stdout}`,
-    )
-  }
-
-  const deadline = Date.now() + 45_000
+  const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
-    if (await checkBridgeHealth({ httpsOrigin, token, workingDirectory: input.workingDirectory })) {
+    if (await isBridgeHealthy(healthInput)) {
+      await writeStatus(input.stream, 'bridge-ready', 'ACP bridge ready')
       return { httpsOrigin, token, port }
     }
-    await new Promise((r) => setTimeout(r, 600))
+    await writeStatus(input.stream, 'bridge-wait', 'Waiting for ACP bridge…')
+    await new Promise((r) => setTimeout(r, 800))
   }
 
-  const tail = await input.sandbox.exec(
-    `tail -n 120 /tmp/acp-bridge.log 2>/dev/null || true`,
-    input.workingDirectory,
-    30_000,
-  )
-  throw new Error(`ACP bridge health check timed out. Log tail:\n${tail.stdout}`)
+  const logTail = await readBridgeLogTail(input.sandbox, input.workingDirectory)
+  throw new Error(`ACP bridge health check timed out. Log tail:\n${logTail}`)
 }
 
 export function toBridgeWsUrl(httpsOrigin: string, token: string): string {

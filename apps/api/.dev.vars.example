@@ -22,13 +22,15 @@ SESSION_SECRET=your-session-secret-here
 # Get from: https://platform.openai.com/api-keys
 # OPENAI_API_KEY=sk-...
 
-# Codex ChatGPT subscription access token (optional — preferred over OPENAI_API_KEY for Codex sub billing)
-# Create at https://chatgpt.com/admin/access-tokens (Business/Enterprise) or extract after `codex login` locally.
-# Local: uncomment and set here (this file is copied to `.dev.vars`, which is gitignored).
-# Production: npx wrangler secret put CODEX_ACCESS_TOKEN --env production
-# Ship runs `printenv CODEX_ACCESS_TOKEN | codex login --with-access-token` in the sandbox.
-# See https://developers.openai.com/codex/auth
-# CODEX_ACCESS_TOKEN=
+# Codex ChatGPT subscription auth (optional — pick one; see https://developers.openai.com/codex/auth)
+#
+# Personal Plus/Pro (recommended): run `codex login` locally, then paste auth.json:
+#   CODEX_AUTH_JSON='{"auth_mode":"chatgpt",...}'   # output of: cat ~/.codex/auth.json
+#
+# Enterprise Business/Enterprise: agent-identity token from https://chatgpt.com/admin/access-tokens
+#   CODEX_ACCESS_TOKEN=
+#
+# Do NOT paste the OAuth JWT from auth.json into CODEX_ACCESS_TOKEN — that flag expects enterprise tokens only.
 
 # Cursor CLI (`agent acp`) — optional single-tenant secrets injected into sandbox env during bridge bootstrap
 # CURSOR_API_KEY=

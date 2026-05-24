@@ -58,7 +58,8 @@ npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put API_SECRET
 npx wrangler secret put E2B_API_KEY
 npx wrangler secret put OPENAI_API_KEY      # Optional, Codex API-key auth
-npx wrangler secret put CODEX_ACCESS_TOKEN  # Optional, Codex ChatGPT-sub auth (see codex/auth docs)
+npx wrangler secret put CODEX_AUTH_JSON      # Optional, personal ChatGPT sub (~/.codex/auth.json)
+npx wrangler secret put CODEX_ACCESS_TOKEN  # Optional, enterprise Codex (see codex/auth docs)
 ```
 
 ## Ports
@@ -154,7 +155,7 @@ Ship runs **ACP agent CLIs inside the E2B sandbox**. The Worker connects to **`s
 | OpenCode | `opencode acp` | `OPENCODE_API_KEY` optional on Worker |
 | Cursor | `agent acp` | Cursor auth per docs |
 | Claude | `claude-agent-acp` | Anthropic env optional |
-| Codex | `codex-acp` | `CODEX_ACCESS_TOKEN` (ChatGPT sub) or `OPENAI_API_KEY` (API billing) |
+| Codex | `codex-acp` | `CODEX_AUTH_JSON` (personal sub) or `CODEX_ACCESS_TOKEN` (enterprise) or `OPENAI_API_KEY` (API billing) |
 
 See `scripts/e2b-template/README.md` for baking CLIs into a custom template.
 
@@ -467,7 +468,8 @@ API_SECRET=...
 SESSION_SECRET=...        # must match the web app
 E2B_API_KEY=...
 OPENAI_API_KEY=...        # optional (Codex API-key auth)
-# CODEX_ACCESS_TOKEN=...  # optional (Codex ChatGPT-sub auth — see developers.openai.com/codex/auth)
+# CODEX_AUTH_JSON=...       # optional (personal ChatGPT sub — cat ~/.codex/auth.json)
+# CODEX_ACCESS_TOKEN=...    # optional (enterprise Codex — see developers.openai.com/codex/auth)
 ALLOWED_ORIGINS=http://localhost:3000
 ```
 

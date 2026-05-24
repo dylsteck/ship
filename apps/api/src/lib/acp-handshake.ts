@@ -7,6 +7,7 @@
 import type { Env } from '../env.d'
 import type { AcpMultiplexer } from './acp-json-rpc'
 import type { AcpBackendKind } from './agent-registry'
+import { hasCodexSubscriptionAuth } from './codex-auth-bootstrap'
 
 function sessionIdFromResult(raw: unknown): string {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
@@ -39,10 +40,9 @@ async function authenticateBackend(
       // sending `authenticate` after that hangs on Linux.
       break
     case 'codex':
-      if (env.CODEX_ACCESS_TOKEN) {
-        if (hasAuthMethod(init, 'chatgpt')) {
-          await rpc.request('authenticate', { methodId: 'chatgpt' })
-        }
+      // Pre-seeded ~/.codex/auth.json (CODEX_AUTH_JSON or enterprise login) — do not call
+      // authenticate(chatgpt): codex-acp starts a browser OAuth server and blocks until done.
+      if (hasCodexSubscriptionAuth(env)) {
         break
       }
       if (env.OPENAI_API_KEY) {
@@ -80,13 +80,17 @@ async function openOrLoadSession(
   canLoadSession: boolean,
   persistSessionId: (id: string) => Promise<void>,
   setSuppressNotifications: (value: boolean) => void,
+  sessionTimeoutMs: number,
 ): Promise<{ sessionId: string; loadedExisting: boolean; configOptions?: unknown[] }> {
+  const sessionRequest = (method: string, params: unknown) =>
+    rpc.request(method, params, { timeoutMs: sessionTimeoutMs })
+
   let sid = persistedSessionId
   let loadedExisting = false
   let configOptions: unknown[] | undefined
 
   if (!sid) {
-    const raw = await rpc.request('session/new', { cwd, mcpServers: [] })
+    const raw = await sessionRequest('session/new', { cwd, mcpServers: [] })
     sid = sessionIdFromResult(raw)
     configOptions = configOptionsFromResult(raw)
     if (!sid) throw new Error('ACP session/new missing session id')
@@ -97,11 +101,11 @@ async function openOrLoadSession(
   if (canLoadSession) {
     try {
       setSuppressNotifications(true)
-      const raw = await rpc.request('session/load', { sessionId: sid, cwd, mcpServers: [] })
+      const raw = await sessionRequest('session/load', { sessionId: sid, cwd, mcpServers: [] })
       configOptions = configOptionsFromResult(raw)
       loadedExisting = true
     } catch {
-      const raw = await rpc.request('session/new', { cwd, mcpServers: [] })
+      const raw = await sessionRequest('session/new', { cwd, mcpServers: [] })
       sid = sessionIdFromResult(raw)
       configOptions = configOptionsFromResult(raw)
       if (!sid) throw new Error('ACP session/new missing session id after load failure')
@@ -112,7 +116,7 @@ async function openOrLoadSession(
     return { sessionId: sid, loadedExisting, configOptions }
   }
 
-  const raw = await rpc.request('session/new', { cwd, mcpServers: [] })
+  const raw = await sessionRequest('session/new', { cwd, mcpServers: [] })
   sid = sessionIdFromResult(raw)
   configOptions = configOptionsFromResult(raw)
   if (!sid) throw new Error('ACP session/new missing session id without load support')
@@ -127,6 +131,12 @@ export interface AcpHandshakeResult {
   configOptions?: unknown[]
 }
 
+/** Per-backend RPC timeouts — Codex cold-starts via npx on first spawn. */
+export function acpRpcTimeouts(backend: AcpBackendKind): { initializeMs: number; sessionMs: number } {
+  if (backend === 'codex') return { initializeMs: 180_000, sessionMs: 180_000 }
+  return { initializeMs: 45_000, sessionMs: 120_000 }
+}
+
 /**
  * Run `initialize` / `authenticate` / `session/new` | `session/load` for one bridge connection.
  */
@@ -139,11 +149,12 @@ export async function runAcpHandshake(
   persistSessionId: (id: string) => Promise<void>,
   setSuppressNotifications: (value: boolean) => void,
 ): Promise<AcpHandshakeResult> {
+  const { initializeMs, sessionMs } = acpRpcTimeouts(backend)
   const initRaw = await rpc.request('initialize', {
     protocolVersion: 1,
     clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
     clientInfo: { name: 'Ship', version: '2.0.0' },
-  }, { timeoutMs: 45_000 })
+  }, { timeoutMs: initializeMs })
   const init = initRaw && typeof initRaw === 'object' ? (initRaw as Record<string, unknown>) : {}
   const capabilities =
     init.agentCapabilities && typeof init.agentCapabilities === 'object'
@@ -160,6 +171,7 @@ export async function runAcpHandshake(
     canLoadSession,
     persistSessionId,
     setSuppressNotifications,
+    sessionMs,
   )
 }
 

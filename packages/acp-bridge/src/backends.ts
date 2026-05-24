@@ -8,7 +8,7 @@
 export type BackendKind = 'codex' | 'claude' | 'cursor' | 'opencode'
 
 /** Increment when startup behavior changes so old sandbox bridge processes restart. */
-export const BRIDGE_VERSION = '8'
+export const BRIDGE_VERSION = '11'
 
 /** Resolve the subprocess command used for a backend. */
 export function backendArgv(kind: BackendKind, model?: string): { cmd: string; args: string[] } {
