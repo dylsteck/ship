@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { setApiToken } from '@/lib/api/client'
+import { setApiToken } from '@/lib/api/configure'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
@@ -69,7 +69,7 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
   const isMobile = useIsMobile()
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { sessions: swrSessions } = useSessions(true, { revalidateOnFocus: true })
+  const { sessions: swrSessions } = useSessions(true, { refetchOnFocus: true })
   const sessions = swrSessions.length > 0 ? swrSessions : initialSessions
 
   const handleNewChat = useCallback(() => {

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/providers/theme-provider'
-import { SWRProvider } from '@/components/providers/swr-provider'
+import { QueryProvider } from '@/components/providers/query-provider'
 
 const THEME_INIT_SCRIPT = `
 (() => {
@@ -52,7 +52,7 @@ export default function RootLayout({
       <body>
         <div className="pwa-titlebar-drag" />
         <ThemeProvider>
-          <SWRProvider>{children}</SWRProvider>
+          <QueryProvider>{children}</QueryProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -1,69 +1,54 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
-import type { ConnectorStatus } from '../types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  getConnectors,
+  postConnectorsByNameDisable,
+  postConnectorsByNameEnable,
+  unwrapSdkData,
+  type Connector,
+} from '@ship/sdk'
+import { queryKeys } from '../query-keys'
 
-/**
- * Hook to fetch connector status for the JWT user.
- */
 export function useConnectors(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<ConnectorStatus>(
-    fetchEnabled ? apiUrl('/connectors') : null,
-    fetcher,
-    {
-      revalidateOnFocus: true,
-    }
-  )
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.connectors,
+    queryFn: async () => unwrapSdkData(await getConnectors()),
+    enabled: Boolean(fetchEnabled),
+    refetchOnWindowFocus: true,
+  })
 
   return {
-    connectors: data?.connectors ?? [],
+    connectors: (data?.connectors ?? []) as Connector[],
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
-/**
- * Mutation hook to enable a connector
- */
 export function useEnableConnector() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'enable-connector',
-    async (_key: string, { arg }: { arg: { name: string } }) => {
-      return post<Record<string, never>, { success: boolean; enabled?: boolean }>(
-        apiUrl(`/connectors/${arg.name}/enable`),
-        {},
-      )
-    }
-  )
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { name: string }) =>
+      unwrapSdkData(await postConnectorsByNameEnable({ path: { name: arg.name } })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors })
+    },
+  })
 
-  return {
-    enableConnector: trigger,
-    isEnabling: isMutating,
-    error,
-  }
+  return { enableConnector: mutation.mutateAsync, isEnabling: mutation.isPending, error: mutation.error }
 }
 
-/**
- * Mutation hook to disable a connector
- */
 export function useDisableConnector() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'disable-connector',
-    async (_key: string, { arg }: { arg: { name: string } }) => {
-      return post<Record<string, never>, { success: boolean; enabled?: boolean }>(
-        apiUrl(`/connectors/${arg.name}/disable`),
-        {},
-      )
-    }
-  )
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { name: string }) =>
+      unwrapSdkData(await postConnectorsByNameDisable({ path: { name: arg.name } })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors })
+    },
+  })
 
-  return {
-    disableConnector: trigger,
-    isDisabling: isMutating,
-    error,
-  }
+  return { disableConnector: mutation.mutateAsync, isDisabling: mutation.isPending, error: mutation.error }
 }

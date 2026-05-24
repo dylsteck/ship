@@ -1,29 +1,37 @@
 /**
- * Centralized API module for **client** code (hooks, `setApiToken`, shared types).
+ * Centralized API module for **client** code (hooks, SDK bootstrap, shared types).
  *
- * Server Components and Route Handlers should import from `@/lib/api/server` instead
- * so `next/headers` is not pulled into the browser bundle.
+ * Server Components should import from `@/lib/api/server`.
  */
-// Re-export all hooks (for Client Components)
 export * from './hooks'
+export { setApiToken, getApiToken, configureWebShipClient, API_URL } from './configure'
+export { wsUrl } from './ws'
 
-// Re-export types
-export * from './types'
+export type {
+  Session as ChatSession,
+  CreateSessionBody as CreateSessionParams,
+  SandboxStatus,
+  ChatMessage,
+  ChatTask,
+  GitState,
+  ModelInfo,
+  AgentInfo,
+  User,
+  Connector,
+  GitHubRepo,
+} from '@ship/sdk'
 
-// Re-export client utilities (for advanced usage)
-export { API_URL, fetcher, authFetcher, post, del, apiUrl, wsUrl, chatFetchHeaders } from './client'
+export type { MessagePart, Message, RawEvent } from './chat-types'
 
-// Chat types + browser-safe chat fetches (JWT via setApiToken)
-export type { Message, RawEvent, MessagePart } from './chat-types'
 export {
   getSession,
   getSessionSandbox,
-  getChatMessages,
-  getChatEvents,
+  fetchChatMessages as getChatMessages,
+  fetchChatEvents as getChatEvents,
   sendChatMessage,
   stopChatStream,
   subscribeToChatStream,
   retryChatSession,
   streamSubagentSession,
 } from './chat-client'
-export type { SessionSandboxStatus } from './chat-client'
+export type { SessionSandboxStatus, BrowserChatSession } from './chat-client'

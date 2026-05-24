@@ -8,8 +8,8 @@ const LEGACY_MODEL_IDS = {
 } as const
 
 const AGENT_MODES: AgentMode[] = [
-  { id: 'agent', label: 'Agent' },
-  { id: 'plan', label: 'Plan' },
+  { id: 'agent', name: 'Agent' },
+  { id: 'plan', name: 'Plan' },
 ]
 
 const FALLBACK_OPENCODE_MODELS: ModelInfo[] = [

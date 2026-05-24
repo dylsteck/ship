@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { getChatMessages, getChatEvents } from '@/lib/api/chat-client'
+import { fetchChatMessages, fetchChatEvents } from '@/lib/api/chat-client'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { mapApiMessagesToUI, replayEventsToMessages } from '@/lib/ai-elements-adapter'
 import { hydrateEventsFromMessages, eventsStore } from './use-events-store'
@@ -46,7 +46,7 @@ export function useChatHistoryLoader({
     if (hadInitialForThisSession) {
       historyLoadedRef.current = activeSessionId
       setMessages(normalizeInitialMessages(rawInitialMessages!))
-      getChatEvents(activeSessionId).then((events) => {
+      fetchChatEvents(activeSessionId).then((events) => {
         if (events.length > 0) {
           eventsStore.replaceEvents(activeSessionId, events)
           if (initialApiMessages?.length) {
@@ -63,7 +63,7 @@ export function useChatHistoryLoader({
     if (historyLoadedRef.current === activeSessionId) return
     historyLoadedRef.current = activeSessionId
 
-    Promise.all([getChatMessages(activeSessionId, { limit: 100 }), getChatEvents(activeSessionId)])
+    Promise.all([fetchChatMessages(activeSessionId, { limit: 100 }), fetchChatEvents(activeSessionId)])
       .then(([apiMessages, events]) => {
         const uiMessages =
           events.length > 0 ? replayEventsToMessages(apiMessages, events) : mapApiMessagesToUI(apiMessages)

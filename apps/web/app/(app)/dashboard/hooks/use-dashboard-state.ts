@@ -11,6 +11,10 @@ import {
   getStoredMode,
   setStoredMode,
 } from './dashboard-mode-storage'
+
+function agentModesForUi(modes: AgentInfo['modes']): AgentMode[] {
+  return modes.map((mode) => ({ id: mode.id as AgentModeId, name: mode.name }))
+}
 import { useBackgroundSessionStream } from './use-background-session-stream'
 import { useDashboardSessionActions } from './use-dashboard-session-actions'
 
@@ -76,18 +80,22 @@ export function useDashboardState({
     const agent = agents.find((a) => a.id === agentId) || agents[0]
     if (!agent) return
     setSelectedAgent(agent)
-    setAvailableModes(agent.modes)
+    setAvailableModes(agentModesForUi(agent.modes))
     const savedMode = getStoredMode()
-    const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
+    const validMode = agent.modes.some((m) => m.id === savedMode)
+      ? savedMode
+      : ((agent.modes[0]?.id as AgentModeId | undefined) ?? 'build')
     setMode(validMode)
   }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent, setMode])
 
   const handleAgentSelect = useCallback(
     (agent: AgentInfo) => {
       setSelectedAgent(agent)
-      setAvailableModes(agent.modes)
+      setAvailableModes(agentModesForUi(agent.modes))
       const savedMode = getStoredMode()
-      const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
+      const validMode = agent.modes.some((m) => m.id === savedMode)
+        ? savedMode
+        : ((agent.modes[0]?.id as AgentModeId | undefined) ?? 'build')
       setMode(validMode)
       setSelectedModel(null)
     },

@@ -1,10 +1,16 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
-import type { AgentInfo, DefaultAgentResponse, ModelInfo } from '../types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  getModelsAgents,
+  getModelsDefaultAgent,
+  postModelsDefaultAgent,
+  unwrapSdkData,
+  type AgentInfo,
+  type ModelInfo,
+} from '@ship/sdk'
 import { expandLegacyAgents, FALLBACK_AGENTS } from '../acp-catalog'
+import { queryKeys } from '../query-keys'
 
 const ACP_HARNESSES = {
   opencode: { name: 'OpenCode', provider: 'ACP — OpenCode' },
@@ -71,13 +77,12 @@ function normalizeAgents(rawAgents: AgentInfo[]): AgentInfo[] {
     .filter((agent): agent is AgentInfo => Boolean(agent))
 }
 
-/**
- * Hook to fetch available agents with their models and modes
- */
 export function useAgents() {
-  const { data, error, isLoading } = useSWR<AgentInfo[]>(apiUrl('/models/agents'), fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 60000,
+  const { data, error, isLoading } = useQuery({
+    queryKey: queryKeys.agents,
+    queryFn: async () => unwrapSdkData(await getModelsAgents()),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   })
   const agents = data && data.length > 0 ? data : FALLBACK_AGENTS
 
@@ -89,47 +94,38 @@ export function useAgents() {
   }
 }
 
-/**
- * Hook to fetch the JWT user's default agent preference.
- */
 export function useDefaultAgent(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<DefaultAgentResponse | null>(
-    fetchEnabled ? apiUrl('/models/default-agent') : null,
-    async (url: string) => {
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.defaultAgent,
+    queryFn: async () => {
       try {
-        return await fetcher<DefaultAgentResponse>(url)
+        return unwrapSdkData(await getModelsDefaultAgent())
       } catch (err: unknown) {
         if ((err as { status?: number })?.status === 404) return null
         throw err
       }
     },
-  )
+    enabled: Boolean(fetchEnabled),
+  })
 
   return {
     defaultAgentId: data?.agentId === 'ship' ? 'opencode' : (data?.agentId ?? null),
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
-/**
- * Mutation hook to set user's default agent
- */
 export function useSetDefaultAgent() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'set-default-agent',
-    async (_key: string, { arg }: { arg: { agentId: string } }) => {
-      return post<{ agentId: string }, DefaultAgentResponse>(apiUrl('/models/default-agent'), {
-        agentId: arg.agentId,
-      })
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { agentId: string }) =>
+      unwrapSdkData(await postModelsDefaultAgent({ body: { agentId: arg.agentId } })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.defaultAgent })
     },
-  )
+  })
 
-  return {
-    setDefaultAgent: trigger,
-    isSetting: isMutating,
-    error,
-  }
+  return { setDefaultAgent: mutation.mutateAsync, isSetting: mutation.isPending, error: mutation.error }
 }

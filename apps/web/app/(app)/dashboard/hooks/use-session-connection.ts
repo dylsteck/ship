@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { SessionSummary } from '@ship/contracts'
 
 import type { UIMessage } from '@/lib/ai-elements-adapter'
+import { invalidateSessions } from '@/lib/api/query-invalidation'
 import { createSessionConnection, consumeSSEBody, type SessionConnection } from '@/lib/session-connection'
 import { sessionStatusStore } from './use-session-status-store'
 import type { WebSocketStatus } from '@/lib/websocket'
@@ -39,6 +41,7 @@ export function useSessionConnection(params: UseSessionConnectionParams) {
     onAgentEventRef,
   } = params
 
+  const queryClient = useQueryClient()
   const connectionRef = useRef<SessionConnection | null>(null)
   const [wsStatus, setWsStatus] = useState<WebSocketStatus>('disconnected')
 
@@ -53,11 +56,14 @@ export function useSessionConnection(params: UseSessionConnectionParams) {
         setAgentSessionId,
         setSandboxStatus,
         onStatusChange: setWsStatus,
-        onSummary: (summary) => applySessionSummary(sessionId, summary),
+        onSummary: (summary) => {
+          applySessionSummary(sessionId, summary)
+          invalidateSessions(queryClient)
+        },
         onAgentEvent: (id, event) => onAgentEventRef?.current?.(id, event),
       })
     },
-    [setAgentSessionId, setAgentUrl, setMessages, setSandboxStatus, streamingMessageRef, onAgentEventRef],
+    [queryClient, setAgentSessionId, setAgentUrl, setMessages, setSandboxStatus, streamingMessageRef, onAgentEventRef],
   )
 
   useEffect(() => () => connectionRef.current?.disconnect(), [])

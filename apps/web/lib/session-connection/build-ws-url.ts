@@ -1,4 +1,4 @@
-import { getApiToken } from '@/lib/api/client'
+import { getApiToken } from '@/lib/api/configure'
 import { API_URL } from '@/lib/config'
 
 /** Build an authenticated WebSocket URL for a session. */

@@ -1,27 +1,23 @@
 'use client'
 
-import useSWR from 'swr'
-import { fetcher, apiUrl } from '../client'
-import type { User } from '../types'
+import { useQuery } from '@tanstack/react-query'
+import { getUsersMe, unwrapSdkData, type User } from '@ship/sdk'
+import { queryKeys } from '../query-keys'
 
-/**
- * Hook to fetch the current user (`GET /users/me`, session JWT).
- */
 export function useUser(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<User>(
-    fetchEnabled ? apiUrl('/users/me') : null,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 60000, // Cache for 1 minute
-    }
-  )
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.usersMe,
+    queryFn: async () => unwrapSdkData(await getUsersMe()),
+    enabled: Boolean(fetchEnabled),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
 
   return {
     user: data,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }

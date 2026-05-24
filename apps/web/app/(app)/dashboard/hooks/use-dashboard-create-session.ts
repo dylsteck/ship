@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback } from 'react'
-import type { ChatSession } from '@/lib/api/server'
 import type { CreateSessionParams, GitHubRepo, ModelInfo, AgentInfo, AgentModeId } from '@/lib/api/types'
+import type { ChatSession } from '@/lib/api/hooks/use-sessions'
 import { DEFAULT_ACP_MODEL_ID } from './dashboard-mode-storage'
 import type { useDashboardChat } from './use-dashboard-chat'
 

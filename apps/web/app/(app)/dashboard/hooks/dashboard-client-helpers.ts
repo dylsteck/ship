@@ -33,7 +33,7 @@ export function useDashboardDataHooks(chat: ReturnType<typeof useDashboardChat>)
     sessions: swrSessions,
     isLoading: sessionsLoading,
     mutate: mutateSessions,
-  } = useSessions(true, { refreshInterval: 3000, revalidateOnFocus: true })
+  } = useSessions(true, { refreshInterval: 3000, refetchOnFocus: true })
 
   return {
     repos: reposQuery.repos,

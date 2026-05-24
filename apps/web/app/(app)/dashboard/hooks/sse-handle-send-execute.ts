@@ -1,6 +1,7 @@
 'use client'
 
 import { sendChatMessage } from '@/lib/api/chat-client'
+import { setActiveSseSession } from '@/lib/active-sse-session'
 import { postSessionSync } from '@/lib/session-sync-channel'
 import { getStreamingRefs } from '@/lib/chat-store/store'
 import { sessionStatusStore } from './use-session-status-store'
@@ -81,14 +82,15 @@ export async function executeChatSend(
   const { ctx } = prepareChatSend(content, targetSessionId, chat, streamStartTimeRef, terminalStreamSessionsRef)
   const watchdog = createWatchdog(targetSessionId, ctx)
   let doneOrIdleReceived = false
+  setActiveSseSession(targetSessionId)
 
   try {
-    const response = await sendChatMessage(
-      targetSessionId,
+    const response = await sendChatMessage({
+      sessionId: targetSessionId,
       content,
-      modeOverride ?? modeRef.current,
-      modelIdRef.current,
-    )
+      mode: modeOverride ?? modeRef.current,
+      model: modelIdRef.current ?? undefined,
+    })
 
     if (!response.ok) {
       watchdog.clear()
@@ -132,5 +134,7 @@ export async function executeChatSend(
   } catch (err) {
     watchdog.clear()
     handleSendCatch(err, chat, targetSessionId, terminalStreamSessionsRef)
+  } finally {
+    setActiveSseSession(null)
   }
 }

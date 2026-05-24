@@ -1,17 +1,9 @@
 'use client'
 
 import { useMemo } from 'react'
-import useSWR from 'swr'
 import { cn } from '@ship/ui/utils'
 import { useIsMobile } from '@ship/ui'
-import { fetcher, apiUrl } from '@/lib/api/client'
-import type { ChatTask } from '@/lib/api/types'
-
-interface SessionGitStateResponse {
-  branchName?: string | null
-  pr?: { number: number; url: string; draft: boolean } | null
-  repoUrl?: string | null
-}
+import { useChatTasks, useGitState } from '@/lib/api/hooks/use-chat'
 
 interface SessionMobileActivityStripProps {
   sessionId: string
@@ -21,17 +13,8 @@ interface SessionMobileActivityStripProps {
 export function SessionMobileActivityStrip({ sessionId, className }: SessionMobileActivityStripProps) {
   const isMobile = useIsMobile()
 
-  const { data: gitState } = useSWR<SessionGitStateResponse>(
-    isMobile ? apiUrl(`/chat/${sessionId}/git/state`) : null,
-    fetcher,
-    { refreshInterval: 15000 },
-  )
-
-  const { data: tasks } = useSWR<ChatTask[]>(
-    isMobile ? apiUrl(`/chat/${sessionId}/tasks`) : null,
-    fetcher,
-    { refreshInterval: 8000 },
-  )
+  const { gitState } = useGitState(isMobile ? sessionId : undefined)
+  const { tasks } = useChatTasks(isMobile ? sessionId : undefined)
 
   const taskSummary = useMemo(() => {
     if (!tasks?.length) return null

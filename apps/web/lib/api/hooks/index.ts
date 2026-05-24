@@ -47,7 +47,6 @@ export {
   useChatTasks,
   useGitState,
   useGitDiff,
-  useSendMessage,
   useStopChat,
   useMarkPRReady,
   useRetryChat,

@@ -2,38 +2,144 @@
 @import "tw-animate-css";
 @import "streamdown/styles.css";
 
-/* Code blocks: remove outer wrapper div, move language label to bottom */
+/* Code and diagram blocks: compact, work-focused chrome for chat messages. */
 :has(> [data-streamdown="code-block"]) {
   display: contents;
 }
 [data-streamdown="code-block"] {
   display: flex !important;
   flex-direction: column !important;
+  gap: 0 !important;
+  margin-block: 1rem !important;
+  overflow: hidden !important;
+  border-color: color-mix(in oklab, var(--border) 82%, transparent) !important;
+  border-radius: 8px !important;
+  background: color-mix(in oklab, var(--background) 92%, var(--muted)) !important;
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--foreground) 5%, transparent) inset;
 }
 [data-streamdown="code-block-header"] {
-  order: 2;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
+  order: 1;
+  height: 2.25rem !important;
+  padding-inline: 0.75rem !important;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  background: color-mix(in oklab, var(--muted) 44%, var(--background)) !important;
+  letter-spacing: 0 !important;
 }
 [data-streamdown="code-block-body"] {
-  order: 1;
+  order: 2;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+[data-streamdown="code-block-body"] pre {
+  margin: 0 !important;
+  padding-block: 0.875rem !important;
+}
+[data-streamdown="code-block-actions"],
+[data-streamdown="mermaid-block-actions"] {
+  gap: 0.125rem !important;
+  border-color: color-mix(in oklab, var(--border) 72%, transparent) !important;
+  border-radius: 8px !important;
+  background: color-mix(in oklab, var(--background) 88%, transparent) !important;
+  box-shadow:
+    0 8px 24px color-mix(in oklab, black 18%, transparent),
+    0 1px 0 color-mix(in oklab, white 5%, transparent) inset;
+}
+[data-streamdown="code-block-actions"] button,
+[data-streamdown="mermaid-block-actions"] button {
+  display: inline-flex;
+  width: 1.875rem;
+  height: 1.875rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+[data-streamdown="code-block-actions"] button:hover,
+[data-streamdown="mermaid-block-actions"] button:hover {
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
 }
 
-/* Mermaid/diagram blocks: remove outer wrapper, shrink to fit content */
 :has(> [data-streamdown="mermaid-block"]) {
   display: contents;
 }
 [data-streamdown="mermaid-block"] {
-  width: fit-content !important;
+  width: 100% !important;
   max-width: 100%;
-  border: none !important;
-  padding: 0.5rem !important;
-  background: transparent !important;
+  overflow: hidden !important;
+  border-color: color-mix(in oklab, var(--border) 82%, transparent) !important;
+  border-radius: 8px !important;
+  background: color-mix(in oklab, var(--background) 92%, var(--muted)) !important;
+  padding: 0 !important;
+}
+[data-streamdown="mermaid-block"] > div:first-child {
+  height: 2.25rem !important;
+  padding-inline: 0.75rem !important;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  background: color-mix(in oklab, var(--muted) 44%, var(--background)) !important;
 }
 [data-streamdown="mermaid-block"] > div:last-child {
   border: none !important;
   background: transparent !important;
+  padding: 1rem !important;
+}
+[data-streamdown="mermaid"] {
+  width: 100% !important;
+  min-width: 100% !important;
+}
+[data-streamdown="mermaid"] > div,
+[data-streamdown="mermaid"] [role="application"],
+[data-streamdown="mermaid"] [aria-label="Mermaid chart"] {
+  width: 100% !important;
+}
+[data-streamdown="mermaid"] svg {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]:has(
+    [data-streamdown="mermaid"]
+  ) {
+  z-index: 9999 !important;
+  background: color-mix(in oklab, var(--background) 94%, black 6%) !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]:has(
+    [data-streamdown="mermaid"]
+  )
+  > div:last-child {
+  padding: clamp(1rem, 3vw, 2.5rem) !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
+  [data-streamdown="mermaid"] {
+  width: min(96vw, 1600px) !important;
+  height: min(88vh, 1000px) !important;
+  min-width: 0 !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
+  [data-streamdown="mermaid"]
+  [aria-label="Mermaid chart"] {
+  align-items: center;
+  height: 100% !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
+  [data-streamdown="mermaid"]
+  svg {
+  width: min(100%, 1500px) !important;
+  max-height: 82vh !important;
+}
+.mermaid-fullscreen-svg svg {
+  width: min(100%, 1600px) !important;
+  height: auto !important;
+  max-height: 82vh !important;
+}
+.mermaid-rendered-svg svg {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
 }
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../node_modules/streamdown/dist/*.js";

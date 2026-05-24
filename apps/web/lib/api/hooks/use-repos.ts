@@ -1,9 +1,8 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRInfinite from 'swr/infinite'
-import { authFetcher, apiUrl } from '../client'
-import type { GitHubRepo } from '../types'
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { getAccountsGithubRepos, unwrapSdkData, type GitHubRepo } from '@ship/sdk'
+import { queryKeys } from '../query-keys'
 
 const REPOS_PER_PAGE = 50
 
@@ -13,54 +12,42 @@ export interface ReposPageResponse {
   nextPage: number | null
 }
 
-/**
- * Hook to fetch user's GitHub repositories with infinite scroll/pagination.
- * Loads first page on mount, then loadMore() fetches subsequent pages.
- */
 export function useGitHubRepos(fetchEnabled: boolean | undefined) {
-  const getKey = (pageIndex: number, previousPageData: ReposPageResponse | null) => {
-    if (!fetchEnabled) return null
-    if (pageIndex > 0 && previousPageData && !previousPageData.hasMore) return null
-    return apiUrl('/accounts/github/repos', {
-      page: pageIndex + 1,
-      per_page: REPOS_PER_PAGE,
+  const { data, error, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
+    useInfiniteQuery({
+      queryKey: ['github-repos'],
+      queryFn: async ({ pageParam }) =>
+        unwrapSdkData(
+          await getAccountsGithubRepos({
+            query: { page: String(pageParam), per_page: String(REPOS_PER_PAGE) },
+          }),
+        ),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage) => (lastPage.hasMore ? (lastPage.nextPage ?? undefined) : undefined),
+      enabled: Boolean(fetchEnabled),
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
     })
+
+  const repos = data ? data.pages.flatMap((p) => p.repos) : []
+  const hasMore = hasNextPage ?? false
+  const loadMore = () => {
+    if (hasNextPage) void fetchNextPage()
   }
-
-  const { data, error, size, setSize, isLoading, isValidating } = useSWRInfinite<ReposPageResponse>(
-    getKey,
-    authFetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateFirstPage: false,
-      dedupingInterval: 60000, // 1 min - API has its own 5 min cache
-    }
-  )
-
-  const repos = data ? data.flatMap((p) => p.repos) : []
-  const isLoadingMore = isLoading || (size > 0 && data && typeof data[size - 1] === 'undefined')
-  const hasMore = data && data.length > 0 ? (data[data.length - 1]?.hasMore ?? false) : true
-  const loadMore = () => setSize(size + 1)
 
   return {
     repos,
     isLoading,
-    isLoadingMore,
+    isLoadingMore: isFetchingNextPage,
     hasMore,
     loadMore,
     isError: !!error,
     error,
-    mutate: () => setSize(1),
+    mutate: refetch,
   }
 }
 
-/**
- * Hook with search/filter functionality for repos (client-side filter over paginated data)
- */
-export function useFilteredGitHubRepos(
-  fetchEnabled: boolean | undefined,
-  searchQuery: string = '',
-) {
+export function useFilteredGitHubRepos(fetchEnabled: boolean | undefined, searchQuery: string = '') {
   const { repos, isLoading, isLoadingMore, hasMore, loadMore, isError, error, mutate } =
     useGitHubRepos(fetchEnabled)
 
@@ -69,7 +56,7 @@ export function useFilteredGitHubRepos(
         (repo) =>
           repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           repo.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          repo.description?.toLowerCase().includes(searchQuery.toLowerCase())
+          (repo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false),
       )
     : repos
 

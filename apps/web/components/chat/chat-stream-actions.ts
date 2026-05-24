@@ -46,7 +46,11 @@ export async function sendChatStreamMessage(
   setters.setMessages((prev) => [...prev, userMessage, assistantMessage])
 
   try {
-    const response = await sendChatMessage(sessionId, content, modeOverride ?? mode)
+    const response = await sendChatMessage({
+      sessionId,
+      content,
+      mode: modeOverride ?? mode,
+    })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))

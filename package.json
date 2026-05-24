@@ -11,7 +11,11 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "deploy": "cd apps/api && pnpm deploy",
-    "deploy:prod": "cd apps/api && pnpm deploy:prod"
+    "deploy:prod": "cd apps/api && pnpm deploy:prod",
+    "openapi:export": "pnpm --filter api openapi:export",
+    "openapi:check": "pnpm --filter api openapi:check",
+    "sdk:generate": "pnpm --filter @ship/sdk generate",
+    "sdk:generate:check": "pnpm --filter @ship/sdk generate:check"
   },
   "devDependencies": {
     "eslint-config-next": "^16",

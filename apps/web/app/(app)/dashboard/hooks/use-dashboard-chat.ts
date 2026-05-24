@@ -68,7 +68,7 @@ export function useDashboardChat(
 
   useEffect(() => {
     if (!activeSessionId || !liveSessionStatus?.isRunning) return
-    const hasStreamingPlaceholder = messages.some(
+    const hasStreamingPlaceholder = messagesRef.current.some(
       (m) => m.role === 'assistant' && !m.content && !m.toolInvocations?.length && !m.reasoning?.length,
     )
     if (!hasStreamingPlaceholder) {
@@ -76,7 +76,7 @@ export function useDashboardChat(
       getStreamingRefs(activeSessionId).streamingMessageRef.current = placeholder.id
       setMessages((prev) => [...prev, placeholder])
     }
-  }, [activeSessionId, liveSessionStatus?.isRunning, messages, setMessages])
+  }, [activeSessionId, liveSessionStatus?.isRunning, setMessages])
 
   const { wsStatus, connectWebSocket, consumeSSE } = useSessionConnection({
     activeSessionId,

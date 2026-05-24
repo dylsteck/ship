@@ -1,9 +1,10 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { SessionSummary } from '@ship/contracts'
 
-import type { Message as APIMessage } from '@/lib/api/chat-client'
+import type { Message as APIMessage } from '@/lib/api/chat-types'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
+import { isActiveSseSession } from '@/lib/active-sse-session'
 import { SessionSummarySchema } from '@ship/contracts'
 
 /** Handlers for dashboard WebSocket frames routed through {@link SessionConnection}. */
@@ -129,6 +130,7 @@ export function routeWebSocketEvent(
   }
 
   if (event.type === 'agent-event' && event.event) {
+    if (isActiveSseSession(sessionId)) return
     onAgentEvent?.(sessionId, event.event)
   }
 }

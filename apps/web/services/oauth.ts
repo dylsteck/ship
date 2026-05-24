@@ -1,4 +1,5 @@
 import type { CreateUserInput } from '@ship/types'
+import { createShipServiceClient } from '@ship/sdk/service'
 import { API_URL } from '@/lib/config'
 
 const API_SECRET = process.env.API_SECRET
@@ -19,35 +20,30 @@ export interface StoreGitHubAccountInput {
   scope: string
 }
 
-function serviceAuthHeaders(): HeadersInit {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${API_SECRET}`,
-  }
+function serviceClient() {
+  if (!API_SECRET) throw new Error('API_SECRET is not configured')
+  return createShipServiceClient({ baseUrl: API_URL, apiSecret: API_SECRET })
 }
 
 /**
  * Create or update a Ship user from a GitHub OAuth profile.
- *
- * @param input - User fields accepted by the Worker OAuth upsert route.
  */
 export async function upsertOAuthUser(input: CreateUserInput): Promise<UpsertOAuthUserResult> {
-  const response = await fetch(`${API_URL}/users/upsert`, {
-    method: 'POST',
-    headers: serviceAuthHeaders(),
-    body: JSON.stringify(input),
+  const client = serviceClient()
+  const result = await client.upsertUser({
+    githubId: input.githubId,
+    username: input.username,
+    email: input.email,
+    name: input.name,
+    avatarUrl: input.avatarUrl,
   })
 
-  if (response.ok) {
-    const body = (await response.json()) as { userId: string; isNewUser: boolean }
-    return { ok: true, userId: body.userId, isNewUser: body.isNewUser }
+  if (result.data) {
+    return { ok: true, userId: result.data.userId, isNewUser: result.data.isNewUser }
   }
 
-  if (response.status === 403) {
-    const body = await response.json().catch(() => null)
-    if (body?.error === 'access_restricted') {
-      return { ok: false, accessRestricted: true }
-    }
+  if (result.response?.status === 403) {
+    return { ok: false, accessRestricted: true }
   }
 
   return { ok: false, accessRestricted: false }
@@ -55,13 +51,16 @@ export async function upsertOAuthUser(input: CreateUserInput): Promise<UpsertOAu
 
 /**
  * Store the GitHub OAuth token metadata used for repository access.
- *
- * @param input - Account token payload accepted by the Worker account route.
  */
 export async function storeGitHubOAuthAccount(input: StoreGitHubAccountInput): Promise<void> {
-  await fetch(`${API_URL}/accounts/github`, {
-    method: 'POST',
-    headers: serviceAuthHeaders(),
-    body: JSON.stringify(input),
+  const client = serviceClient()
+  await client.storeGitHubAccount({
+    userId: input.userId,
+    providerAccountId: input.providerAccountId,
+    accessToken: input.accessToken,
+    refreshToken: input.refreshToken ?? undefined,
+    expiresAt: input.expiresAt ?? undefined,
+    tokenType: input.tokenType,
+    scope: input.scope,
   })
 }

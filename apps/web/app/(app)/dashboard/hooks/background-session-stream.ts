@@ -113,7 +113,12 @@ export async function runBackgroundSessionStream(
   postSessionSync({ type: 'session-streaming', sessionId })
   let accumulatedText = ''
   try {
-    const response = await sendChatMessage(sessionId, content, sessionMode, modelId ?? DEFAULT_ACP_MODEL_ID)
+    const response = await sendChatMessage({
+      sessionId,
+      content,
+      mode: sessionMode,
+      model: modelId ?? DEFAULT_ACP_MODEL_ID,
+    })
     if (!response.ok || !response.body) {
       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
       return

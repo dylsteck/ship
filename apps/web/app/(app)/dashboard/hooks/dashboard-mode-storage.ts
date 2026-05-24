@@ -21,6 +21,6 @@ export function setStoredMode(mode: import('@/lib/api/types').AgentModeId): void
 export const DEFAULT_ACP_MODEL_ID = 'ship-acp-opencode'
 
 export const DEFAULT_MODES: import('@/lib/api/types').AgentMode[] = [
-  { id: 'build', label: 'build' },
-  { id: 'plan', label: 'plan' },
+  { id: 'build', name: 'build' },
+  { id: 'plan', name: 'plan' },
 ]

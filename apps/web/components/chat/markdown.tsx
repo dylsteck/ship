@@ -1,11 +1,15 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
-import { mermaid } from '@streamdown/mermaid'
+import { mermaid as mermaidPlugin } from '@streamdown/mermaid'
 import { cn } from '@ship/ui'
 import type { Components } from 'react-markdown'
+import type { ControlsConfig, MermaidErrorComponentProps } from 'streamdown'
+
+import { normalizeMermaidCodeBlocks } from '@/lib/markdown-mermaid'
+import { MermaidBlockRenderer } from './mermaid-block'
 
 interface MarkdownProps {
   content: string
@@ -28,7 +32,14 @@ interface MarkdownProps {
 const STREAMING_ANIMATION = { animation: 'fadeIn', duration: 250, easing: 'ease-out' } as const
 
 // Stable references — hoisted outside component to avoid re-creating on every render
-const PLUGINS = { code, mermaid } as never
+const PLUGINS = { code, mermaid: mermaidPlugin, renderers: [{ language: 'mermaid', component: MermaidBlockRenderer }] } as never
+
+const MERMAID_OPTIONS = { errorComponent: MermaidErrorFallback }
+const STREAMDOWN_CONTROLS: ControlsConfig = {
+  code: { copy: true, download: false },
+  mermaid: { copy: true, download: false, fullscreen: true, panZoom: true },
+  table: { copy: true, download: false, fullscreen: true },
+}
 
 const customComponents: Components = {
   a({ href, children, ...props }) {
@@ -134,17 +145,38 @@ const customComponents: Components = {
 }
 
 export const Markdown = memo(function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
+  const normalizedContent = useMemo(() => normalizeMermaidCodeBlocks(content), [content])
+
   return (
     <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed [contain:layout_style]', className)}>
       <Streamdown
         plugins={PLUGINS}
         components={customComponents}
+        mermaid={MERMAID_OPTIONS}
+        controls={STREAMDOWN_CONTROLS}
         mode="static"
         isAnimating={isAnimating}
         animated={isAnimating ? STREAMING_ANIMATION : undefined}
       >
-        {content}
+        {normalizedContent}
       </Streamdown>
     </div>
   )
 })
+
+function MermaidErrorFallback({ chart, error }: MermaidErrorComponentProps) {
+  return (
+    <div className="my-3 rounded-md border border-border/70 bg-muted/30 p-3 text-sm text-foreground">
+      <p className="mb-2 font-medium">Unable to render Mermaid diagram</p>
+      <p className="mb-3 text-muted-foreground">{error}</p>
+      <details>
+        <summary className="cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+          Show source
+        </summary>
+        <pre className="mt-2 max-h-80 overflow-auto rounded-md bg-background p-3 text-xs leading-relaxed text-muted-foreground">
+          {chart}
+        </pre>
+      </details>
+    </div>
+  )
+}

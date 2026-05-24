@@ -1,52 +1,45 @@
 'use client'
 
-import useSWR from 'swr'
-import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  getAccountsGithubDefaultRepo,
+  postAccountsGithubDefaultRepo,
+  unwrapSdkData,
+} from '@ship/sdk'
+import { queryKeys } from '../query-keys'
 
-export interface DefaultRepoResponse {
-  repoFullName: string | null
-}
-
-/**
- * Hook to fetch the JWT user's default repository preference.
- */
 export function useDefaultRepo(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<DefaultRepoResponse | null>(
-    fetchEnabled ? apiUrl('/accounts/github/default-repo') : null,
-    async (url: string) => {
+  const { data, error, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.defaultRepo,
+    queryFn: async () => {
       try {
-        return await fetcher<DefaultRepoResponse>(url)
+        return unwrapSdkData(await getAccountsGithubDefaultRepo())
       } catch (err: unknown) {
         if ((err as { status?: number })?.status === 404) return null
         throw err
       }
     },
-  )
+    enabled: Boolean(fetchEnabled),
+  })
 
   return {
     defaultRepoFullName: data?.repoFullName ?? null,
     isLoading,
     isError: !!error,
     error,
-    mutate,
+    mutate: refetch,
   }
 }
 
-/**
- * Mutation hook to set user's default repo
- */
 export function useSetDefaultRepo() {
-  const { trigger, isMutating, error } = useSWRMutation(
-    'set-default-repo',
-    async (_key: string, { arg }: { arg: { repoFullName: string } }) => {
-      return post<{ repoFullName: string }, DefaultRepoResponse>(apiUrl('/accounts/github/default-repo'), arg)
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (arg: { repoFullName: string }) =>
+      unwrapSdkData(await postAccountsGithubDefaultRepo({ body: { repoFullName: arg.repoFullName } })),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.defaultRepo })
     },
-  )
+  })
 
-  return {
-    setDefaultRepo: trigger,
-    isSetting: isMutating,
-    error,
-  }
+  return { setDefaultRepo: mutation.mutateAsync, isSetting: mutation.isPending, error: mutation.error }
 }

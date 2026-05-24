@@ -11,12 +11,15 @@
     "deploy:prod": "wrangler deploy --env production",
     "predeploy:prod": "node ./scripts/bundle-acp-bridge.mjs",
     "bundle:acp-bridge": "node ./scripts/bundle-acp-bridge.mjs",
+    "openapi:export": "tsx scripts/export-openapi.ts",
+    "openapi:check": "pnpm openapi:export && git diff --exit-code openapi/ship-api.openapi.json",
     "pretypecheck": "node ./scripts/bundle-acp-bridge.mjs",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@e2b/code-interpreter": "^2.3.3",
     "@octokit/rest": "^22.0.1",
     "@ship/contracts": "workspace:*",
@@ -31,6 +34,7 @@
     "@cloudflare/workers-types": "^4.20260317.1",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.4",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.1",
     "vitest": "^3.0.0",
