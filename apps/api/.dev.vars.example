@@ -23,7 +23,10 @@ SESSION_SECRET=your-session-secret-here
 # OPENAI_API_KEY=sk-...
 
 # Codex ChatGPT subscription access token (optional — preferred over OPENAI_API_KEY for Codex sub billing)
-# Obtain yourself; Ship runs `printenv CODEX_ACCESS_TOKEN | codex login --with-access-token` in the sandbox.
+# Create at https://chatgpt.com/admin/access-tokens (Business/Enterprise) or extract after `codex login` locally.
+# Local: uncomment and set here (this file is copied to `.dev.vars`, which is gitignored).
+# Production: npx wrangler secret put CODEX_ACCESS_TOKEN --env production
+# Ship runs `printenv CODEX_ACCESS_TOKEN | codex login --with-access-token` in the sandbox.
 # See https://developers.openai.com/codex/auth
 # CODEX_ACCESS_TOKEN=
 
