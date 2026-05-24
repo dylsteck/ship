@@ -84,20 +84,25 @@ async function broadcastToDurableObject(stub: { fetch: typeof fetch }, event: Sh
   )
 }
 
+/** Returns true when assistant output should be written to message history. */
+export function hasPersistableAssistantOutput(content: string, parts?: Record<string, unknown>[]): boolean {
+  return Boolean(content.trim()) || Boolean(parts && parts.length > 0)
+}
+
 /** Persist assistant text (and optional structured parts) to SessionDO message history. */
 export async function persistAssistantMessage(
   stub: { fetch: typeof fetch },
   content: string,
   parts?: Record<string, unknown>[],
 ): Promise<void> {
-  if (!content.trim()) return
+  if (!hasPersistableAssistantOutput(content, parts)) return
   await stub.fetch(
     new Request(`${DO_URL}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         role: 'assistant',
-        content,
+        content: content.trim(),
         ...(parts && parts.length > 0 ? { parts: JSON.stringify(parts) } : {}),
       }),
     }),

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { MutableRefObject } from 'react'
 
 /** Ephemeral streaming text accumulated before flush into React state. */
 export interface StreamingBuffer {
@@ -23,6 +24,97 @@ function getOrCreateBufferRef(sessionId: string): StreamingBuffer {
     bufferRefs.set(sessionId, buffer)
   }
   return buffer
+}
+
+export interface SessionStreamingRefs {
+  streamingMessageRef: MutableRefObject<string | null>
+  assistantTextRef: MutableRefObject<string>
+  reasoningRef: MutableRefObject<string>
+}
+
+/** Returns ref-compatible accessors backed by the module-level buffer for {@link sessionId}. */
+export function getStreamingRefs(sessionId: string): SessionStreamingRefs {
+  const buffer = getOrCreateBufferRef(sessionId)
+  return {
+    streamingMessageRef: {
+      get current() {
+        return buffer.messageId
+      },
+      set current(value: string | null) {
+        buffer.messageId = value
+      },
+    },
+    assistantTextRef: {
+      get current() {
+        return buffer.text
+      },
+      set current(value: string) {
+        buffer.text = value
+      },
+    },
+    reasoningRef: {
+      get current() {
+        return buffer.reasoning
+      },
+      set current(value: string) {
+        buffer.reasoning = value
+      },
+    },
+  }
+}
+
+/**
+ * Ref-compatible accessors for whichever session is currently active in the dashboard.
+ *
+ * @param getActiveSessionId - Returns the active session id (may change between reads)
+ */
+export function createActiveSessionStreamingRefs(
+  getActiveSessionId: () => string | null,
+): SessionStreamingRefs {
+  return {
+    streamingMessageRef: {
+      get current() {
+        const sessionId = getActiveSessionId()
+        return sessionId ? getOrCreateBufferRef(sessionId).messageId : null
+      },
+      set current(value: string | null) {
+        const sessionId = getActiveSessionId()
+        if (!sessionId) return
+        getOrCreateBufferRef(sessionId).messageId = value
+      },
+    },
+    assistantTextRef: {
+      get current() {
+        const sessionId = getActiveSessionId()
+        return sessionId ? getOrCreateBufferRef(sessionId).text : ''
+      },
+      set current(value: string) {
+        const sessionId = getActiveSessionId()
+        if (!sessionId) return
+        getOrCreateBufferRef(sessionId).text = value
+      },
+    },
+    reasoningRef: {
+      get current() {
+        const sessionId = getActiveSessionId()
+        return sessionId ? getOrCreateBufferRef(sessionId).reasoning : ''
+      },
+      set current(value: string) {
+        const sessionId = getActiveSessionId()
+        if (!sessionId) return
+        getOrCreateBufferRef(sessionId).reasoning = value
+      },
+    },
+  }
+}
+
+/** Clear in-flight streaming buffer fields for a session without removing store keys. */
+export function clearStreamingBuffer(sessionId: string): void {
+  const buffer = bufferRefs.get(sessionId)
+  if (!buffer) return
+  buffer.messageId = null
+  buffer.text = ''
+  buffer.reasoning = ''
 }
 
 export interface ChatStoreState {

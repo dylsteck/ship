@@ -2,6 +2,7 @@
 
 import { sendChatMessage } from '@/lib/api/chat-client'
 import { postSessionSync } from '@/lib/session-sync-channel'
+import { getStreamingRefs } from '@/lib/chat-store/store'
 import { sessionStatusStore } from './use-session-status-store'
 import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
 import { isGenericError } from './sse-event-handlers'
@@ -25,15 +26,17 @@ async function handleSendError(
   const { category, retryable } = classifyError(errorContent)
   const action = actionForChatErrorPayload(errorData as { category?: string })
 
+  const streamingRefs = getStreamingRefs(targetSessionId)
+
   chat.setMessages((prev) => {
-    const filtered = prev.filter((m) => m.id !== chat.streamingMessageRef.current)
+    const filtered = prev.filter((m) => m.id !== streamingRefs.streamingMessageRef.current)
     return [...filtered, createErrorMessage(errorContent, category, retryable, errorContent, action)]
   })
 
   sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
   chat.setIsStreaming(false)
   chat.setStreamingStatus('')
-  chat.streamingMessageRef.current = null
+  streamingRefs.streamingMessageRef.current = null
   terminalStreamSessionsRef.current.add(targetSessionId)
 }
 
@@ -45,8 +48,9 @@ function handleSendCatch(
 ): void {
   console.error('Chat error:', err)
   sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
+  const streamingRefs = getStreamingRefs(targetSessionId)
   chat.setMessages((prev) => {
-    const filtered = prev.filter((m) => m.id !== chat.streamingMessageRef.current)
+    const filtered = prev.filter((m) => m.id !== streamingRefs.streamingMessageRef.current)
     return [
       ...filtered,
       createErrorMessage(
@@ -58,7 +62,7 @@ function handleSendCatch(
   })
   chat.setIsStreaming(false)
   chat.setStreamingStatus('')
-  chat.streamingMessageRef.current = null
+  streamingRefs.streamingMessageRef.current = null
   terminalStreamSessionsRef.current.add(targetSessionId)
 }
 

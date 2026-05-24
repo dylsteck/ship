@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "lint": "echo '@ship/sandbox: no eslint (handled by api workspace)'",
-    "type-check": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": "./src/index.ts",

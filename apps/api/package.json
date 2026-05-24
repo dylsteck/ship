@@ -11,9 +11,10 @@
     "deploy:prod": "wrangler deploy --env production",
     "predeploy:prod": "node ./scripts/bundle-acp-bridge.mjs",
     "bundle:acp-bridge": "node ./scripts/bundle-acp-bridge.mjs",
-    "pretype-check": "node ./scripts/bundle-acp-bridge.mjs",
+    "pretypecheck": "node ./scripts/bundle-acp-bridge.mjs",
     "lint": "eslint \"src/**/*.ts\"",
-    "type-check": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@e2b/code-interpreter": "^2.3.3",
@@ -32,6 +33,7 @@
     "eslint": "^9.39.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.1",
+    "vitest": "^3.0.0",
     "wrangler": "^4.76.0"
   }
 }

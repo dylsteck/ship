@@ -1,5 +1,6 @@
 import type { SSEHandlerContext } from './sse-event-handlers'
 import type { useDashboardChat } from './use-dashboard-chat'
+import { getStreamingRefs } from '@/lib/chat-store/store'
 
 type ChatSlice = Pick<
   ReturnType<typeof useDashboardChat>,
@@ -17,9 +18,6 @@ type ChatSlice = Pick<
   | 'setStreamingStatus'
   | 'streamingStatusStepsRef'
   | 'clearStreamingStatusSteps'
-  | 'streamingMessageRef'
-  | 'assistantTextRef'
-  | 'reasoningRef'
 >
 
 /** Build an {@link SSEHandlerContext} from chat state + target session. */
@@ -28,6 +26,7 @@ export function createSSEHandlerContext(
   targetSessionId: string,
   accumulateSetupStepsRef: React.MutableRefObject<boolean>,
 ): SSEHandlerContext {
+  const refs = getStreamingRefs(targetSessionId)
   return {
     setMessages: chat.setMessages,
     setIsStreaming: chat.setIsStreaming,
@@ -44,9 +43,9 @@ export function createSSEHandlerContext(
     accumulateSetupStepsRef,
     streamingStatusStepsRef: chat.streamingStatusStepsRef,
     clearStreamingStatusSteps: chat.clearStreamingStatusSteps,
-    streamingMessageRef: chat.streamingMessageRef,
-    assistantTextRef: chat.assistantTextRef,
-    reasoningRef: chat.reasoningRef,
+    streamingMessageRef: refs.streamingMessageRef,
+    assistantTextRef: refs.assistantTextRef,
+    reasoningRef: refs.reasoningRef,
     targetSessionId,
   }
 }

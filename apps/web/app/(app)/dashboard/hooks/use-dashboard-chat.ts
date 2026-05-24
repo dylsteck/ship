@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { stopChatStream } from '@/lib/api/chat-client'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { createAssistantPlaceholder } from '@/lib/ai-elements-adapter'
 import type { ChatSession } from '@/lib/api/server'
+import { createActiveSessionStreamingRefs, getStreamingRefs, useChatStore } from '@/lib/chat-store/store'
+import { selectIsStreaming } from '@/lib/chat-store/selectors'
 import { useSessionPersistence } from './use-session-persistence'
 import { sessionStatusStore, useSessionStatus } from './use-session-status-store'
-import { useChatWebSocket } from './use-chat-websocket'
+import { useSessionConnection } from './use-session-connection'
 import { useChatHistoryLoader } from './use-chat-history-loader'
 
 export interface UseDashboardChatOptions {
@@ -32,16 +34,30 @@ export function useDashboardChat(
   const [messageQueue, setMessageQueue] = useState<string[]>([])
 
   const liveSessionStatus = useSessionStatus(activeSessionId ?? '')
-  const isStreaming = internalIsStreaming || Boolean(activeSessionId && liveSessionStatus?.isRunning)
+  const storeIsStreaming = useChatStore(selectIsStreaming(activeSessionId ?? ''))
+  const isStreaming =
+    internalIsStreaming || storeIsStreaming || Boolean(activeSessionId && liveSessionStatus?.isRunning)
 
   const persistence = useSessionPersistence(activeSessionId)
   const { setAgentUrl, setAgentSessionId, setSandboxStatus } = persistence
 
-  const streamingMessageRef = useRef<string | null>(null)
-  const assistantTextRef = useRef<string>('')
-  const reasoningRef = useRef<string>('')
   const messagesRef = useRef<UIMessage[]>([])
   const activeSessionIdRef = useRef<string | null>(activeSessionId)
+  const streamingRefs = useMemo(
+    () => createActiveSessionStreamingRefs(() => activeSessionIdRef.current),
+    [],
+  )
+  const { streamingMessageRef, assistantTextRef, reasoningRef } = streamingRefs
+
+  const setIsStreaming = useCallback(
+    (value: boolean) => {
+      setInternalIsStreaming(value)
+      if (activeSessionIdRef.current) {
+        useChatStore.getState().setIsStreaming(activeSessionIdRef.current, value)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId
@@ -57,12 +73,12 @@ export function useDashboardChat(
     )
     if (!hasStreamingPlaceholder) {
       const placeholder = createAssistantPlaceholder()
-      streamingMessageRef.current = placeholder.id
+      getStreamingRefs(activeSessionId).streamingMessageRef.current = placeholder.id
       setMessages((prev) => [...prev, placeholder])
     }
   }, [activeSessionId, liveSessionStatus?.isRunning, messages, setMessages])
 
-  const { wsStatus, connectWebSocket } = useChatWebSocket({
+  const { wsStatus, connectWebSocket, consumeSSE } = useSessionConnection({
     activeSessionId,
     setMessages,
     streamingMessageRef,
@@ -89,9 +105,12 @@ export function useDashboardChat(
       // Ignore stop errors
     }
     setInternalIsStreaming(false)
+    if (activeSessionId) {
+      useChatStore.getState().setIsStreaming(activeSessionId, false)
+    }
     sessionStatusStore.update(activeSessionId, { isRunning: false, status: 'Stopped' })
     streamingMessageRef.current = null
-  }, [activeSessionId])
+  }, [activeSessionId, streamingMessageRef])
 
   const updateSessionTitle = useCallback((sessionId: string, title: string) => {
     setLocalSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title } : s)))
@@ -117,11 +136,12 @@ export function useDashboardChat(
     messages,
     setMessages,
     isStreaming,
-    setIsStreaming: setInternalIsStreaming,
+    setIsStreaming,
     messageQueue,
     setMessageQueue,
     wsStatus,
     connectWebSocket,
+    consumeSSE,
     streamingMessageRef,
     assistantTextRef,
     reasoningRef,

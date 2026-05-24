@@ -24,11 +24,11 @@ pnpm dev
 
 ```bash
 pnpm build        # Build all apps
-pnpm type-check   # Type check only
+pnpm typecheck   # Type check only
 pnpm lint         # Lint all packages
 ```
 
-> **After making changes:** always run `pnpm build && pnpm lint && pnpm type-check` before finishing. Fix any errors before considering the task done.
+> **After making changes:** always run `pnpm build && pnpm lint && pnpm typecheck` before finishing. Fix any errors before considering the task done.
 
 ### Deployment
 

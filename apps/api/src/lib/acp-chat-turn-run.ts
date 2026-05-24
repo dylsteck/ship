@@ -266,7 +266,16 @@ async function finalizeSuccessfulTurn(input: RunChatTurnInput, runtime: TurnRunt
   return { assistantText: runtime.assistantText, totals: emptyStepTotals(), hadToolCalls: false, outcome: 'completed' }
 }
 
+async function persistPartialAssistantTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<void> {
+  const finalParts = runtime.translator.getFinalParts()
+  if (!runtime.assistantText.trim() && finalParts.length === 0 && !runtime.sawVisibleAssistantOutput) {
+    return
+  }
+  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts)
+}
+
 async function handleStoppedTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<ChatTurnResult> {
+  await persistPartialAssistantTurn(input, runtime)
   await patchMeta(input.stub, { agent_should_stop: 'false', agent_paused: 'false' })
   await writeStatus(input.stream, 'stopped', 'Agent stopped.')
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
@@ -274,7 +283,16 @@ async function handleStoppedTurn(input: RunChatTurnInput, runtime: TurnRuntime):
   return { assistantText: runtime.assistantText, totals: emptyStepTotals(), hadToolCalls: false, outcome: 'interrupted' }
 }
 
-async function handleFailedTurn(input: RunChatTurnInput, error: unknown): Promise<ChatTurnResult> {
+async function handleFailedTurn(
+  input: RunChatTurnInput,
+  error: unknown,
+  runtime?: TurnRuntime,
+): Promise<ChatTurnResult> {
+  if (runtime) {
+    await persistPartialAssistantTurn(input, runtime).catch((persistError) => {
+      console.warn('[acp] failed to persist partial assistant message', persistError)
+    })
+  }
   const msg = error instanceof Error ? error.message : String(error)
   await emitEvent(input, {
     type: 'session.error',
@@ -297,9 +315,11 @@ async function handleFailedTurn(input: RunChatTurnInput, error: unknown): Promis
  */
 export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResult> {
   let lastError: unknown
+  let lastRuntime: TurnRuntime | undefined
 
   for (let attempt = 0; attempt <= 1; attempt++) {
     const runtime = createTurnRuntime(input.sessionId)
+    lastRuntime = runtime
 
     try {
       const { backend, workingDirectory, canReuseProtocolSession, meta } = await prepareTurnMeta(input)
@@ -327,7 +347,7 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
     }
   }
 
-  return handleFailedTurn(input, lastError ?? new Error('Unexpected retry loop exit'))
+  return handleFailedTurn(input, lastError ?? new Error('Unexpected retry loop exit'), lastRuntime)
 }
 
 /** Re-export for stable import path via chat-runner facade. */

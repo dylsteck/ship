@@ -1,4 +1,5 @@
 import { createAssistantPlaceholder } from '@/lib/ai-elements-adapter'
+import { getStreamingRefs } from '@/lib/chat-store/store'
 import { sessionStatusStore } from './use-session-status-store'
 import { handleGenericError, handleSessionError } from './sse-event-handlers'
 import { createSSEHandlerContext } from './sse-handler-context'
@@ -64,7 +65,7 @@ export function ensureStreamingPlaceholder({
   if (!isStreamingEvent) return false
 
   const placeholder = createAssistantPlaceholder()
-  chat.streamingMessageRef.current = placeholder.id
+  getStreamingRefs(sessionId).streamingMessageRef.current = placeholder.id
   chat.setMessages((prev) => [...prev, placeholder])
   chat.setIsStreaming(true)
   const now = Date.now()

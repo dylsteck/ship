@@ -1,24 +1,33 @@
-import { SessionSummarySchema } from '@ship/contracts'
+import type { Dispatch, SetStateAction } from 'react'
+import type { SessionSummary } from '@ship/contracts'
+
 import type { Message as APIMessage } from '@/lib/api/chat-client'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
-import { sessionStatusStore } from './use-session-status-store'
+import { SessionSummarySchema } from '@ship/contracts'
 
-export interface ChatWebSocketHandlers {
-  setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
+/** Handlers for dashboard WebSocket frames routed through {@link SessionConnection}. */
+export interface RouteWebSocketEventHandlers {
+  setMessages: Dispatch<SetStateAction<UIMessage[]>>
   streamingMessageRef: React.MutableRefObject<string | null>
   setAgentUrl: (url: string) => void
   setAgentSessionId: (id: string) => void
   setSandboxStatus: (status: string) => void
-  onAgentEventRef?: React.MutableRefObject<
-    ((sessionId: string, event: { type: string; [k: string]: unknown }) => void) | null
-  >
+  onSummary?: (summary: SessionSummary) => void
+  onAgentEvent?: (sessionId: string, event: { type: string; [k: string]: unknown }) => void
 }
 
-export function handleChatWebSocketMessage(
+/**
+ * Route a SessionDO WebSocket payload to dashboard state updaters.
+ *
+ * @param sessionId - Active chat session id
+ * @param data - Parsed WebSocket JSON payload
+ * @param handlers - React setters and side-channel callbacks
+ */
+export function routeWebSocketEvent(
   sessionId: string,
   data: unknown,
-  handlers: ChatWebSocketHandlers,
+  handlers: RouteWebSocketEventHandlers,
 ): void {
   const event = data as {
     type: string
@@ -29,22 +38,24 @@ export function handleChatWebSocketMessage(
     url?: string
     agentSessionId?: string
     status?: string
+    properties?: { summary?: unknown }
     event?: { type: string; [k: string]: unknown }
   }
 
-  const { setMessages, streamingMessageRef, setAgentUrl, setAgentSessionId, setSandboxStatus, onAgentEventRef } =
-    handlers
+  const {
+    setMessages,
+    streamingMessageRef,
+    setAgentUrl,
+    setAgentSessionId,
+    setSandboxStatus,
+    onSummary,
+    onAgentEvent,
+  } = handlers
 
   if (event.type === 'session.summary.updated') {
-    const raw = (event as { properties?: { summary?: unknown } }).properties?.summary
-    const parsed = SessionSummarySchema.safeParse(raw)
+    const parsed = SessionSummarySchema.safeParse(event.properties?.summary)
     if (parsed.success) {
-      const summary = parsed.data
-      sessionStatusStore.update(sessionId, {
-        title: summary.title,
-        isRunning: Boolean(summary.streaming),
-        status: summary.activeTool ? `Running ${summary.activeTool}` : summary.streaming ? 'Streaming' : '',
-      })
+      onSummary?.(parsed.data)
     }
     return
   }
@@ -118,6 +129,6 @@ export function handleChatWebSocketMessage(
   }
 
   if (event.type === 'agent-event' && event.event) {
-    onAgentEventRef?.current?.(sessionId, event.event)
+    onAgentEvent?.(sessionId, event.event)
   }
 }

@@ -12,6 +12,7 @@
  */
 
 import type { Context } from 'hono'
+import type { TurnDiffSummary } from '@ship/contracts'
 import { streamSSE } from 'hono/streaming'
 import { chatPostBodySchema, parseJsonBody } from '../lib/api-schemas'
 import { acpBackendFromModelId } from '../lib/acp-types'
@@ -24,6 +25,8 @@ import { generateSessionTitle } from '../lib/generate-session-title'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
 import type { AuthedEnv } from '../lib/session-authorization'
 import { requireSessionOwner } from '../lib/session-authorization'
+import { captureTurnGitBaseline, computeTurnDiffSummary, type GitNumstatMap } from '../lib/turn-git-diff'
+import type { Sandbox } from '@ship/sandbox'
 
 const MAX_PROMPT_LENGTH = 100_000
 const DO_URL = 'https://do'
@@ -66,6 +69,10 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
   const turnId = crypto.randomUUID()
 
   return streamSSE(c, async (stream) => {
+    let gitBaseline: GitNumstatMap | null = null
+    let turnSandbox: Sandbox | null = null
+    let turnWorkingDirectory: string | null = null
+
     try {
       await startTurn(stub, sessionId, turnId)
       await writeStatus(stream, 'initializing', 'Preparing agent...')
@@ -94,6 +101,10 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
         return
       }
 
+      turnSandbox = workspace.workspace.sandbox
+      turnWorkingDirectory = workspace.workspace.workingDirectory
+      gitBaseline = await captureTurnGitBaseline(turnSandbox, turnWorkingDirectory)
+
       const history = await loadHistory(stub)
       const messages = appendUserMessage(toChatTurnMessages(history.slice(0, -1)), content)
 
@@ -101,7 +112,7 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
 
       const turn = await runChatTurn({
         sessionId,
-        sandbox: workspace.workspace.sandbox,
+        sandbox: turnSandbox,
         messages,
         ...(modelId ? { modelId } : {}),
         ...(mode === 'plan' ? { planMode: true } : {}),
@@ -111,7 +122,9 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
       })
 
       const turnStatus = turn.outcome === 'interrupted' ? 'interrupted' : turn.outcome
-      await finishTurn(stub, turnId, turnStatus)
+      const diffSummary = await resolveTurnDiffSummary(gitBaseline, turnSandbox, turnWorkingDirectory)
+      await emitSessionDiff(stream, diffSummary)
+      await finishTurn(stub, turnId, turnStatus, diffSummary)
       await broadcastSessionSummary(stub, { latestTurnId: turnId, isStreaming: false })
 
       if (turn.outcome === 'completed') {
@@ -119,7 +132,11 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
       }
     } catch (error) {
       console.error(`[chat:${sessionId}] Stream handler failed:`, error)
-      await finishTurn(stub, turnId, 'failed').catch((finishError) => {
+      const diffSummary = await resolveTurnDiffSummary(gitBaseline, turnSandbox, turnWorkingDirectory)
+      await emitSessionDiff(stream, diffSummary).catch((diffError) => {
+        console.warn(`[chat:${sessionId}] Failed to emit session diff:`, diffError)
+      })
+      await finishTurn(stub, turnId, 'failed', diffSummary).catch((finishError) => {
         console.warn(`[chat:${sessionId}] Failed to complete turn record:`, finishError)
       })
       await broadcastSessionSummary(stub, { latestTurnId: turnId, isStreaming: false }).catch((summaryError) => {
@@ -186,12 +203,16 @@ async function finishTurn(
   stub: { fetch: typeof fetch },
   turnId: string,
   status: 'completed' | 'failed' | 'interrupted',
+  diffSummary?: TurnDiffSummary[],
 ): Promise<void> {
   await stub.fetch(
     new Request(`${DO_URL}/turns/${turnId}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        ...(diffSummary && diffSummary.length > 0 ? { diffSummary } : {}),
+      }),
     }),
   )
   await stub.fetch(
@@ -201,6 +222,32 @@ async function finishTurn(
       body: JSON.stringify({ type: `turn.${status}`, payload: { turnId } }),
     }),
   )
+}
+
+async function resolveTurnDiffSummary(
+  gitBaseline: GitNumstatMap | null,
+  sandbox: Sandbox | null,
+  workingDirectory: string | null,
+): Promise<TurnDiffSummary[] | undefined> {
+  if (!gitBaseline || !sandbox || !workingDirectory) return undefined
+  try {
+    const diffSummary = await computeTurnDiffSummary(gitBaseline, sandbox, workingDirectory)
+    return diffSummary.length > 0 ? diffSummary : undefined
+  } catch (error) {
+    console.warn('[chat] Failed to compute turn git diff:', error)
+    return undefined
+  }
+}
+
+async function emitSessionDiff(
+  stream: { writeSSE: (payload: { event: string; data: string }) => Promise<void> },
+  diffSummary?: TurnDiffSummary[],
+): Promise<void> {
+  if (!diffSummary || diffSummary.length === 0) return
+  await stream.writeSSE({
+    event: 'session.diff',
+    data: JSON.stringify({ type: 'session.diff', properties: { diff: diffSummary } }),
+  })
 }
 
 async function broadcastSessionSummary(

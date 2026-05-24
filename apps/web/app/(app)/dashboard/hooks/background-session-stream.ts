@@ -1,5 +1,7 @@
 import { sendChatMessage } from '@/lib/api/chat-client'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
+import { consumeSSEBody } from '@/lib/session-connection'
+import { getStreamingRefs } from '@/lib/chat-store/store'
 import { isAgentHarnessEvent } from '@/lib/sse-types'
 import { sessionStatusStore } from './use-session-status-store'
 import { eventsStore } from './use-events-store'
@@ -63,55 +65,40 @@ function handleLifecycleEvent(
   }
 }
 
-function processBackgroundSSELine(
+function processBackgroundSSEEvent(
   sessionId: string,
-  line: string,
-  currentEventType: string,
+  rawData: Record<string, unknown>,
   accumulatedText: string,
   chat: ReturnType<typeof useDashboardChat>,
   processStreamEventForSession?: (sessionId: string, event: { type: string; [k: string]: unknown }) => void,
-): { accumulatedText: string; currentEventType: string } {
-  if (line.startsWith('event: ')) {
-    return { accumulatedText, currentEventType: line.slice(7).trim() }
-  }
-  if (!line.startsWith('data: ')) {
-    return { accumulatedText, currentEventType }
+): string {
+  const eventType: string = typeof rawData.type === 'string' ? rawData.type : 'unknown'
+  if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
+    eventsStore.addEvent(sessionId, {
+      id: crypto.randomUUID(),
+      type: eventType,
+      timestamp: Date.now(),
+      payload: rawData,
+    })
   }
 
-  try {
-    const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
-    if (!rawData.type && currentEventType) rawData.type = currentEventType
-    if (!rawData.type && typeof rawData.error === 'string') rawData.type = 'error'
+  const event = parseSSEEvent(rawData)
+  if (!event) return accumulatedText
 
-    const eventType: string = typeof rawData.type === 'string' ? rawData.type : currentEventType || 'unknown'
-    if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
-      eventsStore.addEvent(sessionId, {
-        id: crypto.randomUUID(),
-        type: eventType,
-        timestamp: Date.now(),
-        payload: rawData,
-      })
+  const type = (event as { type: string }).type
+
+  if (chat.activeSessionIdRef?.current === sessionId && processStreamEventForSession) {
+    const stored = sessionStatusStore.get(sessionId)
+    const streamingRefs = getStreamingRefs(sessionId)
+    if (stored?.contentPreview && !streamingRefs.assistantTextRef.current) {
+      streamingRefs.assistantTextRef.current = stored.contentPreview
     }
-
-    const event = parseSSEEvent(rawData)
-    if (!event) return { accumulatedText, currentEventType }
-
-    const type = (event as { type: string }).type
-
-    if (chat.activeSessionIdRef?.current === sessionId && processStreamEventForSession) {
-      const stored = sessionStatusStore.get(sessionId)
-      if (stored?.contentPreview && !chat.assistantTextRef?.current) {
-        chat.assistantTextRef.current = stored.contentPreview
-      }
-      processStreamEventForSession(sessionId, event as { type: string; [k: string]: unknown })
-    }
-
-    const nextText = applySessionStatusUpdate(sessionId, event, accumulatedText)
-    handleLifecycleEvent(sessionId, type, event, chat)
-    return { accumulatedText: nextText, currentEventType }
-  } catch {
-    return { accumulatedText, currentEventType }
+    processStreamEventForSession(sessionId, event as { type: string; [k: string]: unknown })
   }
+
+  const nextText = applySessionStatusUpdate(sessionId, event, accumulatedText)
+  handleLifecycleEvent(sessionId, type, event, chat)
+  return nextText
 }
 
 export async function runBackgroundSessionStream(
@@ -131,31 +118,16 @@ export async function runBackgroundSessionStream(
       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
       return
     }
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      let currentEventType = ''
-      for (const line of lines) {
-        const result = processBackgroundSSELine(
-          sessionId,
-          line,
-          currentEventType,
-          accumulatedText,
-          chat,
-          processStreamEventForSession,
-        )
-        accumulatedText = result.accumulatedText
-        currentEventType = result.currentEventType
-      }
-    }
+    await consumeSSEBody(response.body, (rawData) => {
+      accumulatedText = processBackgroundSSEEvent(
+        sessionId,
+        rawData,
+        accumulatedText,
+        chat,
+        processStreamEventForSession,
+      )
+    })
 
     if (chat.activeSessionIdRef?.current === sessionId && processStreamEventForSession) {
       processStreamEventForSession(sessionId, { type: '__stream_finalize__' })
