@@ -42,7 +42,7 @@ export function HomepageSessionList({
   if (activeSessions.length === 0) return null
 
   return (
-    <div className="px-3 sm:px-6 pb-6 pt-2">
+    <div className="px-3 sm:px-6 pb-6 pt-6">
       <div className="max-w-2xl mx-auto">
         {groupSessionsByTime(activeSessions, now).map((group) => (
           <div key={group.label} className="mb-6">
