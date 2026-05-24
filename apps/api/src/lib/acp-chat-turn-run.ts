@@ -245,7 +245,8 @@ async function sendPrompt(
 }
 
 async function finalizeSuccessfulTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<ChatTurnResult> {
-  await persistAssistantMessage(input.stub, runtime.assistantText)
+  const finalParts = runtime.translator.getFinalParts()
+  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts)
   await emitEvent(input, makeStepFinishEvent(input.sessionId, runtime.translator.messageId, emptyStepTotals(), 'stop'))
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
   await emitEvent(input, { type: 'done' })

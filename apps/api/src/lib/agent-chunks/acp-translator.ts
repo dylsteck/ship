@@ -169,6 +169,10 @@ function translateToolCall(state: TranslatorState, data: ToolCallData): ShipSSEE
     if (Object.keys(data.input).length > 0) {
       trace.inputJson = JSON.stringify(data.input)
     }
+    if (data.output !== undefined) {
+      trace.outputJson = data.output
+      trace.endedAt = Date.now()
+    }
   }
 
   const toolName = trace.toolName
@@ -196,6 +200,8 @@ function translateToolCall(state: TranslatorState, data: ToolCallData): ShipSSEE
 export interface AcpNotificationTranslator {
   readonly messageId: string
   translateNotification(note: Record<string, unknown>): ShipSSEEvent[]
+  /** Build the final persisted parts array for this turn (tool + reasoning + text). */
+  getFinalParts(): Record<string, unknown>[]
 }
 
 export function createAcpNotificationTranslator(sessionId: string): AcpNotificationTranslator {
@@ -204,6 +210,42 @@ export function createAcpNotificationTranslator(sessionId: string): AcpNotificat
     messageId: state.messageId,
     translateNotification(note) {
       return translate(state, note)
+    },
+    getFinalParts() {
+      const parts: Record<string, unknown>[] = []
+      const base = { sessionID: state.sessionId, messageID: state.messageId }
+
+      // Text parts (cumulative — only last value matters)
+      for (const buf of state.textBuffers.values()) {
+        if (buf.text) parts.push({ ...base, id: buf.partId, type: 'text', text: buf.text })
+      }
+
+      // Reasoning parts
+      for (const buf of state.reasoningBuffers.values()) {
+        if (buf.text) parts.push({ ...base, id: buf.partId, type: 'reasoning', text: buf.text })
+      }
+
+      // Tool call parts
+      for (const trace of state.toolCalls.values()) {
+        const input = (() => { try { return JSON.parse(trace.inputJson) } catch { return {} } })()
+        const output = trace.outputJson
+        parts.push({
+          ...base,
+          id: trace.partId,
+          type: 'tool',
+          callID: trace.callId,
+          tool: trace.toolName,
+          state: {
+            status: trace.status,
+            input,
+            title: trace.toolName,
+            ...(output !== undefined ? { output } : {}),
+            time: { start: trace.startedAt, ...(trace.endedAt ? { end: trace.endedAt } : {}) },
+          },
+        })
+      }
+
+      return parts
     },
   }
 }

@@ -84,14 +84,22 @@ async function broadcastToDurableObject(stub: { fetch: typeof fetch }, event: Sh
   )
 }
 
-/** Persist assistant text to SessionDO message history. */
-export async function persistAssistantMessage(stub: { fetch: typeof fetch }, content: string): Promise<void> {
+/** Persist assistant text (and optional structured parts) to SessionDO message history. */
+export async function persistAssistantMessage(
+  stub: { fetch: typeof fetch },
+  content: string,
+  parts?: Record<string, unknown>[],
+): Promise<void> {
   if (!content.trim()) return
   await stub.fetch(
     new Request(`${DO_URL}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'assistant', content }),
+      body: JSON.stringify({
+        role: 'assistant',
+        content,
+        ...(parts && parts.length > 0 ? { parts: JSON.stringify(parts) } : {}),
+      }),
     }),
   )
 }
