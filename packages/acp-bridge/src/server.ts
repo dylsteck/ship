@@ -111,10 +111,18 @@ function spawnBackend(kind: BackendKind, client: WebSocket, model?: string): voi
     sendLog(client, 'stderr', `[ship-acp-bridge] launching Cursor ACP (model=${model && model !== 'auto' ? model : 'default'})\n`)
   }
   try {
+    const spawnEnv: Record<string, string | undefined> = {
+      ...process.env,
+      ...backendEnv(kind, model),
+    }
+    if (kind === 'codex' && process.env.CODEX_ACCESS_TOKEN) {
+      delete spawnEnv.OPENAI_API_KEY
+      delete spawnEnv.CODEX_API_KEY
+    }
     child = spawn(cmd, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...backendEnv(kind, model) },
+      env: spawnEnv as NodeJS.ProcessEnv,
     })
   } catch (err) {
     sendCtl(client, { op: 'spawn', status: 'error', backend: kind, message: `spawn failed: ${String(err)}` })

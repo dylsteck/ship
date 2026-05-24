@@ -11,11 +11,11 @@
 import type { Sandbox } from '@ship/sandbox'
 import type { Env } from '../env.d'
 import { ACP_BRIDGE_BUNDLE } from '../generated/acp-bridge-bundled'
-import { codexAccessTokenLoginShell } from './codex-auth-bootstrap'
+import { codexAccessTokenLoginBody, codexAccessTokenLoginShell } from './codex-auth-bootstrap'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 
 export const ACP_RELAY_PORT_DEFAULT = 9847
-const ACP_BRIDGE_VERSION = '7'
+const ACP_BRIDGE_VERSION = '8'
 
 function randomHex(bytes: number): string {
   const u = new Uint8Array(bytes)
@@ -68,6 +68,25 @@ async function checkBridgeHealth(input: {
   }
 }
 
+async function runCodexAccessTokenLogin(input: {
+  sandbox: Sandbox
+  env: Env
+  workingDirectory: string
+}): Promise<void> {
+  if (!input.env.CODEX_ACCESS_TOKEN) return
+
+  const cmd = [shellExport('CODEX_ACCESS_TOKEN', input.env.CODEX_ACCESS_TOKEN), codexAccessTokenLoginBody()]
+    .filter(Boolean)
+    .join(' ; ')
+
+  const run = await input.sandbox.exec(cmd, input.workingDirectory, 120_000)
+  if (!run.success) {
+    throw new Error(
+      `Codex access-token login failed (exit ${run.exitCode}): ${run.stderr || run.stdout || 'missing ~/.codex/auth.json'}`,
+    )
+  }
+}
+
 export async function ensureAcpBridgeReady(input: {
   sandbox: Sandbox
   stub: { fetch: typeof fetch }
@@ -93,6 +112,9 @@ export async function ensureAcpBridgeReady(input: {
   if (!Number.isFinite(port)) port = ACP_RELAY_PORT_DEFAULT
 
   const httpsOrigin = domainFn.call(input.sandbox, port)
+
+  await runCodexAccessTokenLogin(input)
+
   if (await checkBridgeHealth({ httpsOrigin, token, workingDirectory: input.workingDirectory })) {
     return { httpsOrigin, token, port }
   }
@@ -124,8 +146,7 @@ export async function ensureAcpBridgeReady(input: {
     `rm -f /tmp/acp-bridge.pid`,
     `: > /tmp/acp-bridge.log`,
     exportsPrefix,
-    codexAccessTokenLoginShell(),
-    `nohup node /tmp/ship-acp-bridge.mjs --port ${port} > /tmp/acp-bridge.log 2>&1 & echo $! > /tmp/acp-bridge.pid`,
+    `${codexAccessTokenLoginShell()} && nohup node /tmp/ship-acp-bridge.mjs --port ${port} > /tmp/acp-bridge.log 2>&1 & echo $! > /tmp/acp-bridge.pid`,
     `sleep 1`,
     `kill -0 $(cat /tmp/acp-bridge.pid) 2>/dev/null || { cat /tmp/acp-bridge.log ; exit 1 ; }`,
     `echo bridge_started`,
