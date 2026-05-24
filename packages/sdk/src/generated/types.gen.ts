@@ -83,14 +83,48 @@ export type GitState = {
     branchName?: string;
     branch?: string;
     hasChanges?: boolean;
+    dirty?: boolean;
     pr?: {
         number: number;
         url: string;
         draft: boolean;
+        title?: string;
+        state?: string;
+        headSha?: string;
+        baseBranch?: string;
     };
     prUrl?: string;
     prStatus?: string;
     repoUrl?: string;
+    baseBranch?: string;
+    checks?: {
+        state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'unknown';
+        total: number;
+        pending: number;
+        success: number;
+        failure: number;
+    };
+    diff?: {
+        patch: string;
+        truncated?: boolean;
+        files: Array<{
+            filename: string;
+            oldFilename?: string;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'changed';
+            additions: number;
+            deletions: number;
+        }>;
+        additions: number;
+        deletions: number;
+    };
+    commits?: Array<{
+        hash: string;
+        shortHash: string;
+        subject: string;
+        authorName: string;
+        authorEmail: string;
+        authoredAt: string;
+    }>;
 };
 
 export type PermissionReplyBody = {

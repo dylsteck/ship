@@ -15,6 +15,7 @@ import type { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import type { AuthedEnv } from '../lib/session-authorization'
 import { requireSessionOwner } from '../lib/session-authorization'
+import { collectSessionGitState } from '../lib/session-git-state'
 
 const DO_URL = 'https://do'
 
@@ -85,8 +86,7 @@ function registerHistoryRoutes(app: Hono<AuthedEnv>): void {
     const gate = await requireSessionOwner(c, c.req.param('sessionId'))
     if (!gate.ok) return gate.response
     const stub = sessionStub(c)
-    const response = await stub.fetch(new Request(`${DO_URL}/git/state`))
-    return new Response(response.body, response)
+    return c.json(await collectSessionGitState({ env: c.env, stub, userId: gate.userId }))
   })
 
   app.post('/:sessionId/git/pr/ready', async (c) => {

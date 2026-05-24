@@ -1,7 +1,7 @@
 import type { SessionInfo } from '@/lib/sse-types'
 import type { StepFinishPart } from '@/lib/sse-types'
 
-export type RightSidebarTab = 'git' | 'terminal' | 'overview'
+export type RightSidebarTab = 'git' | 'terminal'
 
 export interface TodoItem {
   id: string

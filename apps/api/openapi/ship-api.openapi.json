@@ -353,9 +353,11 @@
           "hasChanges": {
             "type": "boolean"
           },
+          "dirty": {
+            "type": "boolean"
+          },
           "pr": {
             "type": "object",
-            "nullable": true,
             "properties": {
               "number": {
                 "type": "number"
@@ -365,6 +367,18 @@
               },
               "draft": {
                 "type": "boolean"
+              },
+              "title": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "headSha": {
+                "type": "string"
+              },
+              "baseBranch": {
+                "type": "string"
               }
             },
             "required": [
@@ -381,6 +395,138 @@
           },
           "repoUrl": {
             "type": "string"
+          },
+          "baseBranch": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "success",
+                  "failure",
+                  "error",
+                  "neutral",
+                  "unknown"
+                ]
+              },
+              "total": {
+                "type": "integer"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "success": {
+                "type": "integer"
+              },
+              "failure": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "state",
+              "total",
+              "pending",
+              "success",
+              "failure"
+            ]
+          },
+          "diff": {
+            "type": "object",
+            "properties": {
+              "patch": {
+                "type": "string"
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string"
+                    },
+                    "oldFilename": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "added",
+                        "modified",
+                        "deleted",
+                        "renamed",
+                        "copied",
+                        "changed"
+                      ]
+                    },
+                    "additions": {
+                      "type": "integer"
+                    },
+                    "deletions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "status",
+                    "additions",
+                    "deletions"
+                  ]
+                }
+              },
+              "additions": {
+                "type": "integer"
+              },
+              "deletions": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "patch",
+              "files",
+              "additions",
+              "deletions"
+            ]
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hash": {
+                  "type": "string"
+                },
+                "shortHash": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "authorName": {
+                  "type": "string"
+                },
+                "authorEmail": {
+                  "type": "string"
+                },
+                "authoredAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "hash",
+                "shortHash",
+                "subject",
+                "authorName",
+                "authorEmail",
+                "authoredAt"
+              ]
+            }
           }
         }
       },

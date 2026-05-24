@@ -1,6 +1,4 @@
 'use client'
-
-import { useMemo } from 'react'
 import {
   cn,
   Sheet,
@@ -13,7 +11,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@ship/ui'
-import { OverviewTab } from '@/components/chat/session-panel/overview-tab'
 import { GitTab } from '@/components/chat/session-panel/git-tab'
 import { TerminalTab } from '@/components/chat/session-panel/terminal-tab'
 import { useSandboxStatus } from '@/lib/api/hooks/use-sessions'
@@ -23,7 +20,6 @@ import type { SessionPanelData, RightSidebarTab } from '../types'
 const TABS: { id: RightSidebarTab; label: string }[] = [
   { id: 'git', label: 'Git' },
   { id: 'terminal', label: 'Terminal' },
-  { id: 'overview', label: 'Overview' },
 ]
 
 interface RightSidebarProps {
@@ -40,39 +36,6 @@ interface RightSidebarProps {
   onDeleteSession: (sessionId: string) => Promise<void>
 }
 
-function useSessionPanelProps(data: SessionPanelData) {
-  return useMemo(
-    () => ({
-      sessionId: data.sessionId,
-      repo: data.selectedRepo
-        ? { owner: data.selectedRepo.owner, name: data.selectedRepo.name }
-        : undefined,
-      agent: data.selectedAgent
-        ? { id: data.selectedAgent.id, name: data.selectedAgent.name }
-        : undefined,
-      model: data.selectedModel
-        ? {
-            id: data.selectedModel.id,
-            name: data.selectedModel.name,
-            provider: data.selectedModel.provider,
-            mode: data.mode,
-          }
-        : undefined,
-      tokens: data.lastStepCost?.tokens
-        ? { ...data.lastStepCost.tokens, contextLimit: 200000 }
-        : undefined,
-      cost: data.totalCost > 0 ? data.totalCost : undefined,
-      todos: data.sessionTodos,
-      diffs: data.fileDiffs,
-      agentUrl: data.agentUrl || undefined,
-      agentSessionId: data.agentSessionId || undefined,
-      sessionInfo: data.sessionInfo || undefined,
-      messages: data.messages,
-    }),
-    [data],
-  )
-}
-
 function SidebarHeader({
   activeTab,
   onTabChange,
@@ -87,23 +50,21 @@ function SidebarHeader({
   onDeleteSession: () => void
 }) {
   return (
-    <div className="flex items-center border-b border-border/40 px-1 shrink-0">
+    <div className="flex h-11 shrink-0 items-center border-b border-white/10 bg-[#151515] px-2">
       <div className="flex items-center flex-1 min-w-0">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              'px-2.5 py-2 text-xs transition-colors duration-150 relative whitespace-nowrap',
+              'relative rounded-md px-2.5 py-1.5 text-xs transition-colors duration-150 whitespace-nowrap',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50',
               activeTab === tab.id
-                ? 'text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground',
+                ? 'bg-white/10 text-zinc-100'
+                : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200',
             )}
           >
             {tab.label}
-            {activeTab === tab.id && (
-              <span className="absolute bottom-0 left-2.5 right-2.5 h-[1.5px] bg-foreground rounded-full" />
-            )}
           </button>
         ))}
       </div>
@@ -114,7 +75,7 @@ function SidebarHeader({
             render={
               <button
                 type="button"
-                className="inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                className="inline-flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
                 aria-label="More options"
               >
                 <EllipsisIcon className="size-3.5" />
@@ -132,14 +93,14 @@ function SidebarHeader({
         </DropdownMenu>
         <button
           onClick={onToggleExpanded}
-          className="inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
-          aria-label="Expand panel"
+          className="inline-flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
+          aria-label="Toggle fullscreen panel"
         >
           <MaximizeIcon className="size-3.5" />
         </button>
         <button
           onClick={onTogglePanel}
-          className="inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+          className="inline-flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
           aria-label="Toggle app panel"
         >
           <PanelToggleIcon className="size-3.5" />
@@ -152,19 +113,17 @@ function SidebarHeader({
 function TabContent({
   activeTab,
   data,
-  panelProps,
   desktopSandboxStatus,
   sandbox,
 }: {
   activeTab: RightSidebarTab
   data: SessionPanelData
-  panelProps: ReturnType<typeof useSessionPanelProps>
   desktopSandboxStatus: string | undefined
   sandbox: { sandboxId?: string | null; status?: string | null } | undefined
 }) {
   switch (activeTab) {
     case 'git':
-      return <GitTab diffs={data.fileDiffs} sessionInfo={data.sessionInfo ?? undefined} />
+      return <GitTab sessionId={data.sessionId} diffs={data.fileDiffs} sessionInfo={data.sessionInfo ?? undefined} />
     case 'terminal':
       return (
         <TerminalTab
@@ -174,8 +133,6 @@ function TabContent({
           connectionHint={data.terminalConnectionHint}
         />
       )
-    case 'overview':
-      return <OverviewTab {...panelProps} />
     default: {
       const _exhaustive: never = activeTab
       return null
@@ -196,7 +153,6 @@ export function RightSidebar({
   onTogglePanel,
   onDeleteSession,
 }: RightSidebarProps) {
-  const panelProps = useSessionPanelProps(data)
   const { sandbox, isReady } = useSandboxStatus(data.sessionId)
 
   const desktopSandboxStatus =
@@ -205,7 +161,7 @@ export function RightSidebar({
       : isReady ? 'active' : sandbox?.status ?? undefined
 
   const content = (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col bg-[#111212] text-zinc-300">
       <SidebarHeader
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -215,11 +171,10 @@ export function RightSidebar({
           void onDeleteSession(data.sessionId)
         }}
       />
-      <div className="flex-1 overflow-y-auto no-scrollbar">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <TabContent
           activeTab={activeTab}
           data={data}
-          panelProps={panelProps}
           desktopSandboxStatus={desktopSandboxStatus}
           sandbox={sandbox}
         />
@@ -232,8 +187,10 @@ export function RightSidebar({
       {desktopOpen && !isMobile && (
         <div
           className={cn(
-            'border-l border-border/40 bg-sidebar/50 backdrop-blur-sm hidden md:flex flex-col transition-[width] duration-200',
-            expanded ? 'w-[520px]' : 'w-[340px]',
+            'hidden border-l border-white/10 bg-[#111212] shadow-2xl shadow-black/30 md:flex md:flex-col',
+            expanded
+              ? 'absolute inset-0 z-40 w-auto border-l-0'
+              : 'relative z-20 w-[390px] transition-[width] duration-200',
           )}
         >
           {content}
