@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
-import { setApiToken } from '@/lib/api/client'
+import { setApiToken } from '@/lib/api/configure'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
 import type { UIMessage } from '@/lib/ai-elements-adapter'

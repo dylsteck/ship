@@ -45,6 +45,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: OpenAPI spec drift check
+        run: pnpm openapi:check
+
+      - name: SDK codegen drift check
+        run: pnpm sdk:generate:check
+
   build:
     name: Build
     runs-on: ubuntu-latest

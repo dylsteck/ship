@@ -2,8 +2,14 @@
 
 import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
-import type { AgentInfo, DefaultAgentResponse, ModelInfo } from '../types'
+import {
+  getModelsAgents,
+  getModelsDefaultAgent,
+  postModelsDefaultAgent,
+  unwrapSdkData,
+  type AgentInfo,
+  type ModelInfo,
+} from '@ship/sdk'
 import { expandLegacyAgents, FALLBACK_AGENTS } from '../acp-catalog'
 
 const ACP_HARNESSES = {
@@ -71,14 +77,12 @@ function normalizeAgents(rawAgents: AgentInfo[]): AgentInfo[] {
     .filter((agent): agent is AgentInfo => Boolean(agent))
 }
 
-/**
- * Hook to fetch available agents with their models and modes
- */
 export function useAgents() {
-  const { data, error, isLoading } = useSWR<AgentInfo[]>(apiUrl('/models/agents'), fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 60000,
-  })
+  const { data, error, isLoading } = useSWR<AgentInfo[]>(
+    ['models-agents'],
+    async () => unwrapSdkData(await getModelsAgents()),
+    { revalidateOnFocus: false, dedupingInterval: 60000 },
+  )
   const agents = data && data.length > 0 ? data : FALLBACK_AGENTS
 
   return {
@@ -89,15 +93,12 @@ export function useAgents() {
   }
 }
 
-/**
- * Hook to fetch the JWT user's default agent preference.
- */
 export function useDefaultAgent(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<DefaultAgentResponse | null>(
-    fetchEnabled ? apiUrl('/models/default-agent') : null,
-    async (url: string) => {
+  const { data, error, isLoading, mutate } = useSWR(
+    fetchEnabled ? ['models-default-agent'] : null,
+    async () => {
       try {
-        return await fetcher<DefaultAgentResponse>(url)
+        return unwrapSdkData(await getModelsDefaultAgent())
       } catch (err: unknown) {
         if ((err as { status?: number })?.status === 404) return null
         throw err
@@ -114,22 +115,12 @@ export function useDefaultAgent(fetchEnabled: boolean | undefined) {
   }
 }
 
-/**
- * Mutation hook to set user's default agent
- */
 export function useSetDefaultAgent() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-default-agent',
-    async (_key: string, { arg }: { arg: { agentId: string } }) => {
-      return post<{ agentId: string }, DefaultAgentResponse>(apiUrl('/models/default-agent'), {
-        agentId: arg.agentId,
-      })
-    },
+    async (_key: string, { arg }: { arg: { agentId: string } }) =>
+      unwrapSdkData(await postModelsDefaultAgent({ body: { agentId: arg.agentId } })),
   )
 
-  return {
-    setDefaultAgent: trigger,
-    isSetting: isMutating,
-    error,
-  }
+  return { setDefaultAgent: trigger, isSetting: isMutating, error }
 }

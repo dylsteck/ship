@@ -60,7 +60,7 @@ export function ModeToggle() {
                 className="cursor-pointer rounded-[8px] px-2.5 py-2 hover:bg-muted/70 focus:bg-muted/70"
                 onClick={() => onModeChange(m.id)}
               >
-                {m.label}
+                {m.name}
               </DropdownMenuItem>
             ))}
         </DropdownMenuContent>
@@ -68,7 +68,7 @@ export function ModeToggle() {
 
       {isNonDefault && currentMode && (
         <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 h-6 text-xs font-medium text-rose-400">
-          {currentMode.label}
+          {currentMode.name}
           <button
             type="button"
             disabled={isStreaming}

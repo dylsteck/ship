@@ -35,7 +35,7 @@ export function useSessionSandbox(sessionId: string) {
         setSessionInfo({
           repoOwner: data.repoOwner,
           repoName: data.repoName,
-          branch: data.branch,
+          branch: (data as { branch?: string }).branch,
           model: data.model,
         })
       } catch (err) {

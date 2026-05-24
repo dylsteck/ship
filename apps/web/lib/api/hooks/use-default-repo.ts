@@ -2,21 +2,18 @@
 
 import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
+import {
+  getAccountsGithubDefaultRepo,
+  postAccountsGithubDefaultRepo,
+  unwrapSdkData,
+} from '@ship/sdk'
 
-export interface DefaultRepoResponse {
-  repoFullName: string | null
-}
-
-/**
- * Hook to fetch the JWT user's default repository preference.
- */
 export function useDefaultRepo(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<DefaultRepoResponse | null>(
-    fetchEnabled ? apiUrl('/accounts/github/default-repo') : null,
-    async (url: string) => {
+  const { data, error, isLoading, mutate } = useSWR(
+    fetchEnabled ? ['default-repo'] : null,
+    async () => {
       try {
-        return await fetcher<DefaultRepoResponse>(url)
+        return unwrapSdkData(await getAccountsGithubDefaultRepo())
       } catch (err: unknown) {
         if ((err as { status?: number })?.status === 404) return null
         throw err
@@ -33,20 +30,12 @@ export function useDefaultRepo(fetchEnabled: boolean | undefined) {
   }
 }
 
-/**
- * Mutation hook to set user's default repo
- */
 export function useSetDefaultRepo() {
   const { trigger, isMutating, error } = useSWRMutation(
     'set-default-repo',
-    async (_key: string, { arg }: { arg: { repoFullName: string } }) => {
-      return post<{ repoFullName: string }, DefaultRepoResponse>(apiUrl('/accounts/github/default-repo'), arg)
-    },
+    async (_key: string, { arg }: { arg: { repoFullName: string } }) =>
+      unwrapSdkData(await postAccountsGithubDefaultRepo({ body: { repoFullName: arg.repoFullName } })),
   )
 
-  return {
-    setDefaultRepo: trigger,
-    isSetting: isMutating,
-    error,
-  }
+  return { setDefaultRepo: trigger, isSetting: isMutating, error }
 }

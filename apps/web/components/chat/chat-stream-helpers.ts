@@ -7,7 +7,7 @@ import {
   createSystemMessage,
   classifyError,
 } from '@/lib/ai-elements-adapter'
-import type { Message } from '@/lib/api'
+import type { Message } from '@/lib/api/chat-types'
 import { processStreamEvent, parseSSELines } from './stream-processor'
 
 export interface SSEStreamRefs {

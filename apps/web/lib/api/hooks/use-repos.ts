@@ -1,9 +1,7 @@
 'use client'
 
-import useSWR from 'swr'
 import useSWRInfinite from 'swr/infinite'
-import { authFetcher, apiUrl } from '../client'
-import type { GitHubRepo } from '../types'
+import { getAccountsGithubRepos, unwrapSdkData, type GitHubRepo } from '@ship/sdk'
 
 const REPOS_PER_PAGE = 50
 
@@ -13,28 +11,26 @@ export interface ReposPageResponse {
   nextPage: number | null
 }
 
-/**
- * Hook to fetch user's GitHub repositories with infinite scroll/pagination.
- * Loads first page on mount, then loadMore() fetches subsequent pages.
- */
 export function useGitHubRepos(fetchEnabled: boolean | undefined) {
   const getKey = (pageIndex: number, previousPageData: ReposPageResponse | null) => {
     if (!fetchEnabled) return null
     if (pageIndex > 0 && previousPageData && !previousPageData.hasMore) return null
-    return apiUrl('/accounts/github/repos', {
-      page: pageIndex + 1,
-      per_page: REPOS_PER_PAGE,
-    })
+    return ['github-repos', pageIndex + 1] as const
   }
 
   const { data, error, size, setSize, isLoading, isValidating } = useSWRInfinite<ReposPageResponse>(
     getKey,
-    authFetcher,
+    async ([, page]: readonly ['github-repos', number]) =>
+      unwrapSdkData(
+        await getAccountsGithubRepos({
+          query: { page: String(page), per_page: String(REPOS_PER_PAGE) },
+        }),
+      ),
     {
       revalidateOnFocus: false,
       revalidateFirstPage: false,
-      dedupingInterval: 60000, // 1 min - API has its own 5 min cache
-    }
+      dedupingInterval: 60000,
+    },
   )
 
   const repos = data ? data.flatMap((p) => p.repos) : []
@@ -54,13 +50,7 @@ export function useGitHubRepos(fetchEnabled: boolean | undefined) {
   }
 }
 
-/**
- * Hook with search/filter functionality for repos (client-side filter over paginated data)
- */
-export function useFilteredGitHubRepos(
-  fetchEnabled: boolean | undefined,
-  searchQuery: string = '',
-) {
+export function useFilteredGitHubRepos(fetchEnabled: boolean | undefined, searchQuery: string = '') {
   const { repos, isLoading, isLoadingMore, hasMore, loadMore, isError, error, mutate } =
     useGitHubRepos(fetchEnabled)
 
@@ -69,7 +59,7 @@ export function useFilteredGitHubRepos(
         (repo) =>
           repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           repo.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          repo.description?.toLowerCase().includes(searchQuery.toLowerCase())
+          (repo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false),
       )
     : repos
 

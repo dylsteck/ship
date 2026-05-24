@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { SessionSummary } from '@ship/contracts'
 
-import type { Message as APIMessage } from '@/lib/api/chat-client'
+import type { Message as APIMessage } from '@/lib/api/chat-types'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
 import { SessionSummarySchema } from '@ship/contracts'

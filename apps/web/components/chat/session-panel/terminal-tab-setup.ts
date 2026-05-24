@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react'
 import { API_URL } from '@/lib/config'
-import { getApiToken } from '@/lib/api/client'
+import { getApiToken } from '@/lib/api/configure'
 
 export const RETRY_INTERVAL = 5000
 export const CONNECTION_TIMEOUT_MS = 15000

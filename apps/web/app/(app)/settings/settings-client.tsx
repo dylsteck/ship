@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { setApiToken } from '@/lib/api/client'
+import { setApiToken } from '@/lib/api/configure'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'

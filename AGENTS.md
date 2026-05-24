@@ -95,7 +95,11 @@ ship/
 │           │   ├── models.ts                     # Model listing (powered by agent-registry)
 │           │   ├── git.ts                        # Git operations
 │           │   ├── connectors.ts                 # GitHub connector status/enable/disable
-│           │   └── terminal.ts                   # Terminal access
+│           │   ├── terminal.ts                   # Terminal access
+│           │   └── openapi.ts                    # GET /openapi.json (public spec)
+│           ├── openapi/
+│           │   ├── schemas.ts                    # Zod REST schemas (OpenAPI + route validation)
+│           │   └── build-spec.ts                 # Programmatic OpenAPI 3.1 document
 │           ├── lib/
 │           │   ├── acp-chat-runner.ts           # One turn — ACP JSON-RPC over bridge → Ship SSE
 │           │   ├── acp-bridge-bootstrap.ts      # Bundled bridge drop-in + `/healthz` polling
@@ -114,7 +118,7 @@ ship/
 │           │   ├── generate-session-title.ts    # REST title helper (Anthropic → OpenAI)
 │           │   ├── e2b.ts                       # Raw E2B SDK wrappers (provision / pause / resume)
 │           │   ├── session-authorization.ts     # JWT user id + D1 session ownership
-│           │   └── api-schemas.ts               # Zod + `parseJsonBody` for route bodies
+│           │   └── api-schemas.ts               # Re-exports openapi/schemas + parseJsonBody
 │           ├── workflows/
 │           │   └── ship-acp-bootstrap.ts        # Cloudflare Workflow scaffold (bootstrap retries)
 │           ├── durable-objects/
@@ -122,6 +126,11 @@ ship/
 │           └── env.d.ts                         # Worker env bindings
 └── packages/
     ├── contracts/                  # @ship/contracts — Zod wire schemas, branded IDs, errors
+    ├── sdk/                        # @ship/sdk — Hey API client from OpenAPI (REST + runtime helpers)
+    │   ├── docs/README.md          # SDK usage (browser, SSR, service token, streaming)
+    │   └── src/
+    │       ├── generated/          # Committed openapi-ts output (regenerate via pnpm sdk:generate)
+    │       └── runtime/            # configureShipClient, streaming, service client, ws URLs
     ├── acp-bridge/                 # `ship-acp-bridge` sources (esbuild-bundled into the Worker)
     │   └── src/
     │       └── server.ts           # Localhost HTTP + WS → NDJSON stdio
@@ -185,6 +194,29 @@ User prompt → Worker → bridge (WSS) → ACP backend (stdio) → repo workspa
 **`apps/web/lib/session-logic.ts`** holds pure derivations (timeline, pending prompts, tool collapse) covered by Vitest. React hooks should delegate to these functions rather than embed business rules.
 
 **SessionDO** stores append-only `session_events`, first-class `turns`, and broadcasts lightweight `session.summary.updated` over WebSocket for sidebar/shell consumers (t3code `subscribeShell` analogue). Turn streaming still uses POST SSE per chat turn.
+
+## OpenAPI & `@ship/sdk`
+
+REST JSON types and the web/mobile client come from a single OpenAPI pipeline:
+
+| Layer | Location | Role |
+|-------|----------|------|
+| Zod REST schemas | `apps/api/src/openapi/schemas.ts` | Request/response validation + OpenAPI generation |
+| Committed spec | `apps/api/openapi/ship-api.openapi.json` | Source for Hey API codegen; served at `GET /openapi.json` |
+| Generated client | `packages/sdk/src/generated/` | Typed fetch functions (`getSessions`, `postSessions`, …) |
+| Runtime | `packages/sdk/src/runtime/` | `configureShipClient`, `unwrapSdkData`, SSE (`streaming`), service token (`service`) |
+
+**`@ship/contracts`** remains the source of truth for **SSE and WebSocket** wire events — not duplicated in OpenAPI.
+
+**Web app API access:** `apps/web/lib/api/hooks/*` and `server.ts` call `@ship/sdk`. Bootstrap via `@/lib/api/configure` (`setApiToken` / `configureWebShipClient`). Legacy `client.ts` fetcher is deprecated.
+
+Regenerate after schema changes:
+
+```bash
+pnpm openapi:export && pnpm sdk:generate
+```
+
+See `apps/api/docs/openapi.md` and `packages/sdk/docs/README.md`.
 
 ## Frontend Architecture
 

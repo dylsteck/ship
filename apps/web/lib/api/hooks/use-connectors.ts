@@ -2,23 +2,23 @@
 
 import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
-import type { ConnectorStatus } from '../types'
+import {
+  getConnectors,
+  postConnectorsByNameDisable,
+  postConnectorsByNameEnable,
+  unwrapSdkData,
+  type Connector,
+} from '@ship/sdk'
 
-/**
- * Hook to fetch connector status for the JWT user.
- */
 export function useConnectors(fetchEnabled: boolean | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<ConnectorStatus>(
-    fetchEnabled ? apiUrl('/connectors') : null,
-    fetcher,
-    {
-      revalidateOnFocus: true,
-    }
+  const { data, error, isLoading, mutate } = useSWR(
+    fetchEnabled ? ['connectors'] : null,
+    async () => unwrapSdkData(await getConnectors()),
+    { revalidateOnFocus: true },
   )
 
   return {
-    connectors: data?.connectors ?? [],
+    connectors: (data?.connectors ?? []) as Connector[],
     isLoading,
     isError: !!error,
     error,
@@ -26,44 +26,22 @@ export function useConnectors(fetchEnabled: boolean | undefined) {
   }
 }
 
-/**
- * Mutation hook to enable a connector
- */
 export function useEnableConnector() {
   const { trigger, isMutating, error } = useSWRMutation(
     'enable-connector',
-    async (_key: string, { arg }: { arg: { name: string } }) => {
-      return post<Record<string, never>, { success: boolean; enabled?: boolean }>(
-        apiUrl(`/connectors/${arg.name}/enable`),
-        {},
-      )
-    }
+    async (_key: string, { arg }: { arg: { name: string } }) =>
+      unwrapSdkData(await postConnectorsByNameEnable({ path: { name: arg.name } })),
   )
 
-  return {
-    enableConnector: trigger,
-    isEnabling: isMutating,
-    error,
-  }
+  return { enableConnector: trigger, isEnabling: isMutating, error }
 }
 
-/**
- * Mutation hook to disable a connector
- */
 export function useDisableConnector() {
   const { trigger, isMutating, error } = useSWRMutation(
     'disable-connector',
-    async (_key: string, { arg }: { arg: { name: string } }) => {
-      return post<Record<string, never>, { success: boolean; enabled?: boolean }>(
-        apiUrl(`/connectors/${arg.name}/disable`),
-        {},
-      )
-    }
+    async (_key: string, { arg }: { arg: { name: string } }) =>
+      unwrapSdkData(await postConnectorsByNameDisable({ path: { name: arg.name } })),
   )
 
-  return {
-    disableConnector: trigger,
-    isDisabling: isMutating,
-    error,
-  }
+  return { disableConnector: trigger, isDisabling: isMutating, error }
 }

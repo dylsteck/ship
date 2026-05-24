@@ -2,37 +2,48 @@
 
 import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
-import { fetcher, apiUrl, post } from '../client'
-import type { Message as ChatMessage } from '../server'
-import type { ChatTask, GitState, SendMessageParams } from '../types'
-
-interface MessagesResponse {
-  messages: ChatMessage[]
-  hasMore: boolean
-  nextCursor?: string
-}
+import {
+  getChatBySessionIdEvents,
+  getChatBySessionIdGitState,
+  getChatBySessionIdMessages,
+  getChatBySessionIdTasks,
+  postChatBySessionIdGitPrReady,
+  postChatBySessionIdPermissionByPermissionId,
+  postChatBySessionIdQuestionByQuestionId,
+  postChatBySessionIdQuestionByQuestionIdReject,
+  postChatBySessionIdRetry,
+  postChatBySessionIdStop,
+  unwrapSdkData,
+  type ChatTask,
+  type GitState,
+} from '@ship/sdk'
+import type { Message, RawEvent } from '../chat-types'
+import { normalizeChatEvent, normalizeChatMessage } from '../normalize'
 
 /**
- * Hook to fetch chat messages with pagination
+ * Hook to fetch chat messages (API returns array directly).
  */
 export function useChatMessages(
   sessionId: string | undefined,
-  options?: { limit?: number; before?: string }
+  options?: { limit?: number; before?: string },
 ) {
-  const { data, error, isLoading, mutate } = useSWR<MessagesResponse>(
-    sessionId
-      ? apiUrl(`/chat/${sessionId}/messages`, {
-          limit: options?.limit,
-          before: options?.before,
-        })
-      : null,
-    fetcher
+  const { data, error, isLoading, mutate } = useSWR<Message[]>(
+    sessionId ? ['chat-messages', sessionId, options?.limit, options?.before] : null,
+    async () => {
+      const rows = unwrapSdkData(
+        await getChatBySessionIdMessages({
+          path: { sessionId: sessionId! },
+          query: { limit: options?.limit?.toString(), before: options?.before },
+        }),
+      )
+      return rows.map(normalizeChatMessage)
+    },
   )
 
   return {
-    messages: data?.messages ?? [],
-    hasMore: data?.hasMore ?? false,
-    nextCursor: data?.nextCursor,
+    messages: data ?? [],
+    hasMore: false,
+    nextCursor: undefined,
     isLoading,
     isError: !!error,
     error,
@@ -40,16 +51,12 @@ export function useChatMessages(
   }
 }
 
-/**
- * Hook to fetch tasks for a session
- */
+/** Hook to fetch tasks for a session */
 export function useChatTasks(sessionId: string | undefined) {
   const { data, error, isLoading, mutate } = useSWR<ChatTask[]>(
-    sessionId ? apiUrl(`/chat/${sessionId}/tasks`) : null,
-    fetcher,
-    {
-      refreshInterval: 10000, // Poll every 10 seconds for task updates
-    }
+    sessionId ? ['chat-tasks', sessionId] : null,
+    async () => unwrapSdkData(await getChatBySessionIdTasks({ path: { sessionId: sessionId! } })),
+    { refreshInterval: 10000 },
   )
 
   return {
@@ -61,16 +68,12 @@ export function useChatTasks(sessionId: string | undefined) {
   }
 }
 
-/**
- * Hook to fetch git state for a session
- */
+/** Hook to fetch git state for a session */
 export function useGitState(sessionId: string | undefined) {
   const { data, error, isLoading, mutate } = useSWR<GitState>(
-    sessionId ? apiUrl(`/chat/${sessionId}/git/state`) : null,
-    fetcher,
-    {
-      refreshInterval: 15000, // Poll every 15 seconds
-    }
+    sessionId ? ['git-state', sessionId] : null,
+    async () => unwrapSdkData(await getChatBySessionIdGitState({ path: { sessionId: sessionId! } })),
+    { refreshInterval: 15000 },
   )
 
   return {
@@ -82,57 +85,25 @@ export function useGitState(sessionId: string | undefined) {
   }
 }
 
-/**
- * Hook to fetch git diff for a session
- */
-export function useGitDiff(sessionId: string | undefined) {
-  const { data, error, isLoading, mutate } = useSWR<{ diff: string }>(
-    sessionId ? apiUrl(`/chat/${sessionId}/git/diff`) : null,
-    fetcher
-  )
-
+/** No API route — kept for compatibility; always empty */
+export function useGitDiff(_sessionId: string | undefined) {
   return {
-    diff: data?.diff ?? '',
-    isLoading,
-    isError: !!error,
-    error,
-    mutate,
+    diff: '',
+    isLoading: false,
+    isError: false,
+    error: undefined,
+    mutate: async () => undefined,
   }
 }
 
-/**
- * Mutation hook to send a chat message (non-streaming)
- * Note: For streaming, use the streaming utilities directly
- */
-export function useSendMessage(sessionId: string | undefined) {
-  const { trigger, isMutating, error } = useSWRMutation(
-    sessionId ? `send-message-${sessionId}` : null,
-    async (_key: string, { arg }: { arg: SendMessageParams }) => {
-      if (!sessionId) throw new Error('No session ID')
-      return post<SendMessageParams, ChatMessage>(
-        apiUrl(`/chat/${sessionId}`),
-        arg
-      )
-    }
-  )
-
-  return {
-    sendMessage: trigger,
-    isSending: isMutating,
-    error,
-  }
-}
-
-/**
- * Mutation hook to stop chat streaming
- */
+/** Mutation hook to stop chat streaming */
 export function useStopChat(sessionId: string | undefined) {
   const { trigger, isMutating, error } = useSWRMutation(
     sessionId ? `stop-chat-${sessionId}` : null,
     async () => {
       if (!sessionId) throw new Error('No session ID')
-      return post<{}, { stopped: boolean }>(apiUrl(`/chat/${sessionId}/stop`), {})
-    }
+      unwrapSdkData(await postChatBySessionIdStop({ path: { sessionId } }))
+    },
   )
 
   return {
@@ -142,16 +113,14 @@ export function useStopChat(sessionId: string | undefined) {
   }
 }
 
-/**
- * Mutation hook to mark PR as ready for review
- */
+/** Mutation hook to mark PR as ready for review */
 export function useMarkPRReady(sessionId: string | undefined) {
   const { trigger, isMutating, error } = useSWRMutation(
     sessionId ? `mark-pr-ready-${sessionId}` : null,
     async () => {
       if (!sessionId) throw new Error('No session ID')
-      return post<{}, GitState>(apiUrl(`/chat/${sessionId}/git/pr/ready`), {})
-    }
+      unwrapSdkData(await postChatBySessionIdGitPrReady({ path: { sessionId } }))
+    },
   )
 
   return {
@@ -161,16 +130,14 @@ export function useMarkPRReady(sessionId: string | undefined) {
   }
 }
 
-/**
- * Mutation hook to retry a failed chat operation
- */
+/** Mutation hook to retry a failed chat operation */
 export function useRetryChat(sessionId: string | undefined) {
   const { trigger, isMutating, error } = useSWRMutation(
     sessionId ? `retry-chat-${sessionId}` : null,
     async () => {
       if (!sessionId) throw new Error('No session ID')
-      return post<{}, { success: boolean }>(apiUrl(`/chat/${sessionId}/retry`), {})
-    }
+      unwrapSdkData(await postChatBySessionIdRetry({ path: { sessionId } }))
+    },
   )
 
   return {
@@ -180,43 +147,63 @@ export function useRetryChat(sessionId: string | undefined) {
   }
 }
 
-/**
- * Reply to a permission request (approve or deny)
- */
+/** Reply to a permission request */
 export async function replyPermission(
   sessionId: string,
   permissionId: string,
-  reply: 'once' | 'always' | 'reject'
+  reply: 'once' | 'always' | 'reject',
 ): Promise<{ success: boolean }> {
-  return post<{ reply: 'once' | 'always' | 'reject' }, { success: boolean }>(
-    apiUrl(`/chat/${sessionId}/permission/${permissionId}`),
-    { reply }
+  return unwrapSdkData(
+    await postChatBySessionIdPermissionByPermissionId({
+      path: { sessionId, permissionId },
+      body: { reply },
+    }),
   )
 }
 
-/**
- * Reply to an agent question
- */
+/** Reply to an agent question */
 export async function replyQuestion(
   sessionId: string,
   questionId: string,
-  response: string
+  response: string,
 ): Promise<{ success: boolean }> {
-  return post<{ response: string }, { success: boolean }>(
-    apiUrl(`/chat/${sessionId}/question/${questionId}`),
-    { response }
+  return unwrapSdkData(
+    await postChatBySessionIdQuestionByQuestionId({
+      path: { sessionId, questionId },
+      body: { response },
+    }),
   )
 }
 
-/**
- * Reject/skip an agent question
- */
-export async function rejectQuestion(
-  sessionId: string,
-  questionId: string
-): Promise<{ success: boolean }> {
-  return post<Record<string, never>, { success: boolean }>(
-    apiUrl(`/chat/${sessionId}/question/${questionId}/reject`),
-    {}
+/** Reject/skip an agent question */
+export async function rejectQuestion(sessionId: string, questionId: string): Promise<{ success: boolean }> {
+  return unwrapSdkData(
+    await postChatBySessionIdQuestionByQuestionIdReject({
+      path: { sessionId, questionId },
+    }),
   )
+}
+
+/** Fetch chat events (Overview inspector) */
+export async function fetchChatEvents(sessionId: string): Promise<RawEvent[]> {
+  try {
+    const rows = unwrapSdkData(await getChatBySessionIdEvents({ path: { sessionId } }))
+    return rows.map(normalizeChatEvent)
+  } catch {
+    return []
+  }
+}
+
+/** Fetch chat messages for history loader */
+export async function fetchChatMessages(
+  sessionId: string,
+  options?: { limit?: number; before?: string },
+): Promise<Message[]> {
+  const rows = unwrapSdkData(
+    await getChatBySessionIdMessages({
+      path: { sessionId },
+      query: { limit: options?.limit?.toString(), before: options?.before },
+    }),
+  )
+  return rows.map(normalizeChatMessage)
 }

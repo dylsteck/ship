@@ -12,6 +12,7 @@ import models from './routes/models'
 import accounts from './routes/accounts'
 import connectors from './routes/connectors'
 import terminal from './routes/terminal'
+import openapi from './routes/openapi'
 import type { Env } from './env.d'
 
 const app = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
@@ -68,6 +69,9 @@ app.use('/terminal/*', authMiddleware)
 // Rate limiting (after auth so userId is available)
 app.use('/chat/*', chatRateLimit)
 app.post('/sessions', sessionRateLimit)
+
+// Routes (public spec — no auth)
+app.route('/openapi.json', openapi)
 
 // Routes
 app.route('/health', health)

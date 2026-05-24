@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { setApiToken } from '@/lib/api/client'
+import { setApiToken } from '@/lib/api/configure'
 import { useSession } from '@/lib/api/hooks/use-sessions'
 import { DashboardClient } from '@/app/(app)/dashboard/dashboard-client'
 import type { ChatSession } from '@/lib/api/server'

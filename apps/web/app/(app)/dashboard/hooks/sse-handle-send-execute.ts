@@ -83,12 +83,12 @@ export async function executeChatSend(
   let doneOrIdleReceived = false
 
   try {
-    const response = await sendChatMessage(
-      targetSessionId,
+    const response = await sendChatMessage({
+      sessionId: targetSessionId,
       content,
-      modeOverride ?? modeRef.current,
-      modelIdRef.current,
-    )
+      mode: modeOverride ?? modeRef.current,
+      model: modelIdRef.current ?? undefined,
+    })
 
     if (!response.ok) {
       watchdog.clear()
