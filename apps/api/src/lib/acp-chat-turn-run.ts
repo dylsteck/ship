@@ -74,6 +74,11 @@ function createTurnRuntime(sessionId: string): TurnRuntime {
 function createEmitTranslated(input: RunChatTurnInput, runtime: TurnRuntime) {
   return async (note: Record<string, unknown>) => {
     if (runtime.suppressAcpNotifications) return
+    // Temporary diagnostic: log raw ACP notifications so we can map tool-call formats
+    const method = typeof note.method === 'string' ? note.method : '(no method)'
+    if (method !== '(no method)') {
+      console.log('[acp:notification]', method, JSON.stringify(note).slice(0, 500))
+    }
     const events = runtime.translator.translateNotification(note)
     for (const event of events) {
       if (event.type === 'message.part.updated') {
