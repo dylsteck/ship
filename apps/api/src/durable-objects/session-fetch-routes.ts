@@ -1,5 +1,7 @@
 import type { Message, Task } from './session-types'
 import type { SessionFetchHost } from './session-fetch-host'
+import type { BuildSessionSummaryOptions } from './session-summary'
+import type { SessionSummary, TurnStatus } from '@ship/contracts'
 
 function jsonError(error: unknown, fallback: string, status = 500): Response {
   return Response.json({ error: error instanceof Error ? error.message : fallback }, { status })
@@ -75,6 +77,50 @@ export async function handleSessionDataRoutes(
     const meta = await host.getSessionMeta()
     const events = meta['session_events'] ? JSON.parse(meta['session_events']) : []
     return Response.json(events)
+  }
+
+  if (url.pathname.endsWith('/session-events') && request.method === 'POST') {
+    const body = (await request.json()) as { type: string; payload?: unknown }
+    const event = await host.appendSessionEvent(body.type, JSON.stringify(body.payload ?? {}))
+    return Response.json(event)
+  }
+
+  if (url.pathname.endsWith('/session-events') && request.method === 'GET') {
+    const limit = url.searchParams.get('limit')
+    const events = await host.getRecentSessionEvents(limit ? parseInt(limit) : undefined)
+    return Response.json(events)
+  }
+
+  if (url.pathname.endsWith('/turns') && request.method === 'GET') {
+    const meta = await host.getSessionMeta()
+    const sessionId = meta['session_id'] || meta['sessionId'] || ''
+    const limit = url.searchParams.get('limit')
+    const turns = await host.getTurns(sessionId, limit ? parseInt(limit) : undefined)
+    return Response.json(turns)
+  }
+
+  if (url.pathname.endsWith('/turns') && request.method === 'POST') {
+    const body = (await request.json()) as { turnId: string; sessionId?: string }
+    const meta = await host.getSessionMeta()
+    const sessionId = body.sessionId || meta['session_id'] || meta['sessionId'] || ''
+    const turn = await host.createTurn(sessionId, body.turnId)
+    return Response.json(turn)
+  }
+
+  const turnCompleteMatch = url.pathname.match(/\/turns\/([^/]+)\/complete$/)
+  if (turnCompleteMatch && request.method === 'POST') {
+    const body = (await request.json()) as { status: TurnStatus; diffSummary?: unknown }
+    const diffSummaryJson = body.diffSummary !== undefined ? JSON.stringify(body.diffSummary) : undefined
+    await host.completeTurn(turnCompleteMatch[1], body.status, diffSummaryJson)
+    return Response.json({ success: true })
+  }
+
+  if (url.pathname.endsWith('/summary/broadcast') && request.method === 'POST') {
+    const body = (await request.json()) as BuildSessionSummaryOptions & { summary?: SessionSummary }
+    const meta = await host.getSessionMeta()
+    const summary = body.summary ?? host.buildSessionSummary(meta, body)
+    host.broadcastSessionSummary(summary)
+    return Response.json({ success: true, summary })
   }
 
   return null

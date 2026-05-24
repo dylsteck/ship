@@ -25,7 +25,7 @@ export async function handleSessionFetch(host: SessionFetchHost, request: Reques
   if (url.pathname.endsWith('/health')) {
     return Response.json({
       status: 'ok',
-      tables: ['messages', 'tasks', 'session_meta'],
+      tables: ['messages', 'tasks', 'session_meta', 'turns', 'session_events'],
       connections: host.getWebSocketCount(),
     })
   }

@@ -1,6 +1,8 @@
+import { SessionSummarySchema } from '@ship/contracts'
 import type { Message as APIMessage } from '@/lib/api/chat-client'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
-import { createErrorMessage } from '@/lib/ai-elements-adapter'
+import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
+import { sessionStatusStore } from './use-session-status-store'
 
 export interface ChatWebSocketHandlers {
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
@@ -33,6 +35,20 @@ export function handleChatWebSocketMessage(
   const { setMessages, streamingMessageRef, setAgentUrl, setAgentSessionId, setSandboxStatus, onAgentEventRef } =
     handlers
 
+  if (event.type === 'session.summary.updated') {
+    const raw = (event as { properties?: { summary?: unknown } }).properties?.summary
+    const parsed = SessionSummarySchema.safeParse(raw)
+    if (parsed.success) {
+      const summary = parsed.data
+      sessionStatusStore.update(sessionId, {
+        title: summary.title,
+        isRunning: Boolean(summary.streaming),
+        status: summary.activeTool ? `Running ${summary.activeTool}` : summary.streaming ? 'Streaming' : '',
+      })
+    }
+    return
+  }
+
   if (event.type === 'message') {
     const msg = event.message as APIMessage
     const uiMsg: UIMessage = {
@@ -47,7 +63,7 @@ export function handleChatWebSocketMessage(
           m.id === streamingMessageRef.current ? { ...m, content: uiMsg.content, createdAt: uiMsg.createdAt } : m,
         )
       }
-      const exists = prev.some((m) => m.id === uiMsg.id || (m.role === uiMsg.role && m.content === uiMsg.content))
+      const exists = prev.some((m) => m.id === uiMsg.id)
       if (exists) return prev
       return [...prev, uiMsg]
     })
@@ -55,13 +71,11 @@ export function handleChatWebSocketMessage(
   }
 
   if (event.type === 'error') {
+    const content = typeof event.message === 'string' ? event.message : 'An error occurred'
+    const { category, retryable } = classifyError(content)
     setMessages((prev) => [
       ...prev,
-      createErrorMessage(
-        typeof event.message === 'string' ? event.message : 'An error occurred',
-        event.category || 'persistent',
-        event.retryable || false,
-      ),
+      createErrorMessage(content, event.category || category, event.retryable ?? retryable),
     ])
     return
   }

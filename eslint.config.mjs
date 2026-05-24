@@ -21,6 +21,17 @@ const eslintConfig = [
     rules: {
       'max-lines': maxLinesRule,
       'max-lines-per-function': maxLinesPerFunctionRule,
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['**/apps/api/**'],
+              message: 'Import shared wire types from @ship/contracts instead of apps/api.',
+            },
+          ],
+        },
+      ],
       // React Compiler–style rules (eslint-plugin-react-hooks v7): keep hooks-of-hooks, relax the rest until refactors land
       'react-hooks/refs': 'off',
       'react-hooks/purity': 'off',

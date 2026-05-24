@@ -1,4 +1,7 @@
 import type { Message, Task } from './session-types'
+import type { BuildSessionSummaryOptions } from './session-summary'
+import type { SessionEventRow, TurnRow } from './session-turn-store'
+import type { SessionSummary, Turn, TurnStatus } from '@ship/contracts'
 
 /** Minimal SessionDO surface required by HTTP fetch route handlers. */
 export interface SessionFetchHost {
@@ -11,6 +14,13 @@ export interface SessionFetchHost {
   getSessionMeta(): Promise<Record<string, string>>
   setSessionMeta(key: string, value: string): Promise<void>
   broadcast(message: object): void
+  createTurn(sessionId: string, turnId: string): Promise<TurnRow>
+  completeTurn(turnId: string, status: TurnStatus, diffSummaryJson?: string): Promise<void>
+  getTurns(sessionId: string, limit?: number): Promise<Turn[]>
+  appendSessionEvent(type: string, payloadJson: string): Promise<SessionEventRow>
+  getRecentSessionEvents(limit?: number): Promise<SessionEventRow[]>
+  buildSessionSummary(meta: Record<string, string>, opts?: BuildSessionSummaryOptions): SessionSummary
+  broadcastSessionSummary(summary: SessionSummary): void
   provisionSandbox(): Promise<unknown>
   getSandboxStatus(): Promise<unknown>
   pauseSandbox(): Promise<void>

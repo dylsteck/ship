@@ -4,6 +4,8 @@
  * @packageDocumentation
  */
 
+import { classifyErrorFromMessage, type ErrorCode } from '@ship/contracts'
+
 /**
  * Minimal SSE writer surface — extracted so we can pass either Hono's stream
  * or a tee'd writer for tests.
@@ -31,16 +33,19 @@ export async function writeError(
     details?: string
     category?: ErrorCategory
     retryable?: boolean
+    code?: ErrorCode
     action?: { label: string; href: string }
   },
 ): Promise<void> {
+  const classified = classifyErrorFromMessage(payload.error)
   await stream.writeSSE({
     event: 'error',
     data: JSON.stringify({
       error: payload.error,
       ...(payload.details ? { details: payload.details } : {}),
-      category: payload.category ?? 'persistent',
-      retryable: payload.retryable ?? false,
+      category: payload.category ?? classified.category,
+      retryable: payload.retryable ?? classified.retryable,
+      code: payload.code ?? classified.code,
       ...(payload.action ? { action: payload.action } : {}),
     }),
   })

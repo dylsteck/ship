@@ -63,9 +63,11 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
     initialMeta = { ...initialMeta, model: requestedModel, acp_backend_kind: acpBackendFromModelId(requestedModel) }
   }
   const userId = initialMeta['userId'] || initialMeta['user_id']
+  const turnId = crypto.randomUUID()
 
   return streamSSE(c, async (stream) => {
     try {
+      await startTurn(stub, sessionId, turnId)
       await writeStatus(stream, 'initializing', 'Preparing agent...')
 
       const githubToken = userId ? await resolveGitHubToken(c, userId) : null
@@ -82,6 +84,8 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
         stream,
       })
       if (!workspace.ok) {
+        await finishTurn(stub, turnId, 'failed')
+        await broadcastSessionSummary(stub, { latestTurnId: turnId, isStreaming: false })
         await writeError(stream, {
           error: workspace.error.message,
           category: workspace.error.code === 'github_not_connected' ? 'user-action' : 'persistent',
@@ -106,14 +110,24 @@ export async function handleChatMessageStream(c: Context<AuthedEnv>) {
         stub,
       })
 
-      await maybeGenerateTitle(c, sessionId, content, turn.assistantText)
+      const turnStatus = turn.outcome === 'interrupted' ? 'interrupted' : turn.outcome
+      await finishTurn(stub, turnId, turnStatus)
+      await broadcastSessionSummary(stub, { latestTurnId: turnId, isStreaming: false })
+
+      if (turn.outcome === 'completed') {
+        await maybeGenerateTitle(c, sessionId, content, turn.assistantText)
+      }
     } catch (error) {
       console.error(`[chat:${sessionId}] Stream handler failed:`, error)
+      await finishTurn(stub, turnId, 'failed').catch((finishError) => {
+        console.warn(`[chat:${sessionId}] Failed to complete turn record:`, finishError)
+      })
+      await broadcastSessionSummary(stub, { latestTurnId: turnId, isStreaming: false }).catch((summaryError) => {
+        console.warn(`[chat:${sessionId}] Failed to broadcast session summary:`, summaryError)
+      })
       await writeError(stream, {
         error: error instanceof Error ? error.message : 'Unknown agent error',
         details: error instanceof Error ? error.message : String(error),
-        category: 'persistent',
-        retryable: true,
       })
     }
   })
@@ -146,6 +160,58 @@ async function persistUserMessage(stub: { fetch: typeof fetch }, content: string
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'user', content }),
+    }),
+  )
+}
+
+async function startTurn(stub: { fetch: typeof fetch }, sessionId: string, turnId: string): Promise<void> {
+  await stub.fetch(
+    new Request(`${DO_URL}/turns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turnId, sessionId }),
+    }),
+  )
+  await stub.fetch(
+    new Request(`${DO_URL}/session-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'turn.started', payload: { turnId, sessionId } }),
+    }),
+  )
+  await broadcastSessionSummary(stub, { latestTurnId: turnId, isStreaming: true })
+}
+
+async function finishTurn(
+  stub: { fetch: typeof fetch },
+  turnId: string,
+  status: 'completed' | 'failed' | 'interrupted',
+): Promise<void> {
+  await stub.fetch(
+    new Request(`${DO_URL}/turns/${turnId}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }),
+  )
+  await stub.fetch(
+    new Request(`${DO_URL}/session-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: `turn.${status}`, payload: { turnId } }),
+    }),
+  )
+}
+
+async function broadcastSessionSummary(
+  stub: { fetch: typeof fetch },
+  opts: { isStreaming?: boolean; activeTool?: string; latestTurnId?: string; title?: string },
+): Promise<void> {
+  await stub.fetch(
+    new Request(`${DO_URL}/summary/broadcast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts),
     }),
   )
 }

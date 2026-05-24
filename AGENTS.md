@@ -74,8 +74,11 @@ ship/
 │   │   ├── app/(app)/dashboard       # Dashboard with chat UI
 │   │   ├── components/chat/markdown.tsx  # Streamdown wrapper (animated fade-in)
 │   │   ├── lib/
+│   │   │   ├── session-logic.ts          # Pure timeline/approval/collapse derivations (Vitest)
+│   │   │   ├── chat-store/               # Zustand streaming state + selectors
+│   │   │   ├── session-connection/       # Unified WS + SSE lifecycle hooks
 │   │   │   ├── ai-elements-adapter.ts    # SSE → UIMessage adapter
-│   │   │   ├── sse-types.ts              # Wire-format event types
+│   │   │   ├── sse-types.ts              # Wire-format event types (prefer @ship/contracts for new code)
 │   │   │   └── api/                      # API client functions
 │   │   └── components/               # Shared React components
 │   └── api/                          # Cloudflare Worker (backend)
@@ -116,6 +119,7 @@ ship/
 │           │   └── session.ts                   # Session Durable Object (SQLite + WS)
 │           └── env.d.ts                         # Worker env bindings
 └── packages/
+    ├── contracts/                  # @ship/contracts — Zod wire schemas, branded IDs, errors
     ├── acp-bridge/                 # `ship-acp-bridge` sources (esbuild-bundled into the Worker)
     │   └── src/
     │       └── server.ts           # Localhost HTTP + WS → NDJSON stdio
@@ -166,6 +170,19 @@ User prompt → Worker → bridge (WSS) → ACP backend (stdio) → repo workspa
                 ▼
       ACP notification translator → SSE → web
 ```
+
+## Shared contracts & session logic
+
+**`@ship/contracts`** (`packages/contracts`) is the single source of truth for wire-format data shared between `apps/api` and `apps/web`:
+
+- Branded IDs (`SessionId`, `MessageId`, `TurnId`, `ToolCallId`)
+- SSE event Zod schemas including `session.summary.updated`
+- Shared `classifyErrorFromMessage()` and stable `ErrorCode` values
+- Turn/diff summaries, session meta, approval policies, tool presentation helpers
+
+**`apps/web/lib/session-logic.ts`** holds pure derivations (timeline, pending prompts, tool collapse) covered by Vitest. React hooks should delegate to these functions rather than embed business rules.
+
+**SessionDO** stores append-only `session_events`, first-class `turns`, and broadcasts lightweight `session.summary.updated` over WebSocket for sidebar/shell consumers (t3code `subscribeShell` analogue). Turn streaming still uses POST SSE per chat turn.
 
 ## Frontend Architecture
 

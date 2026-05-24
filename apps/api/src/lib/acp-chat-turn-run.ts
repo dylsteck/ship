@@ -47,6 +47,8 @@ export interface ChatTurnResult {
   totals: StepFinishTotals
   /** Reserved — ACP tool spans may populate later. */
   hadToolCalls: boolean
+  /** How the turn ended for SessionDO turn records. */
+  outcome: 'completed' | 'failed' | 'interrupted'
 }
 
 const ACP_PROMPT_TIMEOUT_MS = 480_000
@@ -252,7 +254,7 @@ async function finalizeSuccessfulTurn(input: RunChatTurnInput, runtime: TurnRunt
   await emitEvent(input, makeStepFinishEvent(input.sessionId, runtime.translator.messageId, emptyStepTotals(), 'stop'))
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
   await emitEvent(input, { type: 'done' })
-  return { assistantText: runtime.assistantText, totals: emptyStepTotals(), hadToolCalls: false }
+  return { assistantText: runtime.assistantText, totals: emptyStepTotals(), hadToolCalls: false, outcome: 'completed' }
 }
 
 async function handleStoppedTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<ChatTurnResult> {
@@ -260,7 +262,7 @@ async function handleStoppedTurn(input: RunChatTurnInput, runtime: TurnRuntime):
   await writeStatus(input.stream, 'stopped', 'Agent stopped.')
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
   await emitEvent(input, { type: 'done' })
-  return { assistantText: runtime.assistantText, totals: emptyStepTotals(), hadToolCalls: false }
+  return { assistantText: runtime.assistantText, totals: emptyStepTotals(), hadToolCalls: false, outcome: 'interrupted' }
 }
 
 async function handleFailedTurn(input: RunChatTurnInput, error: unknown): Promise<ChatTurnResult> {
@@ -277,7 +279,7 @@ async function handleFailedTurn(input: RunChatTurnInput, error: unknown): Promis
   })
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
   await emitEvent(input, { type: 'done' })
-  return { assistantText: '', totals: emptyStepTotals(), hadToolCalls: false }
+  return { assistantText: '', totals: emptyStepTotals(), hadToolCalls: false, outcome: 'failed' }
 }
 
 /**
