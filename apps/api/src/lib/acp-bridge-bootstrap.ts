@@ -11,6 +11,7 @@
 import type { Sandbox } from '@ship/sandbox'
 import type { Env } from '../env.d'
 import { ACP_BRIDGE_BUNDLE } from '../generated/acp-bridge-bundled'
+import { codexAccessTokenLoginShell } from './codex-auth-bootstrap'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 
 export const ACP_RELAY_PORT_DEFAULT = 9847
@@ -106,6 +107,7 @@ export async function ensureAcpBridgeReady(input: {
     shellExport('CURSOR_AUTH_TOKEN', input.env.CURSOR_AUTH_TOKEN),
     shellExport('OPENCODE_API_KEY', input.env.OPENCODE_API_KEY),
     shellExport('OPENAI_API_KEY', input.env.OPENAI_API_KEY),
+    shellExport('CODEX_ACCESS_TOKEN', input.env.CODEX_ACCESS_TOKEN),
     shellExport('ANTHROPIC_API_KEY', input.env.ANTHROPIC_API_KEY),
     shellExport('SHIP_ACP_CURSOR_CMD', input.env.SHIP_ACP_CURSOR_CMD),
     shellExport('SHIP_ACP_CODEX_CMD', input.env.SHIP_ACP_CODEX_CMD),
@@ -122,6 +124,7 @@ export async function ensureAcpBridgeReady(input: {
     `rm -f /tmp/acp-bridge.pid`,
     `: > /tmp/acp-bridge.log`,
     exportsPrefix,
+    codexAccessTokenLoginShell(),
     `nohup node /tmp/ship-acp-bridge.mjs --port ${port} > /tmp/acp-bridge.log 2>&1 & echo $! > /tmp/acp-bridge.pid`,
     `sleep 1`,
     `kill -0 $(cat /tmp/acp-bridge.pid) 2>/dev/null || { cat /tmp/acp-bridge.log ; exit 1 ; }`,

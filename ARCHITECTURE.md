@@ -122,7 +122,7 @@ Core: `E2B_API_KEY`, `API_SECRET`, `SESSION_SECRET`, GitHub OAuth.
 
 Optional backend auth (injected during bridge bootstrap for single-tenant MVP):
 `CURSOR_API_KEY`, `CURSOR_AUTH_TOKEN`, `OPENCODE_API_KEY`, `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`.
+`CODEX_ACCESS_TOKEN` (runs `codex login --with-access-token` in sandbox), `ANTHROPIC_API_KEY`.
 
 Session title helper: `generate-session-title.ts` (Anthropic → OpenAI REST).
 

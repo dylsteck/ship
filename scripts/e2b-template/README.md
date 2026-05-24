@@ -9,7 +9,7 @@ For production, bake the following into a **custom template** so cold starts sta
 - Install **Node** (matching `engines` in repo `package.json`).
 - Copy a built bridge (optional if you rely on runtime injection): e.g. `/opt/ship/acp-bridge.mjs`.
 - Pin CLI binaries or npm globals:
-  - **Codex**: `codex-acp` (releases / pinned `npx`).
+  - **Codex**: `codex-acp` plus `@openai/codex` CLI (for `CODEX_ACCESS_TOKEN` login).
   - **Claude**: `claude-agent-acp` per [agentclientprotocol/claude-agent-acp](https://github.com/agentclientprotocol/claude-agent-acp).
   - **Cursor**: Cursor CLI `agent` with subcommand `acp` ([docs](https://cursor.com/docs/cli/acp)) — verify redistribution/licensing before baking into public templates.
   - **OpenCode**: `opencode` with `acp` ([docs](https://opencode.ai/docs/acp/)).
@@ -17,7 +17,7 @@ For production, bake the following into a **custom template** so cold starts sta
 
 ## Environment inside the VM
 
-The Worker injects secrets into the shell that starts the bridge (`CURSOR_*`, `OPENCODE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`). For multi-tenant deployments, **do not** bake global provider keys into the image — keep them in Worker secrets and inject per session (current MVP is single-tenant–friendly).
+The Worker injects secrets into the shell that starts the bridge (`CURSOR_*`, `OPENCODE_API_KEY`, `OPENAI_API_KEY`, `CODEX_ACCESS_TOKEN`, `ANTHROPIC_API_KEY`). When `CODEX_ACCESS_TOKEN` is set, bootstrap runs `codex login --with-access-token` before starting the bridge. For multi-tenant deployments, **do not** bake global provider keys into the image — keep them in Worker secrets and inject per session (current MVP is single-tenant–friendly).
 
 ## Port
 

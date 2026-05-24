@@ -72,7 +72,8 @@ Edit `.dev.vars`:
 | `API_SECRET`                      | `openssl rand -hex 32` (must match web app expectations)                |
 | `SESSION_SECRET`                  | Same as web app; for JWT verification                                   |
 | `ALLOWED_ORIGINS`                 | `http://localhost:3000`                                                 |
-| `OPENAI_API_KEY`                  | _(optional)_ Codex / OpenAI-auth paths                                              |
+| `OPENAI_API_KEY`                  | _(optional)_ Codex API-key auth (`openai-api-key` ACP method)                       |
+| `CODEX_ACCESS_TOKEN`              | _(optional)_ Codex ChatGPT-sub auth — [Codex auth docs](https://developers.openai.com/codex/auth) |
 | `CURSOR_API_KEY` / `CURSOR_AUTH_TOKEN` | _(optional)_ Cursor `agent acp` auth                                         |
 | `OPENCODE_API_KEY`                | _(optional)_ OpenCode `opencode acp`                                              |
 | `LOGIN_RESTRICTED_TO_SINGLE_USER` | _(optional)_ `true` to restrict login to one user                       |
@@ -277,6 +278,7 @@ npx wrangler secret put E2B_API_KEY --env production
 npx wrangler secret put SESSION_SECRET --env production  # Must match web app
 # Optional, for Codex agent:
 # npx wrangler secret put OPENAI_API_KEY --env production
+# npx wrangler secret put CODEX_ACCESS_TOKEN --env production  # Codex ChatGPT sub (optional)
 
 # Deploy
 npx wrangler deploy --env production

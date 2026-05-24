@@ -32,6 +32,8 @@ export interface Env {
 
   // Optional agent API keys / ACP backends (inject into sandbox env at runtime — single-tenant MVP)
   OPENAI_API_KEY?: string;
+  /** ChatGPT / Codex subscription access token — `codex login --with-access-token` in sandbox */
+  CODEX_ACCESS_TOKEN?: string;
   /** Cursor CLI (`agent acp`) — pick one auth style */
   CURSOR_API_KEY?: string;
   CURSOR_AUTH_TOKEN?: string;

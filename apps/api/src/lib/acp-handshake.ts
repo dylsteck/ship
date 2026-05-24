@@ -39,6 +39,8 @@ async function authenticateBackend(
       // sending `authenticate` after that hangs on Linux.
       break
     case 'codex':
+      // Subscription auth: bridge bootstrap runs `codex login --with-access-token` from CODEX_ACCESS_TOKEN.
+      if (env.CODEX_ACCESS_TOKEN) break
       if (env.OPENAI_API_KEY) {
         await rpc.request('authenticate', {
           methodId: 'openai-api-key',
