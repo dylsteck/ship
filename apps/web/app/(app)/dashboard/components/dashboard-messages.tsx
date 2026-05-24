@@ -2,23 +2,17 @@
 
 import * as React from 'react'
 import { Conversation, ConversationScrollButton } from '@ship/ui'
-import type { UIMessage, ToolInvocation } from '@/lib/ai-elements-adapter'
-import { getStreamingStatus } from '@/lib/ai-elements-adapter'
-import {
-  extractSubagentSessionId,
-  getSubagentType,
-  getSubagentDescription,
-  getSubagentFullPrompt,
-  getSubagentResultText,
-  extractChildToolsFromResult,
-} from '@/lib/subagent/utils'
-import { mapToolState } from '@/lib/ai-elements-adapter'
-import { SubagentView, type SubagentViewState } from './subagent-view'
+import type { UIMessage } from '@/lib/ai-elements-adapter'
+import { SubagentView } from './subagent-view'
 import type { TodoItem } from '../types'
-import { formatAgentType } from './messages/helpers'
 import { MessageItem, MessagesEmptyState } from './messages'
 import { groupConsecutiveAssistants } from './messages/group-consecutive-assistants'
 import { AssistantRunBlock } from './assistant-run-block'
+import {
+  useSubagentStack,
+  useMessageGroupMeta,
+  getActiveStatusLabel,
+} from './dashboard-messages-hooks'
 
 interface DashboardMessagesProps {
   activeSessionId: string | null
@@ -49,97 +43,21 @@ export function DashboardMessages({
   onQuestionSkip,
   onRetry,
 }: DashboardMessagesProps) {
-  const [subagentStack, setSubagentStack] = React.useState<SubagentViewState[]>([])
   const todoRenderedRef = React.useRef(false)
-
   const messageGroups = React.useMemo(() => groupConsecutiveAssistants(messages), [messages])
-
-  const { showSessionSetup, firstAssistantBlockIndex } = React.useMemo(() => {
-    const hasCompletedAssistant = messages.some(
-      (m) =>
-        m.role === 'assistant' && m.id !== streamingMessageId && (m.content || (m.toolInvocations?.length ?? 0) > 0),
-    )
-    let firstIdx = -1
-    for (let i = 0; i < messageGroups.length; i++) {
-      if (messageGroups[i].type === 'assistant-run') {
-        firstIdx = i
-        break
-      }
-    }
-    return {
-      showSessionSetup: !hasCompletedAssistant,
-      firstAssistantBlockIndex: firstIdx,
-    }
-  }, [messages, streamingMessageId, messageGroups])
-
-  const resolvedSubagent = React.useMemo(() => {
-    if (subagentStack.length === 0) return null
-    const stackTop = subagentStack[subagentStack.length - 1]!
-    const toolCallId = stackTop.toolCallId
-
-    let latestTool: ToolInvocation | null = null
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      const tools = msg?.toolInvocations ?? []
-      const found = tools.find((t) => t.toolCallId === toolCallId)
-      if (found) {
-        latestTool = found
-        break
-      }
-    }
-
-    if (!latestTool) return stackTop
-
-    const sessionId = extractSubagentSessionId(latestTool) || stackTop.sessionId
-    const resultText = getSubagentResultText(latestTool) || stackTop.resultText
-    const childTools = extractChildToolsFromResult(latestTool)
-    const toolStatus = mapToolState(latestTool.state)
-
-    return {
-      ...stackTop,
-      sessionId: sessionId || stackTop.sessionId,
-      resultText: resultText || stackTop.resultText,
-      childTools: childTools.length > 0 ? childTools : stackTop.childTools,
-      toolStatus,
-      duration: latestTool.duration ?? stackTop.duration,
-    }
-  }, [subagentStack, messages])
+  const { showSessionSetup, firstAssistantBlockIndex } = useMessageGroupMeta(
+    messages,
+    streamingMessageId,
+    messageGroups,
+  )
+  const { resolvedSubagent, handleSubagentNavigate, handleSubagentBack } = useSubagentStack(messages)
 
   if (!activeSessionId) return null
 
   todoRenderedRef.current = false
-  const statusLabel = isStreaming ? getStreamingStatus(messages, streamingMessageId) || streamingStatus : ''
+  const statusLabel = getActiveStatusLabel(isStreaming, messages, streamingMessageId, streamingStatus)
   const hasContent = messages.some((m) => m.content || m.toolInvocations?.length)
   const activeStreamingMessageId = isStreaming ? streamingMessageId : null
-
-  const handleSubagentNavigate = (tool: ToolInvocation) => {
-    const agentType = getSubagentType(tool) || String(tool.args?.subagent_type || 'Agent')
-    const description = getSubagentDescription(tool) || String(tool.args?.description || '')
-    const prompt = getSubagentFullPrompt(tool)
-    const sessionId = extractSubagentSessionId(tool) || undefined
-    const resultText = getSubagentResultText(tool) || undefined
-    const childTools = extractChildToolsFromResult(tool)
-    const toolStatus = mapToolState(tool.state)
-
-    setSubagentStack((prev) => [
-      ...prev,
-      {
-        toolCallId: tool.toolCallId,
-        agentType: formatAgentType(agentType),
-        description,
-        prompt: prompt || undefined,
-        resultText,
-        sessionId,
-        childTools: childTools.length > 0 ? childTools : undefined,
-        toolStatus,
-        duration: tool.duration,
-      },
-    ])
-  }
-
-  const handleSubagentBack = () => {
-    setSubagentStack((prev) => prev.slice(0, -1))
-  }
 
   if (resolvedSubagent) {
     return <SubagentView subagent={resolvedSubagent} onBack={handleSubagentBack} parentSessionId={activeSessionId} />

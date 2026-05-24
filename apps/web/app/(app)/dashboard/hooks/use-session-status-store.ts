@@ -38,7 +38,9 @@ function createSessionStatusStore() {
   return {
     subscribe(listener: Listener) {
       listeners.add(listener)
-      return () => listeners.delete(listener)
+      return () => {
+        listeners.delete(listener)
+      }
     },
     /** Global snapshot — changes on ANY session update. Used by dashboard-client. */
     getSnapshot() {

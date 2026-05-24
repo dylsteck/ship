@@ -5,15 +5,13 @@ import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuTrigger,
-  Input,
 } from '@ship/ui'
 import { cn } from '@ship/ui/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
 import type { GitHubRepo } from '@/lib/api/types'
+import { RepoSelectorList, RepoSelectorSearch } from './repo-selector-list'
 
 export interface RepoSelectorProps {
   repos: GitHubRepo[]
@@ -26,11 +24,8 @@ export interface RepoSelectorProps {
   disabled?: boolean
   placeholder?: string
   searchPlaceholder?: string
-  /** Full-width trigger for settings/card layout */
   fullWidth?: boolean
-  /** Optional class for the trigger button (e.g. dark theme on homepage) */
   triggerClassName?: string
-  /** Show "None" option to clear selection (e.g. for default repo) */
   allowNone?: boolean
   onClear?: () => void
 }
@@ -63,7 +58,7 @@ export function RepoSelector({
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
       if (nearBottom) loadMore()
     },
-    [loadMore, hasMore, isLoadingMore]
+    [loadMore, hasMore, isLoadingMore],
   )
 
   return (
@@ -80,72 +75,29 @@ export function RepoSelector({
               triggerClassName,
             )}
           >
-            <span
-              className={
-                fullWidth
-                  ? 'flex-1 text-left truncate text-sm'
-                  : 'max-w-[100px] sm:max-w-[150px] truncate text-sm'
-              }
-            >
+            <span className={fullWidth ? 'flex-1 text-left truncate text-sm' : 'max-w-[100px] sm:max-w-[150px] truncate text-sm'}>
               {selectedRepo ? selectedRepo.fullName : placeholder}
             </span>
-            <HugeiconsIcon
-              icon={ArrowDown01Icon}
-              strokeWidth={2}
-              className="text-muted-foreground size-3.5 shrink-0"
-            />
+            <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} className="text-muted-foreground size-3.5 shrink-0" />
           </Button>
         }
       />
       <DropdownMenuContent align="start" className="w-[280px]">
-        <div className="p-2 pb-1">
-          <Input
-            placeholder={searchPlaceholder}
-            value={repoSearch}
-            onChange={(e) => setRepoSearch(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            autoFocus
-          />
-        </div>
-        <div className="max-h-[280px] overflow-y-auto" onScroll={handleScroll}>
-          {isLoading ? (
-            <div className="p-3 text-center text-xs text-muted-foreground">Loading repos...</div>
-          ) : filteredRepos.length === 0 ? (
-            <div className="p-3 text-center text-xs text-muted-foreground">No repos found</div>
-          ) : (
-            <DropdownMenuGroup>
-              {allowNone && (
-                <DropdownMenuItem onClick={onClear}>
-                  <span className="text-muted-foreground italic text-xs">None</span>
-                </DropdownMenuItem>
-              )}
-              {filteredRepos.map((repo) => {
-                const isSelected = selectedRepo?.id === repo.id
-                return (
-                  <DropdownMenuItem
-                    key={repo.id}
-                    className={cn(
-                      'flex items-center justify-between cursor-pointer',
-                      isSelected && 'bg-accent',
-                    )}
-                    onClick={() => onRepoSelect(repo)}
-                  >
-                    <span className="truncate flex-1 text-xs">{repo.fullName}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {repo.private && <span className="text-[10px] text-muted-foreground">private</span>}
-                      {isSelected && (
-                        <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} className="text-foreground" />
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                )
-              })}
-              {isLoadingMore && (
-                <div className="py-2 text-center text-xs text-muted-foreground">Loading more...</div>
-              )}
-            </DropdownMenuGroup>
-          )}
-        </div>
+        <RepoSelectorSearch
+          searchPlaceholder={searchPlaceholder}
+          repoSearch={repoSearch}
+          onSearchChange={setRepoSearch}
+        />
+        <RepoSelectorList
+          filteredRepos={filteredRepos}
+          selectedRepo={selectedRepo}
+          onRepoSelect={onRepoSelect}
+          isLoading={isLoading}
+          isLoadingMore={isLoadingMore}
+          allowNone={allowNone}
+          onClear={onClear}
+          onScroll={handleScroll}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   )

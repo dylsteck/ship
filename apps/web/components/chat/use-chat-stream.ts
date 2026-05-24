@@ -2,19 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createReconnectingWebSocket, type WebSocketStatus } from '@/lib/websocket'
-import { getChatMessages, retryChatSession, sendChatMessage, stopChatStream } from '@/lib/api'
+import { getChatMessages } from '@/lib/api'
 import type { AgentStatus } from '@/components/session/status-indicator'
-import {
-  type UIMessage,
-  createUserMessage,
-  createAssistantPlaceholder,
-  createErrorMessage,
-  createSystemMessage,
-  classifyError,
-} from '@/lib/ai-elements-adapter'
-import type { Message } from '@/lib/api'
+import { type UIMessage } from '@/lib/ai-elements-adapter'
 import { API_URL } from '@/lib/config'
-import { processStreamEvent, parseSSELines } from './stream-processor'
+import { mapApiMessageToUI, handleWebSocketEvent } from './chat-stream-helpers'
+import { sendChatStreamMessage, useChatStreamActions } from './chat-stream-actions'
 
 interface UseChatStreamOptions {
   sessionId: string
@@ -33,22 +26,17 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
   const streamingMessageRef = useRef<string | null>(null)
   const assistantTextRef = useRef('')
   const reasoningRef = useRef('')
+  const isStreamingRef = useRef(false)
 
-  // Load initial messages
+  useEffect(() => {
+    isStreamingRef.current = isStreaming
+  }, [isStreaming])
+
   useEffect(() => {
     async function loadMessages() {
       try {
         const msgs = await getChatMessages(sessionId, { limit: 25 })
-        const uiMessages: UIMessage[] = msgs.map((m: Message) => ({
-          id: m.id,
-          role: m.role as UIMessage['role'],
-          content: m.content,
-          type: m.type as UIMessage['type'],
-          errorCategory: m.errorCategory,
-          retryable: m.retryable,
-          createdAt: new Date(m.createdAt * 1000),
-        }))
-        setMessages(uiMessages)
+        setMessages(msgs.map(mapApiMessageToUI))
         setHasMore(msgs.length === 25)
       } catch (err) {
         console.error('Failed to load messages:', err)
@@ -57,188 +45,51 @@ export function useChatStream({ sessionId, initialMode = 'build', onStatusChange
     loadMessages()
   }, [sessionId])
 
-  // Connect WebSocket for real-time updates
   useEffect(() => {
     const wsUrl = `${API_URL.replace('http', 'ws')}/sessions/${sessionId}/websocket`
-
     wsRef.current = createReconnectingWebSocket({
       url: wsUrl,
       onMessage: (data: unknown) => {
-        const event = data as {
-          type: string
-          message?: Message | string
-          prUrl?: string
-          status?: string
-          details?: string
-          category?: 'transient' | 'persistent' | 'user-action' | 'fatal'
-          retryable?: boolean
-        }
-
-        if (event.type === 'message') {
-          const msg = event.message as Message
-          const uiMsg: UIMessage = {
-            id: msg.id,
-            role: msg.role as UIMessage['role'],
-            content: msg.content,
-            createdAt: new Date(msg.createdAt * 1000),
-          }
-          setMessages((prev) => {
-            const exists = prev.some((m) => m.id === uiMsg.id)
-            return exists ? prev : [...prev, uiMsg]
-          })
-        } else if (event.type === 'error') {
-          const content = typeof event.message === 'string' ? event.message : 'An error occurred'
-          const { category, retryable } = classifyError(content)
-          setMessages((prev) => [...prev, createErrorMessage(content, event.category || category, retryable)])
-          onStatusChange?.('error')
-        } else if (event.type === 'pr-created') {
-          setMessages((prev) => [...prev, createSystemMessage(`Draft PR created: ${event.prUrl}`, 'pr-notification')])
-        } else if (event.type === 'agent-status') {
-          onStatusChange?.(event.status as AgentStatus, event.details)
-        }
+        handleWebSocketEvent(data as Parameters<typeof handleWebSocketEvent>[0], setMessages, onStatusChange)
       },
       onStatusChange: setWsStatus,
     })
-
     return () => wsRef.current?.disconnect()
   }, [sessionId, onStatusChange])
 
-  // Process queued messages when streaming completes
+  const handleSend = useCallback(
+    async (content: string, modeOverride?: string) => {
+      await sendChatStreamMessage(
+        sessionId,
+        content,
+        initialMode,
+        { streamingMessageRef, assistantTextRef, reasoningRef, isStreamingRef },
+        { setMessages, setIsStreaming, setMessageQueue, onStatusChange },
+        modeOverride,
+      )
+    },
+    [sessionId, initialMode, onStatusChange],
+  )
+
   useEffect(() => {
     if (!isStreaming && messageQueue.length > 0) {
       const [next, ...rest] = messageQueue
       setMessageQueue(rest)
-      handleSend(next)
+      void handleSend(next)
     }
-  }, [isStreaming, messageQueue])
+  }, [isStreaming, messageQueue, handleSend])
 
-  const handleSend = useCallback(
-    async (content: string, modeOverride?: string) => {
-      if (isStreaming) {
-        setMessageQueue((q) => [...q, content])
-        return
-      }
-
-      setIsStreaming(true)
-      onStatusChange?.('planning')
-      assistantTextRef.current = ''
-      reasoningRef.current = ''
-
-      const userMessage = createUserMessage(content)
-      const assistantMessage = createAssistantPlaceholder()
-      streamingMessageRef.current = assistantMessage.id
-      setMessages((prev) => [...prev, userMessage, assistantMessage])
-
-      try {
-        const response = await sendChatMessage(sessionId, content, modeOverride ?? initialMode)
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          const errorContent = errorData.error || 'Failed to start agent'
-          const { category, retryable } = classifyError(errorContent)
-          setMessages((prev) => {
-            const filtered = prev.filter((m) => m.id !== streamingMessageRef.current)
-            return [...filtered, createErrorMessage(errorContent, category, retryable)]
-          })
-          setIsStreaming(false)
-          streamingMessageRef.current = null
-          onStatusChange?.('error')
-          return
-        }
-
-        if (!response.body) throw new Error('No response body')
-
-        await readSSEStream(response.body)
-      } catch (err) {
-        console.error('Chat error:', err)
-        setIsStreaming(false)
-        streamingMessageRef.current = null
-        onStatusChange?.('error')
-      }
-    },
-    [sessionId, isStreaming, initialMode, onStatusChange],
-  )
-
-  async function readSSEStream(body: ReadableStream<Uint8Array>) {
-    const reader = body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let rafId: number | null = null
-    let pendingFlush = false
-
-    // Batch state updates: collect events and flush once per animation frame
-    const pendingEvents: Record<string, unknown>[] = []
-    const clearStreamingRef = () => {
-      streamingMessageRef.current = null
-    }
-
-    function flushEvents() {
-      rafId = null
-      pendingFlush = false
-      const events = pendingEvents.splice(0)
-      if (events.length === 0) return
-
-      // Stable options object — reused across all events in the batch
-      const opts = {
-        streamingMessageId: streamingMessageRef.current!,
-        assistantTextRef,
-        reasoningRef,
-        setMessages,
-        setIsStreaming,
-        clearStreamingRef,
-        onStatusChange,
-      }
-
-      // Process all pending events in a single React batch
-      for (const data of events) {
-        processStreamEvent(data, opts)
-      }
-    }
-
-    function scheduleFlush() {
-      if (!pendingFlush) {
-        pendingFlush = true
-        rafId = requestAnimationFrame(flushEvents)
-      }
-    }
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      buffer = parseSSELines(buffer, (data) => {
-        pendingEvents.push(data)
-        scheduleFlush()
-      })
-    }
-
-    // Flush any remaining events immediately on stream end
-    if (rafId !== null) cancelAnimationFrame(rafId)
-    flushEvents()
-  }
+  const { handleStop: stopStream, handleRetryError: retryError } = useChatStreamActions(sessionId, onStatusChange)
 
   const handleStop = useCallback(async () => {
-    try {
-      await stopChatStream(sessionId)
-    } catch {
-      // Ignore stop errors
-    }
+    await stopStream()
     setIsStreaming(false)
     streamingMessageRef.current = null
-    onStatusChange?.('idle')
-  }, [sessionId, onStatusChange])
+  }, [stopStream])
 
   const handleRetryError = useCallback(
-    async (messageId: string) => {
-      setMessages((prev) => prev.filter((m) => m.id !== messageId))
-      try {
-        await retryChatSession(sessionId)
-      } catch (err) {
-        console.error('Retry failed:', err)
-      }
-    },
-    [sessionId],
+    (messageId: string) => retryError(messageId, setMessages),
+    [retryError],
   )
 
   return {

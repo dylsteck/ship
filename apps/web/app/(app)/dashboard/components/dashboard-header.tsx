@@ -2,19 +2,16 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import {
-  cn,
-  SidebarTrigger,
-  useSidebar,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@ship/ui'
+import { cn, SidebarTrigger, useSidebar } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
 import { UserDropdown } from '@/components/user-dropdown'
+import {
+  SandboxStatusBadge,
+  ConnectionStatusBadge,
+  SessionHeaderActions,
+} from './dashboard-header-actions'
 
 interface DashboardHeaderProps {
   activeSessionId: string | null
@@ -29,24 +26,6 @@ interface DashboardHeaderProps {
     username: string
     avatarUrl: string | null
   }
-}
-
-function EllipsisIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="1" />
-      <circle cx="19" cy="12" r="1" />
-      <circle cx="5" cy="12" r="1" />
-    </svg>
-  )
-}
-
-const sandboxStatusConfig: Record<string, { label: string; color: string; pulse?: boolean }> = {
-  active: { label: 'Active', color: 'text-green-600 dark:text-green-400' },
-  provisioning: { label: 'Provisioning...', color: 'text-amber-600 dark:text-amber-400', pulse: true },
-  resuming: { label: 'Resuming...', color: 'text-amber-600 dark:text-amber-400', pulse: true },
-  paused: { label: 'Paused', color: 'text-muted-foreground/60' },
-  error: { label: 'Error', color: 'text-red-600 dark:text-red-400' },
 }
 
 function MobileNav({
@@ -92,7 +71,6 @@ function MobileNav({
 export function DashboardHeader({
   activeSessionId,
   sessionTitle,
-  repoLabel,
   wsStatus,
   sandboxStatus,
   rightSidebarOpen,
@@ -100,7 +78,6 @@ export function DashboardHeader({
   onDeleteSession,
   user,
 }: DashboardHeaderProps) {
-  const sbConfig = sandboxStatus ? sandboxStatusConfig[sandboxStatus] : null
   const { state } = useSidebar()
   const showSidebarTrigger = state === 'collapsed'
 
@@ -133,75 +110,16 @@ export function DashboardHeader({
       )}
 
       <div className="flex items-center gap-1 ml-auto">
-        {activeSessionId && sbConfig && sandboxStatus !== 'unknown' && (
-          <div className={cn('text-[10px] flex items-center gap-1.5 mr-2', sbConfig.color)}>
-            <span
-              className={cn(
-                'size-1.5 rounded-full',
-                sandboxStatus === 'active' && 'bg-green-500',
-                sandboxStatus === 'paused' && 'bg-muted-foreground/40',
-                sandboxStatus === 'error' && 'bg-red-500',
-                (sandboxStatus === 'provisioning' || sandboxStatus === 'resuming') && 'bg-amber-500 animate-pulse',
-              )}
-            />
-            {sbConfig.label}
-          </div>
+        {activeSessionId && sandboxStatus && <SandboxStatusBadge sandboxStatus={sandboxStatus} />}
+        {activeSessionId && <ConnectionStatusBadge wsStatus={wsStatus} />}
+        {activeSessionId && (
+          <SessionHeaderActions
+            activeSessionId={activeSessionId}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={onToggleRightSidebar}
+            onDeleteSession={onDeleteSession}
+          />
         )}
-
-        {activeSessionId && wsStatus !== 'connected' && (
-          <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mr-2">
-            <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-            {wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}
-          </div>
-        )}
-
-        {activeSessionId && onToggleRightSidebar && !rightSidebarOpen && (
-          <div className="flex items-center gap-0.5">
-            {onDeleteSession && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <button
-                      type="button"
-                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-transparent transition-colors"
-                      aria-label="More options"
-                    >
-                      <EllipsisIcon className="size-3.5" />
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      void onDeleteSession(activeSessionId)
-                    }}
-                    className="cursor-pointer text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-                  >
-                    Delete session
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <button
-              onClick={onToggleRightSidebar}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-transparent transition-colors"
-              title={rightSidebarOpen ? 'Hide context panel' : 'Show context panel'}
-            >
-              <svg
-                className="size-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M15 3v18" />
-              </svg>
-            </button>
-          </div>
-        )}
-
         <MobileNav activeSessionId={activeSessionId} user={user} />
       </div>
     </header>

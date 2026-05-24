@@ -1,5 +1,45 @@
 /** Shared utilities for tool output parsing, formatting, and language detection */
 
+// ============ Display Labels ============
+
+/** Format a tool duration in milliseconds for display. */
+export function formatDurationLabel(duration: number | undefined): string | null {
+  if (duration === undefined || duration <= 0) return null
+  if (duration >= 60000) {
+    return `${Math.floor(duration / 60000)}m ${((duration % 60000) / 1000).toFixed(0)}s`
+  }
+  if (duration >= 1000) {
+    return `${(duration / 1000).toFixed(1)}s`
+  }
+  return `${duration}ms`
+}
+
+/** Map a tool status to a short human-readable label. */
+export function formatStatusLabel(status: 'pending' | 'in_progress' | 'completed' | 'failed'): string {
+  switch (status) {
+    case 'pending':
+      return 'Pending'
+    case 'in_progress':
+      return 'Running'
+    case 'completed':
+      return 'Done'
+    case 'failed':
+      return 'Failed'
+  }
+}
+
+/** Serialize tool output for full display (pretty-printed JSON when possible). */
+export function getFullOutputText(output: unknown): string {
+  if (typeof output === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(output), null, 2)
+    } catch {
+      return output
+    }
+  }
+  return JSON.stringify(output, null, 2)
+}
+
 // ============ Input Summary ============
 
 export function getInputSummary(name: string, input: Record<string, unknown>): string | null {

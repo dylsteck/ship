@@ -7,16 +7,16 @@ import type { ModelInfo } from '@/lib/api/types'
 import type { ComposerContextValue } from './composer/composer-context'
 import type { SessionPanelData, TodoItem, RightSidebarTab } from '../types'
 import { DashboardHeader } from './dashboard-header'
-import { DashboardMessages } from './dashboard-messages'
-import { DashboardComposer } from './composer'
-import { MobileSessionList } from './mobile-session-list'
-import { HomepageSessionList } from './homepage-session-list'
 import { RightSidebar } from './right-sidebar'
+import {
+  DashboardMobileContent,
+  DashboardDesktopContent,
+  type DashboardMessagesPropsBundle,
+} from './dashboard-main-column-content'
 
 export interface DashboardMainColumnProps {
   isMobile: boolean
   user: import('@/lib/api/types').User
-  /** Stable timestamp from server for SSR-safe time formatting */
   serverTimestamp?: number
   header: {
     activeSessionId: string | null
@@ -59,14 +59,9 @@ export interface DashboardMainColumnProps {
   }
   rightSidebarData: SessionPanelData | null
   models: ModelInfo[]
-  /** When on homepage, optional agent label for session cards (e.g. "OpenCode") */
   agentLabel?: string
 }
 
-/**
- * Main column: header + mobile/desktop content switching.
- * Composes MobileSessionList, DashboardMessages, DashboardComposer.
- */
 export function DashboardMainColumn({
   isMobile,
   user,
@@ -80,8 +75,9 @@ export function DashboardMainColumn({
   models,
   agentLabel = 'Ship',
 }: DashboardMainColumnProps) {
-  const { activeSessionId, displayTitle, displayRepoLabel, wsStatus, sandboxStatus } = header
-  const messagesProps = {
+  const { activeSessionId, displayTitle, wsStatus, sandboxStatus } = header
+
+  const messagesProps: DashboardMessagesPropsBundle = {
     activeSessionId,
     messages: messagesCtx.messages,
     isStreaming: messagesCtx.isStreaming,
@@ -102,7 +98,6 @@ export function DashboardMainColumn({
         <DashboardHeader
           activeSessionId={activeSessionId}
           sessionTitle={displayTitle}
-          repoLabel={displayRepoLabel}
           wsStatus={wsStatus}
           sandboxStatus={sandboxStatus ?? undefined}
           rightSidebarOpen={rightSidebar.desktopOpen}
@@ -112,66 +107,27 @@ export function DashboardMainColumn({
         />
 
         <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
-          {/* Mobile */}
           <div className="md:hidden flex-1 flex flex-col overflow-hidden">
-            {!activeSessionId && (
-              <>
-                <div className="shrink-0">
-                  <DashboardComposer
-                    context={composer.context}
-                    compactLayout={true}
-                  />
-                </div>
-                <MobileSessionList
-                  sessions={sessions.localSessions}
-                  isMobile={isMobile ?? false}
-                  activeSessionId={activeSessionId}
-                  isStreaming={messagesCtx.isStreaming}
-                  onSessionClick={sessions.onSessionClick}
-                  onDeleteSession={sessions.onDeleteSession}
-                  serverTimestamp={serverTimestamp}
-                />
-              </>
-            )}
-            {activeSessionId && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-hidden">
-                  <DashboardMessages {...messagesProps} />
-                </div>
-                <DashboardComposer
-                  context={composer.context}
-                  compactLayout={false}
-                />
-              </div>
-            )}
+            <DashboardMobileContent
+              activeSessionId={activeSessionId}
+              messagesProps={messagesProps}
+              composerContext={composer.context}
+              sessions={sessions}
+              serverTimestamp={serverTimestamp}
+              isMobile={isMobile ?? false}
+            />
           </div>
 
-          {/* Desktop */}
           <div className="hidden md:flex flex-col h-full">
-            {activeSessionId ? (
-              <>
-                <div className="flex-1 overflow-hidden">
-                  <DashboardMessages {...messagesProps} />
-                </div>
-                <DashboardComposer context={composer.context} />
-              </>
-            ) : (
-              <div className="flex-1 overflow-y-auto">
-                <DashboardComposer context={composer.context} />
-                <HomepageSessionList
-                  sessions={sessions.localSessions}
-                  activeSessionId={activeSessionId}
-                  isStreaming={messagesCtx.isStreaming}
-                  streamingStatus={messagesCtx.streamingStatus ?? ''}
-                  streamingStatusSteps={messagesCtx.streamingStatusSteps}
-                  agentLabel={agentLabel}
-                  models={models}
-                  onSessionClick={sessions.onSessionClick}
-                  onDeleteSession={sessions.onDeleteSession}
-                  serverTimestamp={serverTimestamp}
-                />
-              </div>
-            )}
+            <DashboardDesktopContent
+              activeSessionId={activeSessionId}
+              messagesProps={messagesProps}
+              composerContext={composer.context}
+              sessions={sessions}
+              models={models}
+              agentLabel={agentLabel}
+              serverTimestamp={serverTimestamp}
+            />
           </div>
         </div>
       </div>

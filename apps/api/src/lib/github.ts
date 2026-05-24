@@ -134,7 +134,7 @@ export class GitHubClient {
       })
 
       return pulls.length > 0 ? pulls[0].number : null
-    } catch (error) {
+    } catch {
       // If we can't check, return null (will attempt to create)
       return null
     }

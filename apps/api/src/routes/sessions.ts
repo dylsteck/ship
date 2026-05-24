@@ -2,6 +2,10 @@ import { Hono } from 'hono'
 import type { Env } from '../env.d'
 import { requireJwtUserId, requireSessionOwner } from '../lib/session-authorization'
 import { createSessionBodySchema, parseJsonBody } from '../lib/api-schemas'
+import {
+  broadcastSandboxProvisioningError,
+  provisionSessionInBackground,
+} from '../lib/session-create-provisioning'
 
 // Session DTO type
 interface SessionDTO {
@@ -123,79 +127,10 @@ sessions.post('/', async (c) => {
       .bind(sessionId, userId, input.repoOwner, input.repoName, now, now, input.title ?? null)
       .run()
 
-    // Start DO init + sandbox provisioning in background (don't block session creation)
     c.executionCtx.waitUntil(
-      (async () => {
-        const doId = c.env.SESSION_DO.idFromName(sessionId)
-        const doStub = c.env.SESSION_DO.get(doId)
-
-        // Initialize session metadata in DO
-        await doStub.setSessionMeta('session_id', sessionId)
-        await doStub.setSessionMeta('userId', userId)
-        await doStub.setSessionMeta('repoOwner', input.repoOwner)
-        await doStub.setSessionMeta('repoName', input.repoName)
-        await doStub.setSessionMeta('createdAt', now.toString())
-        if (input.model) {
-          await doStub.setSessionMeta('model', input.model)
-        }
-        if (input.agentType) {
-          await doStub.setSessionMeta('agent_type', input.agentType)
-        }
-        await doStub.setSessionMeta('base_branch', input.baseBranch || 'main')
-
-        // Store user name/email for git commit attribution
-        try {
-          const userRow = await c.env.DB.prepare('SELECT name, email, username FROM users WHERE id = ? LIMIT 1')
-            .bind(userId)
-            .first<{ name: string | null; email: string | null; username: string | null }>()
-          if (userRow) {
-            if (userRow.name || userRow.username) {
-              await doStub.setSessionMeta('user_name', userRow.name || userRow.username!)
-            }
-            if (userRow.email) {
-              await doStub.setSessionMeta('user_email', userRow.email)
-            }
-          }
-        } catch {
-          /* ignore — git commits will fall back to Ship Agent */
-        }
-
-        await doStub.setSessionMeta('sandbox_status', 'provisioning')
-
-        // Sandbox provision
-        const res = await doStub.fetch(`http://do/sandbox/provision`, { method: 'POST' })
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({ error: 'Unknown error' }))
-          console.error(`[sessions] Sandbox provisioning failed for ${sessionId}:`, error)
-          await doStub.setSessionMeta('sandbox_status', 'error')
-          await doStub.fetch(`http://do/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'sandbox-status',
-              status: 'error',
-              error: (error as { error?: string }).error || 'Sandbox provisioning failed',
-            }),
-          })
-        }
-      })().catch(async (err) => {
+      provisionSessionInBackground(c.env, sessionId, userId, input, now).catch(async (err) => {
         console.error(`[sessions] Sandbox provisioning error for ${sessionId}:`, err)
-        try {
-          const doId = c.env.SESSION_DO.idFromName(sessionId)
-          const doStub = c.env.SESSION_DO.get(doId)
-          await doStub.setSessionMeta('sandbox_status', 'error')
-          await doStub.fetch(`http://do/broadcast`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'sandbox-status',
-              status: 'error',
-              error: err instanceof Error ? err.message : 'Sandbox provisioning failed',
-            }),
-          })
-        } catch {
-          /* ignore */
-        }
+        await broadcastSandboxProvisioningError(c.env, sessionId, err)
       }),
     )
 

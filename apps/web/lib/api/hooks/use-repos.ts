@@ -7,7 +7,7 @@ import type { GitHubRepo } from '../types'
 
 const REPOS_PER_PAGE = 50
 
-interface ReposPageResponse {
+export interface ReposPageResponse {
   repos: GitHubRepo[]
   hasMore: boolean
   nextPage: number | null

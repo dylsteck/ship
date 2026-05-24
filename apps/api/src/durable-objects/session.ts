@@ -1,16 +1,8 @@
 /**
  * SessionDO - Durable Object for session state management
  *
- * This class manages per-session state using SQLite storage.
  * Each session gets its own DO instance identified by session ID.
- *
- * Responsibilities:
- * - Persist messages, tasks, and session metadata
- * - Initialize SQLite schema on construction
- * - Provide RPC methods for state access
- * - Handle WebSocket connections with Hibernation API
- *
- * Note: Message persistence added in Plan 02-04
+ * Persists messages, tasks, and session metadata in SQLite.
  */
 
 import { DurableObject } from 'cloudflare:workers'
@@ -18,78 +10,42 @@ import type { Env } from '../env.d'
 import { SandboxManager, type SandboxInfo } from '../lib/e2b'
 import { createAgentExecutor, type AgentExecutor, type ErrorEvent } from '../lib/agent-executor'
 import type { Sandbox } from '@e2b/code-interpreter'
+import { handleSessionFetch } from './session-fetch-handlers'
+import {
+  getMessageCount as getMessageCountStore,
+  getMessages as getMessagesStore,
+  getRecentMessages as getRecentMessagesStore,
+  persistMessage as persistMessageStore,
+  updateMessageParts as updateMessagePartsStore,
+} from './session-message-store'
+import {
+  getNextPendingTask as getNextPendingTaskStore,
+  getTasks as getTasksStore,
+  persistTask as persistTaskStore,
+  updateTaskStatus as updateTaskStatusStore,
+} from './session-task-store'
+import {
+  getSandboxId as getSandboxIdStore,
+  getSandboxStatus as getSandboxStatusStore,
+  pauseSandbox as pauseSandboxStore,
+  provisionSandbox as provisionSandboxStore,
+  resumeSandbox as resumeSandboxStore,
+  terminateSandbox as terminateSandboxStore,
+} from './session-sandbox-store'
+import {
+  broadcastToWebSockets,
+  handleWebSocketClose,
+  handleWebSocketError,
+  handleWebSocketMessage,
+  handleWebSocketUpgrade,
+} from './session-websocket'
+import type { Message, SessionMetaRow, Task } from './session-types'
 
-/**
- * Connection state attached to each WebSocket
- * Survives DO hibernation via serializeAttachment/deserializeAttachment
- */
-interface ConnectionState {
-  connectedAt: number
-  lastSeen: number
-  userId?: string
-}
+export type { Message, MessagePart, Task } from './session-types'
 
-// Message row type matching SQLite return values
-interface MessageRow extends Record<string, SqlStorageValue> {
-  id: string
-  role: string
-  content: string
-  parts: string | null
-  created_at: number
-}
-
-function isMissingPartsColumnError(error: unknown): boolean {
-  return String(error).includes('no column named parts') || String(error).includes('no such column: parts')
-}
-
-// Message types for chat
-export interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  parts?: string // JSON array of tool parts
-  createdAt: number
-}
-
-export interface MessagePart {
-  type: 'text' | 'tool-call' | 'tool-result'
-  content?: string
-  toolName?: string
-  toolInput?: unknown
-  toolOutput?: unknown
-  state?: 'pending' | 'running' | 'complete' | 'error'
-}
-
-// Task types for agent work items
-export interface Task {
-  id: string
-  title: string
-  description?: string
-  status: 'pending' | 'running' | 'complete' | 'error'
-  mode: 'build' | 'plan'
-  createdAt: number
-  completedAt?: number
-}
-
-// Task row type matching SQLite return values
-interface TaskRow extends Record<string, SqlStorageValue> {
-  id: string
-  title: string
-  description: string | null
-  status: string
-  mode: string
-  created_at: number
-  completed_at: number | null
-}
-
-// Session meta key-value pair matching SQLite return values
-interface SessionMetaRow extends Record<string, SqlStorageValue> {
-  key: string
-  value: string
-}
 
 export class SessionDO extends DurableObject<Env> {
-  private sql: SqlStorage
+  readonly sql: SqlStorage
   private sandboxManager: SandboxManager | null = null
   private agentExecutor: AgentExecutor | null = null
   private sessionId: string | null = null
@@ -98,37 +54,21 @@ export class SessionDO extends DurableObject<Env> {
     super(ctx, env)
     this.sql = ctx.storage.sql
 
-    // Initialize schema in blockConcurrencyWhile to ensure
-    // schema is ready before any requests are processed
     ctx.blockConcurrencyWhile(async () => {
       this.initSchema()
     })
   }
 
-  /**
-   * Get or lazily resolve the session ID from session_meta.
-   * The session ID is the chat_sessions.id, stored in meta by the chat route.
-   */
-  private async getSessionIdForD1(): Promise<string | null> {
+  async getSessionIdForD1(): Promise<string | null> {
     if (this.sessionId) return this.sessionId
-    // Try to resolve from session_meta (set by chat route when creating session)
     const meta = await this.getSessionMeta()
     const id = meta['session_id'] || null
     if (id) this.sessionId = id
     return id
   }
 
-  /**
-   * Initialize SQLite schema for session data
-   *
-   * Tables:
-   * - messages: Chat history with optional tool parts
-   * - tasks: Tasks inferred from chat
-   * - session_meta: Key-value metadata storage (includes sandbox_id, sandbox_status, git/PR state)
-   */
   private initSchema(): void {
     this.sql.exec(`
-      -- Messages table for chat history
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         role TEXT NOT NULL,
@@ -137,7 +77,6 @@ export class SessionDO extends DurableObject<Env> {
         created_at INTEGER NOT NULL
       );
 
-      -- Tasks table for inferred work items
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -148,34 +87,22 @@ export class SessionDO extends DurableObject<Env> {
         completed_at INTEGER
       );
 
-      -- Session metadata key-value store
-      -- Used for sandbox_id, sandbox_status, git/PR state, and other metadata
-      -- Git/PR fields: pr_number, pr_url, pr_draft, branch_name, first_commit_done, repo_url
       CREATE TABLE IF NOT EXISTS session_meta (
         key TEXT PRIMARY KEY,
         value TEXT
       );
 
-      -- Index for efficient message ordering
       CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
-
-      -- Index for task status queries
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at);
     `)
   }
 
-  /**
-   * Get all session metadata as key-value object
-   */
   async getSessionMeta(): Promise<Record<string, string>> {
     const cursor = this.sql.exec<SessionMetaRow>('SELECT key, value FROM session_meta')
     const rows = cursor.toArray()
     return Object.fromEntries(rows.map((r) => [r.key, r.value]))
   }
 
-  /**
-   * Set a metadata value
-   */
   async setSessionMeta(key: string, value: string): Promise<void> {
     this.sql.exec(
       `INSERT INTO session_meta (key, value) VALUES (?, ?)
@@ -185,609 +112,126 @@ export class SessionDO extends DurableObject<Env> {
     )
   }
 
-  /**
-   * Get recent messages with optional limit
-   * Returns messages ordered by created_at descending (most recent first)
-   */
-  async getRecentMessages(limit: number = 25): Promise<MessageRow[]> {
-    const cursor = this.sql.exec<MessageRow>(
-      `SELECT id, role, content, parts, created_at
-       FROM messages
-       ORDER BY created_at DESC
-       LIMIT ?`,
-      limit,
-    )
-    const rows = cursor.toArray()
-
-    if (rows.length > 0) {
-      return rows.reverse()
-    }
-
-    // Cold start fallback to D1
-    const sessionId = await this.getSessionIdForD1()
-    if (!sessionId) return []
-
-    try {
-      const result = await this.env.DB.prepare(
-        `SELECT id, role, content, parts, created_at
-         FROM chat_messages WHERE session_id = ?
-         ORDER BY created_at DESC LIMIT ?`,
-      )
-        .bind(sessionId, limit)
-        .all()
-
-      if (result.results?.length) {
-        // Backfill DO SQLite
-        for (const row of result.results) {
-          this.sql.exec(
-            `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
-            row.id,
-            row.role,
-            row.content,
-            row.parts,
-            row.created_at,
-          )
-        }
-        return (result.results as unknown as MessageRow[]).reverse()
-      }
-    } catch (e) {
-      if (isMissingPartsColumnError(e)) {
-        const result = await this.env.DB.prepare(
-          `SELECT id, role, content, created_at
-           FROM chat_messages WHERE session_id = ?
-           ORDER BY created_at DESC LIMIT ?`,
-        )
-          .bind(sessionId, limit)
-          .all()
-
-        if (result.results?.length) {
-          for (const row of result.results) {
-            this.sql.exec(
-              `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
-              row.id,
-              row.role,
-              row.content,
-              null,
-              row.created_at,
-            )
-          }
-          return result.results
-            .map((row) => ({
-              id: row.id as string,
-              role: row.role as string,
-              content: row.content as string,
-              parts: null,
-              created_at: row.created_at as number,
-            }))
-            .reverse()
-        }
-      }
-      console.warn(`[SessionDO] Failed to load recent messages from D1: ${e}`)
-    }
-
-    return []
+  getDoInstanceId(): string {
+    return this.ctx.id.toString()
   }
 
-  /**
-   * Persist a message to SQLite storage
-   * Broadcasts to WebSocket clients after saving
-   */
+  getEnv(): Env {
+    return this.env
+  }
+
+  getE2bApiKey(): string | undefined {
+    return this.env.E2B_API_KEY
+  }
+
+  getWebSockets(): WebSocket[] {
+    return this.ctx.getWebSockets()
+  }
+
+  getWebSocketCount(): number {
+    return this.ctx.getWebSockets().length
+  }
+
+  acceptWebSocket(ws: WebSocket): void {
+    this.ctx.acceptWebSocket(ws)
+  }
+
+  async getRecentMessages(limit: number = 25) {
+    return getRecentMessagesStore(this, limit)
+  }
+
   async persistMessage(message: Omit<Message, 'id' | 'createdAt'>): Promise<Message> {
-    const id = crypto.randomUUID()
-    const createdAt = Math.floor(Date.now() / 1000)
-
-    this.sql.exec(
-      `INSERT INTO messages (id, role, content, parts, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      id,
-      message.role,
-      message.content,
-      message.parts || null,
-      createdAt,
-    )
-
-    const saved: Message = {
-      id,
-      role: message.role,
-      content: message.content,
-      parts: message.parts,
-      createdAt,
-    }
-
-    // Write-through to D1 for persistence beyond DO lifetime
-    const sessionId = await this.getSessionIdForD1()
-    if (sessionId) {
-      try {
-        await this.env.DB.prepare(
-          `INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, parts, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-          .bind(saved.id, sessionId, saved.role, saved.content, saved.parts || null, saved.createdAt)
-          .run()
-      } catch (e) {
-        if (isMissingPartsColumnError(e)) {
-          await this.env.DB.prepare(
-            `INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, created_at)
-             VALUES (?, ?, ?, ?, ?)`,
-          )
-            .bind(saved.id, sessionId, saved.role, saved.content, saved.createdAt)
-            .run()
-        } else {
-          console.warn(`[SessionDO] Failed to write message to D1: ${e}`)
-        }
-      }
-    }
-
-    // Broadcast to WebSocket clients
-    this.broadcast({ type: 'message', message: saved })
-
-    return saved
+    return persistMessageStore(this, message)
   }
 
-  /**
-   * Get messages with pagination support
-   * Returns messages in chronological order (oldest first)
-   */
   async getMessages(options: { limit?: number; before?: string } = {}): Promise<Message[]> {
-    const limit = options.limit || 25 // Default ~25 per CONTEXT.md
-
-    let query = `SELECT id, role, content, parts, created_at as createdAt
-                 FROM messages`
-    const params: unknown[] = []
-
-    if (options.before) {
-      // Get cursor message's created_at
-      const cursor = this.sql.exec(`SELECT created_at FROM messages WHERE id = ?`, options.before).one()
-
-      if (cursor) {
-        query += ` WHERE created_at < ?`
-        params.push(cursor.created_at)
-      }
-    }
-
-    query += ` ORDER BY created_at DESC LIMIT ?`
-    params.push(limit)
-
-    const rows = this.sql.exec(query, ...params).toArray()
-
-    if (rows.length > 0) {
-      // Return in chronological order (oldest first)
-      return rows.reverse().map((row) => ({
-        id: row.id as string,
-        role: row.role as Message['role'],
-        content: row.content as string,
-        parts: row.parts as string | undefined,
-        createdAt: row.createdAt as number,
-      }))
-    }
-
-    // Cold start: DO SQLite is empty, fall back to D1
-    const sessionId = await this.getSessionIdForD1()
-    if (!sessionId) return []
-
-    try {
-      const result = await this.env.DB.prepare(
-        `SELECT id, role, content, parts, created_at as createdAt
-         FROM chat_messages WHERE session_id = ?
-         ORDER BY created_at DESC LIMIT ?`,
-      )
-        .bind(sessionId, limit)
-        .all()
-
-      if (result.results?.length) {
-        // Backfill DO SQLite for subsequent reads
-        for (const row of result.results) {
-          this.sql.exec(
-            `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
-            row.id,
-            row.role,
-            row.content,
-            row.parts,
-            row.createdAt,
-          )
-        }
-        return result.results.reverse().map((row) => ({
-          id: row.id as string,
-          role: row.role as Message['role'],
-          content: row.content as string,
-          parts: row.parts as string | undefined,
-          createdAt: row.createdAt as number,
-        }))
-      }
-    } catch (e) {
-      if (isMissingPartsColumnError(e)) {
-        const result = await this.env.DB.prepare(
-          `SELECT id, role, content, created_at as createdAt
-           FROM chat_messages WHERE session_id = ?
-           ORDER BY created_at DESC LIMIT ?`,
-        )
-          .bind(sessionId, limit)
-          .all()
-
-        if (result.results?.length) {
-          for (const row of result.results) {
-            this.sql.exec(
-              `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
-              row.id,
-              row.role,
-              row.content,
-              null,
-              row.createdAt,
-            )
-          }
-          return result.results.reverse().map((row) => ({
-            id: row.id as string,
-            role: row.role as Message['role'],
-            content: row.content as string,
-            createdAt: row.createdAt as number,
-          }))
-        }
-      }
-      console.warn(`[SessionDO] Failed to load messages from D1: ${e}`)
-    }
-
-    return []
+    return getMessagesStore(this, options)
   }
 
-  /**
-   * Update message parts (for streaming updates)
-   */
   async updateMessageParts(messageId: string, parts: string): Promise<void> {
-    this.sql.exec(`UPDATE messages SET parts = ? WHERE id = ?`, parts, messageId)
-
-    // Sync parts update to D1
-    try {
-      await this.env.DB.prepare(`UPDATE chat_messages SET parts = ? WHERE id = ?`).bind(parts, messageId).run()
-    } catch (e) {
-      console.warn(`[SessionDO] Failed to update message parts in D1: ${e}`)
-    }
-
-    // Broadcast part update
-    this.broadcast({ type: 'message-parts', messageId, parts })
+    return updateMessagePartsStore(this, messageId, parts)
   }
 
-  /**
-   * Get total message count for session list display
-   */
   async getMessageCount(): Promise<number> {
-    const result = this.sql.exec(`SELECT COUNT(*) as count FROM messages`).one()
-    const localCount = (result?.count as number) || 0
-
-    if (localCount > 0) return localCount
-
-    // Cold start fallback to D1
-    const sessionId = await this.getSessionIdForD1()
-    if (!sessionId) return 0
-
-    try {
-      const d1Result = await this.env.DB.prepare(`SELECT COUNT(*) as count FROM chat_messages WHERE session_id = ?`)
-        .bind(sessionId)
-        .first<{ count: number }>()
-      return d1Result?.count || 0
-    } catch (e) {
-      console.warn(`[SessionDO] Failed to get message count from D1: ${e}`)
-    }
-
-    return 0
+    return getMessageCountStore(this)
   }
 
-  /**
-   * Persist a task to SQLite storage
-   * Broadcasts to WebSocket clients after saving
-   */
   async persistTask(task: Omit<Task, 'id' | 'createdAt' | 'status'>): Promise<Task> {
-    const id = crypto.randomUUID()
-    const createdAt = Math.floor(Date.now() / 1000)
-
-    this.sql.exec(
-      `INSERT INTO tasks (id, title, description, status, mode, created_at)
-       VALUES (?, ?, ?, 'pending', ?, ?)`,
-      id,
-      task.title,
-      task.description || null,
-      task.mode,
-      createdAt,
-    )
-
-    const saved: Task = {
-      id,
-      title: task.title,
-      description: task.description,
-      status: 'pending',
-      mode: task.mode,
-      createdAt,
-    }
-
-    // Broadcast to WebSocket clients
-    this.broadcast({ type: 'task-created', task: saved })
-
-    return saved
+    return persistTaskStore(this, task)
   }
 
-  /**
-   * Update task status (for FIFO processing)
-   */
   async updateTaskStatus(taskId: string, status: Task['status'], completedAt?: number): Promise<void> {
-    this.sql.exec(`UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?`, status, completedAt || null, taskId)
-
-    this.broadcast({ type: 'task-updated', taskId, status, completedAt })
+    return updateTaskStatusStore(this, taskId, status, completedAt)
   }
 
-  /**
-   * Get next pending task in FIFO order
-   */
   async getNextPendingTask(): Promise<Task | null> {
-    const row = this.sql
-      .exec<TaskRow>(
-        `SELECT id, title, description, status, mode, created_at, completed_at
-       FROM tasks
-       WHERE status = 'pending'
-       ORDER BY created_at ASC
-       LIMIT 1`,
-      )
-      .one()
-
-    if (!row) return null
-
-    return {
-      id: row.id,
-      title: row.title,
-      description: row.description || undefined,
-      status: row.status as Task['status'],
-      mode: row.mode as Task['mode'],
-      createdAt: row.created_at,
-      completedAt: row.completed_at || undefined,
-    }
+    return getNextPendingTaskStore(this)
   }
 
-  /**
-   * Get all tasks with optional status filter
-   */
   async getTasks(options?: { status?: Task['status']; limit?: number }): Promise<Task[]> {
-    let query = `SELECT id, title, description, status, mode, created_at, completed_at
-                 FROM tasks`
-    const params: unknown[] = []
-
-    if (options?.status) {
-      query += ` WHERE status = ?`
-      params.push(options.status)
-    }
-
-    query += ` ORDER BY created_at ASC`
-
-    if (options?.limit) {
-      query += ` LIMIT ?`
-      params.push(options.limit)
-    }
-
-    const rows = this.sql.exec<TaskRow>(query, ...params).toArray()
-
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      description: row.description || undefined,
-      status: row.status as Task['status'],
-      mode: row.mode as Task['mode'],
-      createdAt: row.created_at,
-      completedAt: row.completed_at || undefined,
-    }))
+    return getTasksStore(this, options)
   }
 
-  /**
-   * Provision a new E2B sandbox for this session
-   * Stores sandboxId in session_meta for persistence across hibernation
-   *
-   * @returns SandboxInfo with sandbox ID and status
-   */
+  getSandboxManager(): SandboxManager | null {
+    return this.sandboxManager
+  }
+
+  setSandboxManager(manager: SandboxManager | null): void {
+    this.sandboxManager = manager
+  }
+
   async provisionSandbox(): Promise<SandboxInfo> {
-    // Get E2B API key from environment
-    const apiKey = this.env.E2B_API_KEY
-    if (!apiKey) {
-      throw new Error('E2B_API_KEY not configured')
-    }
-
-    // Get session ID from context
-    const sessionId = this.ctx.id.toString()
-
-    // Create sandbox manager if not exists
-    if (!this.sandboxManager) {
-      this.sandboxManager = new SandboxManager(apiKey, sessionId)
-    }
-
-    // Build env vars for agent auth (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
-    const envs: Record<string, string> = {}
-    if (this.env.ANTHROPIC_API_KEY) envs.ANTHROPIC_API_KEY = this.env.ANTHROPIC_API_KEY
-    if (this.env.OPENAI_API_KEY) envs.OPENAI_API_KEY = this.env.OPENAI_API_KEY
-
-    // Provision new sandbox with envs baked in
-    const info = await this.sandboxManager.provision(envs)
-
-    // Store sandbox ID and status in session_meta
-    await this.setSessionMeta('sandbox_id', info.id)
-    await this.setSessionMeta('sandbox_status', info.status)
-
-    return info
+    return provisionSandboxStore(this)
   }
 
-  /**
-   * Get current sandbox ID (if provisioned)
-   * Returns null if no sandbox has been provisioned
-   */
   async getSandbox(): Promise<string | null> {
-    const meta = await this.getSessionMeta()
-    return meta['sandbox_id'] || null
+    return getSandboxIdStore(this)
   }
 
-  /**
-   * Resume existing sandbox after hibernation
-   * Reconnects to the stored sandbox ID
-   *
-   * @returns SandboxInfo with current status
-   */
   async resumeSandbox(): Promise<SandboxInfo> {
-    const sandboxId = await this.getSandbox()
-    if (!sandboxId) {
-      throw new Error('No sandbox to resume')
-    }
-
-    // Get E2B API key from environment
-    const apiKey = this.env.E2B_API_KEY
-    if (!apiKey) {
-      throw new Error('E2B_API_KEY not configured')
-    }
-
-    // Get session ID from context
-    const sessionId = this.ctx.id.toString()
-
-    // Create sandbox manager if not exists
-    if (!this.sandboxManager) {
-      this.sandboxManager = new SandboxManager(apiKey, sessionId)
-    }
-
-    // Resume the sandbox
-    const info = await this.sandboxManager.resume(sandboxId)
-
-    // Update status in session_meta
-    await this.setSessionMeta('sandbox_status', info.status)
-
-    return info
+    return resumeSandboxStore(this)
   }
 
-  /**
-   * Pause the sandbox to control costs
-   * Uses E2B betaPause() for explicit idle handling
-   */
   async pauseSandbox(): Promise<void> {
-    if (!this.sandboxManager) {
-      throw new Error('No sandbox manager initialized')
-    }
-
-    await this.sandboxManager.pause()
-
-    // Update status in session_meta
-    await this.setSessionMeta('sandbox_status', 'paused')
+    return pauseSandboxStore(this)
   }
 
-  /**
-   * Terminate the sandbox and clear metadata
-   */
   async terminateSandbox(): Promise<void> {
-    const sandboxId = await this.getSandbox()
-    if (!sandboxId) {
-      return
-    }
-
-    const apiKey = this.env.E2B_API_KEY
-    if (!apiKey) {
-      throw new Error('E2B_API_KEY not configured')
-    }
-
-    const sessionId = this.ctx.id.toString()
-
-    if (!this.sandboxManager) {
-      this.sandboxManager = new SandboxManager(apiKey, sessionId)
-    }
-
-    this.sandboxManager.setSandboxId(sandboxId)
-    await this.sandboxManager.terminate()
-
-    await this.setSessionMeta('sandbox_status', 'terminated')
-    await this.setSessionMeta('sandbox_id', '')
-
-    // Clear DO SQLite tables
-    this.sql.exec('DELETE FROM messages')
-    this.sql.exec('DELETE FROM tasks')
-    this.sql.exec('DELETE FROM session_meta')
+    return terminateSandboxStore(this, this.sql)
   }
 
-  /**
-   * Get sandbox status from session_meta.
-   *
-   * @remarks
-   * `sandboxAgentUrl` and `agentSessionId` are kept in the response shape for
-   * backwards compatibility with older frontend builds; both always return
-   * `null` now that the agent harness lives in the worker.
-   */
-  async getSandboxStatus(): Promise<{
-    sandboxId: string | null
-    status: string | null
-    ready?: boolean
-    sandboxAgentUrl?: string | null
-    agentSessionId?: string | null
-    agentType?: string | null
-  }> {
-    const meta = await this.getSessionMeta()
-    const sandboxId = meta['sandbox_id'] || null
-    const status = meta['sandbox_status'] || null
-    return {
-      sandboxId,
-      status,
-      ready: !!(sandboxId && (status === 'active' || status === 'ready')),
-      sandboxAgentUrl: null,
-      agentSessionId: null,
-      agentType: meta['agent_type'] || 'ship',
-    }
+  async getSandboxStatus() {
+    return getSandboxStatusStore(this)
   }
 
-  /**
-   * Set branch name for this session
-   * @param name - Git branch name
-   */
   async setBranchName(name: string): Promise<void> {
     await this.setSessionMeta('branch_name', name)
     await this.setSessionMeta('current_branch', name)
   }
 
-  /**
-   * Get current branch name
-   * @returns Branch name or null if not set
-   */
   async getBranchName(): Promise<string | null> {
     const meta = await this.getSessionMeta()
     return meta['branch_name'] || meta['current_branch'] || null
   }
 
-  /**
-   * Mark first commit as done
-   * Returns true if this was the first commit (transitions from false to true)
-   * Returns false if first commit was already marked
-   *
-   * This is used to trigger auto-PR creation on the first commit only
-   */
   async markFirstCommit(): Promise<boolean> {
     const meta = await this.getSessionMeta()
     const wasFirstCommit = !meta['first_commit_done']
-
     if (wasFirstCommit) {
       await this.setSessionMeta('first_commit_done', 'true')
     }
-
     return wasFirstCommit
   }
 
-  /**
-   * Set pull request information
-   * @param number - GitHub PR number
-   * @param url - GitHub PR URL
-   * @param draft - Whether PR is draft
-   */
   async setPullRequest(number: number, url: string, draft: boolean): Promise<void> {
     await this.setSessionMeta('pr_number', number.toString())
     await this.setSessionMeta('pr_url', url)
     await this.setSessionMeta('pr_draft', draft.toString())
   }
 
-  /**
-   * Get pull request information
-   * @returns PR details or null if no PR exists
-   */
   async getPullRequest(): Promise<{ number: number; url: string; draft: boolean } | null> {
     const meta = await this.getSessionMeta()
-
-    if (!meta['pr_number']) {
-      return null
-    }
-
+    if (!meta['pr_number']) return null
     return {
       number: parseInt(meta['pr_number']),
       url: meta['pr_url'],
@@ -795,39 +239,19 @@ export class SessionDO extends DurableObject<Env> {
     }
   }
 
-  /**
-   * Mark PR as ready for review (convert from draft to ready)
-   */
   async markReadyForReview(): Promise<void> {
     await this.setSessionMeta('pr_draft', 'false')
   }
 
-  /**
-   * Set repository URL for this session
-   * @param url - Repository URL
-   */
   async setRepoUrl(url: string): Promise<void> {
     await this.setSessionMeta('repo_url', url)
   }
 
-  /**
-   * Get repository URL
-   * @returns Repo URL or null if not set
-   */
   async getRepoUrl(): Promise<string | null> {
     const meta = await this.getSessionMeta()
     return meta['repo_url'] || null
   }
 
-  /**
-   * Initialize agent executor with all dependencies
-   * Creates AgentExecutor with sandbox, GitHub token, and git user info
-   *
-   * @param sandbox - E2B sandbox instance
-   * @param githubToken - GitHub personal access token
-   * @param gitUser - Git user info for commit attribution
-   * @returns AgentExecutor instance
-   */
   async initializeAgentExecutor(
     sandbox: Sandbox,
     githubToken: string,
@@ -848,7 +272,6 @@ export class SessionDO extends DurableObject<Env> {
       gitUser,
       sessionId,
       onError: (event: ErrorEvent) => {
-        // Emit error to WebSocket clients
         this.broadcast({
           type: 'error',
           message: event.error.message,
@@ -859,385 +282,52 @@ export class SessionDO extends DurableObject<Env> {
         })
       },
       onStatus: (status: string, details?: string) => {
-        // Emit status updates to WebSocket clients
-        this.broadcast({
-          type: 'agent-status',
-          status,
-          details,
-        })
+        this.broadcast({ type: 'agent-status', status, details })
       },
     })
 
     return this.agentExecutor
   }
 
-  /**
-   * Start a task with agent execution and Git workflow
-   * Generates branch name, creates branch in sandbox, starts agent
-   *
-   * @param taskDescription - Task description from user
-   * @returns Execution context with branch info
-   */
   async startTask(taskDescription: string): Promise<{ branchName: string; repoPath: string; sessionId: string }> {
     if (!this.agentExecutor) {
       throw new Error('Agent executor not initialized - call initializeAgentExecutor first')
     }
-
     return await this.agentExecutor.executeTask(taskDescription)
   }
 
-  /**
-   * Handle agent response - triggers git commit and push
-   * Called after each agent response completes
-   *
-   * @param response - Agent response with summary
-   */
   async handleAgentResponse(response: { summary: string; hasChanges: boolean }): Promise<void> {
     if (!this.agentExecutor) {
       throw new Error('Agent executor not initialized')
     }
-
     await this.agentExecutor.onAgentResponse(response)
   }
 
-  /**
-   * Get agent executor instance
-   * @returns AgentExecutor or null if not initialized
-   */
   getAgentExecutor(): AgentExecutor | null {
     return this.agentExecutor
   }
 
-  /**
-   * Handle HTTP fetch requests to this Durable Object
-   * Supports WebSocket upgrades and basic HTTP endpoints
-   */
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url)
-
-    // WebSocket upgrade endpoint
-    if (url.pathname.endsWith('/websocket')) {
-      const upgradeHeader = request.headers.get('Upgrade')
-      if (upgradeHeader !== 'websocket') {
-        return new Response('Expected WebSocket', { status: 426 })
-      }
-      return this.handleWebSocketUpgrade(request)
-    }
-
-    // Basic health check endpoint
-    if (url.pathname.endsWith('/health')) {
-      return Response.json({
-        status: 'ok',
-        tables: ['messages', 'tasks', 'session_meta'],
-        connections: this.ctx.getWebSockets().length,
-      })
-    }
-
-    // RPC: Get messages with pagination
-    if (url.pathname.endsWith('/messages') && request.method === 'GET') {
-      const limit = url.searchParams.get('limit')
-      const before = url.searchParams.get('before')
-      const messages = await this.getMessages({
-        limit: limit ? parseInt(limit) : undefined,
-        before: before || undefined,
-      })
-      return Response.json(messages)
-    }
-
-    // RPC: Persist message
-    if (url.pathname.endsWith('/messages') && request.method === 'POST') {
-      const body = (await request.json()) as Omit<Message, 'id' | 'createdAt'>
-      const message = await this.persistMessage(body)
-      return Response.json(message)
-    }
-
-    // RPC: Get tasks
-    if (url.pathname.endsWith('/tasks') && request.method === 'GET') {
-      const status = url.searchParams.get('status') as Task['status'] | null
-      const tasks = await this.getTasks({ status: status || undefined })
-      return Response.json(tasks)
-    }
-
-    // RPC: Create task
-    if (url.pathname.endsWith('/tasks') && request.method === 'POST') {
-      const body = (await request.json()) as Omit<Task, 'id' | 'createdAt' | 'status'>
-      const task = await this.persistTask(body)
-      return Response.json(task)
-    }
-
-    // RPC: Get session metadata
-    if (url.pathname.endsWith('/meta') && request.method === 'GET') {
-      const meta = await this.getSessionMeta()
-      return Response.json(meta)
-    }
-
-    // RPC: Update session metadata
-    if (url.pathname.endsWith('/meta') && request.method === 'POST') {
-      const body = (await request.json()) as Record<string, string>
-      for (const [key, value] of Object.entries(body)) {
-        await this.setSessionMeta(key, value)
-      }
-      return Response.json({ success: true })
-    }
-
-    // RPC: Broadcast to WebSocket clients
-    if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
-      const body = (await request.json()) as object
-      this.broadcast(body)
-      return Response.json({ success: true })
-    }
-
-    // RPC: Append session events (for Overview inspector persistence)
-    if (url.pathname.endsWith('/events') && request.method === 'POST') {
-      const body = (await request.json()) as {
-        events: Array<{ id: string; type: string; timestamp: number; payload: unknown }>
-      }
-      const existing = await this.getSessionMeta()
-      const current = (existing['session_events'] ? JSON.parse(existing['session_events']) : []) as typeof body.events
-      const updated = [...current, ...(body.events ?? [])].slice(-500)
-      await this.setSessionMeta('session_events', JSON.stringify(updated))
-      return Response.json({ success: true })
-    }
-
-    // RPC: Get session events
-    if (url.pathname.endsWith('/events') && request.method === 'GET') {
-      const meta = await this.getSessionMeta()
-      const events = meta['session_events'] ? JSON.parse(meta['session_events']) : []
-      return Response.json(events)
-    }
-
-    // RPC: Provision sandbox
-    if (url.pathname.endsWith('/sandbox/provision') && request.method === 'POST') {
-      try {
-        const info = await this.provisionSandbox()
-        return Response.json(info)
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to provision sandbox' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Get sandbox status
-    if (url.pathname.endsWith('/sandbox/status') && request.method === 'GET') {
-      const status = await this.getSandboxStatus()
-      return Response.json(status)
-    }
-
-    // RPC: Pause sandbox
-    if (url.pathname.endsWith('/sandbox/pause') && request.method === 'POST') {
-      try {
-        await this.pauseSandbox()
-        return Response.json({ success: true })
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to pause sandbox' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Resume sandbox
-    if (url.pathname.endsWith('/sandbox/resume') && request.method === 'POST') {
-      try {
-        const info = await this.resumeSandbox()
-        return Response.json(info)
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to resume sandbox' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Terminate sandbox
-    if (url.pathname.endsWith('/sandbox/terminate') && request.method === 'POST') {
-      try {
-        await this.terminateSandbox()
-        return Response.json({ success: true })
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to terminate sandbox' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Get git state (branch, PR info)
-    if (url.pathname.endsWith('/git/state') && request.method === 'GET') {
-      const branchName = await this.getBranchName()
-      const pr = await this.getPullRequest()
-      const repoUrl = await this.getRepoUrl()
-
-      return Response.json({
-        branchName,
-        pr,
-        repoUrl,
-      })
-    }
-
-    // RPC: Mark PR as ready for review
-    if (url.pathname.endsWith('/git/pr/ready') && request.method === 'POST') {
-      try {
-        await this.markReadyForReview()
-        return Response.json({ success: true })
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to mark PR ready' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Start task with agent execution
-    if (url.pathname.endsWith('/task/start') && request.method === 'POST') {
-      try {
-        const body = (await request.json()) as { taskDescription: string }
-        const context = await this.startTask(body.taskDescription)
-        return Response.json(context)
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to start task' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Handle agent response (commit + push)
-    if (url.pathname.endsWith('/agent/response') && request.method === 'POST') {
-      try {
-        const body = (await request.json()) as { summary: string; hasChanges: boolean }
-        await this.handleAgentResponse(body)
-        return Response.json({ success: true })
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to handle agent response' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // RPC: Initialize agent executor
-    if (url.pathname.endsWith('/agent/init') && request.method === 'POST') {
-      try {
-        const body = (await request.json()) as { githubToken: string; gitUser: { name: string; email: string } }
-
-        // Get sandbox info
-        const sandboxInfo = await this.getSandboxStatus()
-        if (!sandboxInfo.sandboxId) {
-          return Response.json({ error: 'Sandbox not provisioned' }, { status: 400 })
-        }
-
-        // Get repo URL
-        const repoUrl = await this.getRepoUrl()
-        if (!repoUrl) {
-          return Response.json({ error: 'Repository URL not set' }, { status: 400 })
-        }
-
-        // Connect to sandbox and initialize agent executor
-        const { Sandbox } = await import('../lib/e2b')
-        const sandbox = await Sandbox.connect(sandboxInfo.sandboxId, { apiKey: this.env.E2B_API_KEY })
-
-        await this.initializeAgentExecutor(sandbox, body.githubToken, body.gitUser)
-        return Response.json({ success: true })
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Failed to initialize agent executor' },
-          { status: 500 },
-        )
-      }
-    }
-
-    return new Response('Not found', { status: 404 })
+    return handleSessionFetch(this, request)
   }
 
-  /**
-   * Handle WebSocket upgrade request
-   * Uses Hibernation API to allow DO to sleep while connections stay open
-   */
-  private handleWebSocketUpgrade(_request: Request): Response {
-    const pair = new WebSocketPair()
-    const [client, server] = Object.values(pair)
-
-    // Use Hibernation API - DO can sleep while connection stays open
-    this.ctx.acceptWebSocket(server)
-
-    // Store connection state that survives hibernation
-    const state: ConnectionState = {
-      connectedAt: Date.now(),
-      lastSeen: Date.now(),
-    }
-    server.serializeAttachment(state)
-
-    return new Response(null, { status: 101, webSocket: client })
+  handleWebSocketUpgrade(request: Request): Response {
+    return handleWebSocketUpgrade(this, request)
   }
 
-  /**
-   * Get all connected WebSockets with their state
-   * Used internally - connections are retrieved fresh on each wake
-   */
-  private getConnections(): Map<WebSocket, ConnectionState> {
-    const connections = new Map<WebSocket, ConnectionState>()
-    for (const ws of this.ctx.getWebSockets()) {
-      const state = ws.deserializeAttachment() as ConnectionState
-      if (state) connections.set(ws, state)
-    }
-    return connections
+  broadcast(message: object): void {
+    broadcastToWebSockets(this, message)
   }
 
-  /**
-   * Broadcast a message to all connected WebSocket clients
-   */
-  private broadcast(message: object): void {
-    const json = JSON.stringify(message)
-    for (const ws of this.ctx.getWebSockets()) {
-      try {
-        ws.send(json)
-      } catch {
-        // Connection may be closing, ignore
-      }
-    }
-  }
-
-  /**
-   * WebSocket message handler (required for Hibernation API)
-   * Called when a client sends a message
-   */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    // Update last seen timestamp
-    const state = ws.deserializeAttachment() as ConnectionState
-    state.lastSeen = Date.now()
-    ws.serializeAttachment(state)
-
-    // Parse and handle message
-    try {
-      const data = JSON.parse(message as string)
-      // Echo for now - real handling in later plans
-      this.broadcast({ type: 'echo', data })
-    } catch {
-      ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }))
-    }
+    return handleWebSocketMessage(this, ws, message)
   }
 
-  /**
-   * WebSocket close handler (required for Hibernation API)
-   * CRITICAL: Must reciprocate close to avoid 1006 errors.
-   * Codes 1005, 1006, 1015 are reserved and cannot be sent in close() — skip reciprocation.
-   */
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    const RESERVED_CODES = [1005, 1006, 1015]
-    if (RESERVED_CODES.includes(code) || code < 1000 || code > 4999) {
-      return
-    }
-    ws.close(code, reason)
+    return handleWebSocketClose(ws, code, reason)
   }
 
-  /**
-   * WebSocket error handler (required for Hibernation API)
-   */
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    console.error('WebSocket error:', error)
-    ws.close(1011, 'Internal error')
+    return handleWebSocketError(ws, error)
   }
 }

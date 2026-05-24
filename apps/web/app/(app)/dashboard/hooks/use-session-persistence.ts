@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { SessionInfo } from '@/lib/sse-types'
 import type { TodoItem, FileDiff, StepCostInfo } from '../types'
 import { sessionStatusStore } from './use-session-status-store'
+import { useSessionLocalStorageSync } from './session-persistence-storage'
 
 export function useSessionPersistence(activeSessionId: string | null) {
   const [agentUrl, setAgentUrl] = useState<string>('')
@@ -37,8 +38,6 @@ export function useSessionPersistence(activeSessionId: string | null) {
     streamingStatusStepsRef.current = []
   }, [])
 
-  // Sync from sessionStatusStore when navigating to a session that's already streaming
-  // (e.g. created from homepage with streamSessionInBackground)
   useEffect(() => {
     if (!activeSessionId) return
     const syncFromStore = () => {
@@ -46,7 +45,6 @@ export function useSessionPersistence(activeSessionId: string | null) {
       if (live?.isRunning && (live.status || live.steps.length > 0)) {
         if (live.status) setStreamingStatus(live.status)
         if (live.steps.length > 0) {
-          // Filter out heartbeat "Waiting (Xs)" steps — they replace real progress
           const steps = live.steps.filter((s) => !/^Waiting \(\d+s\)$/.test(s))
           setStreamingStatusSteps(steps)
           streamingStatusStepsRef.current = steps
@@ -55,50 +53,25 @@ export function useSessionPersistence(activeSessionId: string | null) {
     }
     syncFromStore()
     const unsubscribe = sessionStatusStore.subscribe(syncFromStore)
-    return () => {
-      unsubscribe()
-    }
+    return unsubscribe
   }, [activeSessionId])
 
-  // Restore persisted sidebar data from localStorage when session changes
-  useEffect(() => {
-    if (!activeSessionId) return
-    try {
-      const savedUrl = localStorage.getItem(`agent-url-${activeSessionId}`)
-      if (savedUrl) setAgentUrl(savedUrl)
-
-      const savedCost = localStorage.getItem(`total-cost-${activeSessionId}`)
-      if (savedCost) setTotalCost(Number(savedCost))
-
-      const savedStepCost = localStorage.getItem(`step-cost-${activeSessionId}`)
-      if (savedStepCost) setLastStepCost(JSON.parse(savedStepCost))
-
-      const savedSessionInfo = localStorage.getItem(`session-info-${activeSessionId}`)
-      if (savedSessionInfo) setSessionInfo(JSON.parse(savedSessionInfo))
-
-      const savedTitle = localStorage.getItem(`session-title-${activeSessionId}`)
-      if (savedTitle) setSessionTitle(savedTitle)
-
-      const savedSandboxStatus = localStorage.getItem(`sandbox-status-${activeSessionId}`)
-      if (savedSandboxStatus) setSandboxStatus(savedSandboxStatus)
-
-      const savedAgentSessionId = localStorage.getItem(`agent-session-id-${activeSessionId}`)
-      if (savedAgentSessionId) setAgentSessionId(savedAgentSessionId)
-    } catch {}
-  }, [activeSessionId])
-
-  // Persist sidebar stats to localStorage when they change
-  useEffect(() => {
-    if (!activeSessionId) return
-    try {
-      if (totalCost > 0) localStorage.setItem(`total-cost-${activeSessionId}`, String(totalCost))
-      if (lastStepCost) localStorage.setItem(`step-cost-${activeSessionId}`, JSON.stringify(lastStepCost))
-      if (sessionInfo) localStorage.setItem(`session-info-${activeSessionId}`, JSON.stringify(sessionInfo))
-      if (sessionTitle) localStorage.setItem(`session-title-${activeSessionId}`, sessionTitle)
-      if (sandboxStatus) localStorage.setItem(`sandbox-status-${activeSessionId}`, sandboxStatus)
-      if (agentSessionId) localStorage.setItem(`agent-session-id-${activeSessionId}`, agentSessionId)
-    } catch {}
-  }, [activeSessionId, totalCost, lastStepCost, sessionInfo, sessionTitle, sandboxStatus, agentSessionId])
+  useSessionLocalStorageSync(
+    activeSessionId,
+    totalCost,
+    lastStepCost,
+    sessionInfo,
+    sessionTitle,
+    sandboxStatus,
+    agentSessionId,
+    setAgentUrl,
+    setTotalCost,
+    setLastStepCost,
+    setSessionInfo,
+    setSessionTitle,
+    setSandboxStatus,
+    setAgentSessionId,
+  )
 
   return {
     agentUrl,

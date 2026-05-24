@@ -1,50 +1,18 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import type { ChatSession } from '@/lib/api/server'
-import { sendChatMessage } from '@/lib/api/chat-client'
-import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
-import { isAgentHarnessEvent } from '@/lib/sse-types'
-import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId, User } from '@/lib/api/types'
+import type { GitHubRepo, ModelInfo, AgentInfo, AgentMode, AgentModeId } from '@/lib/api/types'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { CreateSessionParams } from '@/lib/api/types'
-import { sessionStatusStore } from './use-session-status-store'
-import { eventsStore } from './use-events-store'
-import { postSessionSync } from '@/lib/session-sync-channel'
-
-function isStreamingTextDelta(eventType: string, rawData: Record<string, unknown>): boolean {
-  if (eventType !== 'message.part.updated') return false
-  const props = rawData.properties as { part?: { type?: string } } | undefined
-  const partType = props?.part?.type
-  return partType === 'text' || partType === 'reasoning'
-}
-
-const DEFAULT_MODES: AgentMode[] = [
-  { id: 'build', label: 'build' },
-  { id: 'plan', label: 'plan' },
-]
-
-const DEFAULT_ACP_MODEL_ID = 'ship-acp-opencode'
-const MODE_STORAGE_KEY = 'ship-chat-mode'
-
-function getStoredMode(): AgentModeId {
-  try {
-    const s = localStorage.getItem(MODE_STORAGE_KEY)
-    if (s === 'build' || s === 'plan') return s
-  } catch {
-    // ignore
-  }
-  return 'build'
-}
-
-function setStoredMode(mode: AgentModeId): void {
-  try {
-    localStorage.setItem(MODE_STORAGE_KEY, mode)
-  } catch {
-    // ignore
-  }
-}
+import type { ChatSession } from '@/lib/api/server'
+import type { User } from '@/lib/api/types'
+import {
+  DEFAULT_MODES,
+  getStoredMode,
+  setStoredMode,
+} from './dashboard-mode-storage'
+import { useBackgroundSessionStream } from './use-background-session-stream'
+import { useDashboardSessionActions } from './use-dashboard-session-actions'
 
 export interface UseDashboardStateParams {
   chat: ReturnType<typeof useDashboardChat>
@@ -88,9 +56,8 @@ export function useDashboardState({
     defaultAgentLoading,
     defaultRepoFullName,
     defaultRepoLoading,
-    models,
   } = data
-  const router = useRouter()
+
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null)
@@ -103,20 +70,16 @@ export function useDashboardState({
   const [availableModes, setAvailableModes] = useState<AgentMode[]>(DEFAULT_MODES)
   const [prompt, setPrompt] = useState<string>('')
 
-  // Agent initialization (runs once when agents load)
   useEffect(() => {
     if (agentsLoading || defaultAgentLoading || agents.length === 0 || selectedAgent) return
     const agentId = defaultAgentId || 'opencode'
     const agent = agents.find((a) => a.id === agentId) || agents[0]
-    if (agent) {
-      setSelectedAgent(agent)
-      setAvailableModes(agent.modes)
-      const savedMode = getStoredMode()
-      const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
-      setMode(validMode)
-      // Don't set selectedModel here — use-session-sync handles default model
-      // selection using the user's saved agent-specific or global default.
-    }
+    if (!agent) return
+    setSelectedAgent(agent)
+    setAvailableModes(agent.modes)
+    const savedMode = getStoredMode()
+    const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
+    setMode(validMode)
   }, [agents, agentsLoading, defaultAgentId, defaultAgentLoading, selectedAgent, setMode])
 
   const handleAgentSelect = useCallback(
@@ -126,271 +89,39 @@ export function useDashboardState({
       const savedMode = getStoredMode()
       const validMode = agent.modes.some((m) => m.id === savedMode) ? savedMode : agent.modes[0]?.id || 'build'
       setMode(validMode)
-      // Reset selectedModel so use-session-sync can apply the user's saved default for this agent
       setSelectedModel(null)
     },
-    [setMode, setSelectedModel],
+    [setMode],
   )
 
-  /** Read SSE stream in background to populate live status for a homepage session card */
-  const streamSessionInBackground = useCallback(
-    async (sessionId: string, content: string, sessionMode: string, modelId?: string) => {
-      sessionStatusStore.update(sessionId, { isRunning: true, status: 'Starting...', steps: [], contentPreview: '' })
-      postSessionSync({ type: 'session-streaming', sessionId })
-      let accumulatedText = ''
-      try {
-        const response = await sendChatMessage(
-          sessionId,
-          content,
-          sessionMode,
-          modelId ?? selectedModel?.id ?? DEFAULT_ACP_MODEL_ID,
-        )
-        if (!response.ok || !response.body) {
-          sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
-          return
-        }
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          let currentEventType = ''
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEventType = line.slice(7).trim()
-              continue
-            }
-            if (!line.startsWith('data: ')) continue
-            try {
-              const rawData = JSON.parse(line.slice(6)) as Record<string, unknown>
-              if (!rawData.type && currentEventType) rawData.type = currentEventType
-              if (!rawData.type && typeof rawData.error === 'string') {
-                rawData.type = 'error'
-              }
-              const eventType: string = typeof rawData.type === 'string' ? rawData.type : currentEventType || 'unknown'
-              if (isAgentHarnessEvent(eventType, rawData) && !isStreamingTextDelta(eventType, rawData)) {
-                eventsStore.addEvent(sessionId, {
-                  id: crypto.randomUUID(),
-                  type: eventType,
-                  timestamp: Date.now(),
-                  payload: rawData,
-                })
-              }
-              const event = parseSSEEvent(rawData)
-              if (!event) continue
-
-              const type = (event as { type: string }).type
-
-              // When user navigated to this session, forward events to message handlers so response appears
-              if (chat.activeSessionIdRef?.current === sessionId && processStreamEventForSession) {
-                // Seed assistant text from store if we joined mid-stream (user navigated after stream started)
-                const stored = sessionStatusStore.get(sessionId)
-                if (stored?.contentPreview && !chat.assistantTextRef?.current) {
-                  chat.assistantTextRef.current = stored.contentPreview
-                }
-                processStreamEventForSession(sessionId, event as { type: string; [k: string]: unknown })
-              }
-
-              // Batch text preview + status into one store notification
-              const textDelta = extractTextDelta(event)
-              if (textDelta) accumulatedText += textDelta
-
-              const eventStatus = getEventStatus(event as any)
-              const isHeartbeat = type === 'heartbeat'
-              const isStatusEvent = type === 'status' || type === 'session.status'
-              const statusMsg = isStatusEvent
-                ? ((event as { message?: string; status?: string }).message ??
-                   (event as { message?: string; status?: string }).status)
-                : null
-
-              if (textDelta || eventStatus || (isStatusEvent && statusMsg)) {
-                sessionStatusStore.update(sessionId, {
-                  ...(textDelta ? { contentPreview: accumulatedText } : {}),
-                  ...(eventStatus && !isStatusEvent
-                    ? {
-                        status: eventStatus.label,
-                        // Don't add heartbeat steps — they accumulate and replace real progress
-                        ...(!isHeartbeat ? { step: eventStatus.label } : {}),
-                      }
-                    : {}),
-                  ...(isStatusEvent && typeof statusMsg === 'string'
-                    ? { status: statusMsg, step: statusMsg }
-                    : {}),
-                })
-              }
-
-              if (type === 'status' || type === 'session.status') {
-                // handled in batch above
-              } else if (type === 'session.updated') {
-                const info = (event as any).properties?.info
-                if (info?.title) {
-                  sessionStatusStore.update(sessionId, { title: info.title })
-                  chat.setLocalSessions((prev) =>
-                    prev.map((s) => (s.id === sessionId ? { ...s, title: info.title } : s)),
-                  )
-                  postSessionSync({ type: 'sessions-invalidate' })
-                }
-              } else if (type === 'done' || type === 'session.idle') {
-                sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
-              } else if (type === 'session.error' || type === 'error') {
-                sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-        // Stream fully drained — signal finalization so processStreamEventForSession
-        // can flush any text accumulated after the done event
-        if (chat.activeSessionIdRef?.current === sessionId && processStreamEventForSession) {
-          processStreamEventForSession(sessionId, { type: '__stream_finalize__' })
-        }
-        const current = sessionStatusStore.get(sessionId)
-        if (current?.isRunning) {
-          sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
-        }
-        // Refresh session list to pick up AI-generated title from DB
-        postSessionSync({ type: 'sessions-invalidate' })
-      } catch (err) {
-        console.error('Background SSE error:', err)
-        sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
-      }
-    },
-    [chat, processStreamEventForSession, selectedModel],
+  const streamSessionInBackground = useBackgroundSessionStream(
+    chat,
+    processStreamEventForSession,
+    selectedModel?.id,
   )
 
-  const handleCreate = useCallback(
-    async (data: { repoOwner: string; repoName: string; model?: string; baseBranch?: string }) => {
-      try {
-        const trimmedPrompt = prompt.trim()
-        const initialTitle = trimmedPrompt.length > 60 ? `${trimmedPrompt.slice(0, 57)}...` : trimmedPrompt
-        const newSession = await createSession({
-          repoOwner: data.repoOwner,
-          repoName: data.repoName,
-          model: data.model || selectedModel?.id || DEFAULT_ACP_MODEL_ID,
-          agentType: selectedAgent?.id || 'opencode',
-          baseBranch: data.baseBranch || 'main',
-          title: initialTitle || undefined,
-        })
-
-        if (newSession) {
-          const newSessionData: ChatSession = {
-            id: newSession.id,
-            userId: user.id,
-            repoOwner: data.repoOwner,
-            repoName: data.repoName,
-            status: 'active',
-            lastActivity: Math.floor(Date.now() / 1000),
-            createdAt: Math.floor(Date.now() / 1000),
-            archivedAt: null,
-            messageCount: 0,
-            title: (initialTitle || newSession.title) ?? undefined,
-            model: newSession.model ?? data.model ?? selectedModel?.id,
-            agentType: newSession.agentType ?? selectedAgent?.id,
-          }
-          chat.setLocalSessions((prev) => [newSessionData, ...prev])
-          mutateSessions?.()
-          onSessionCreated?.(newSession.id)
-
-          // Fire-and-forget: send the prompt to the server without navigating.
-          // The agent runs server-side; the session list polls for live status.
-          if (trimmedPrompt) {
-            setPrompt('')
-            // Stream SSE in background to track live status without navigating
-            streamSessionInBackground(newSession.id, trimmedPrompt, mode, newSessionData.model)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to create session:', error)
-      }
-    },
-    [createSession, user.id, selectedModel, selectedAgent, prompt, mode, chat, mutateSessions, onSessionCreated],
-  )
-
-  const handleSubmit = useCallback(() => {
-    if (chat.activeSessionId) {
-      if (!prompt.trim() || chat.isStreaming) return
-      const content = prompt.trim()
-      setPrompt('')
-      handleSend(content, mode)
-    } else {
-      if (!selectedRepo || !prompt.trim() || isCreating) return
-      handleCreate({
-        repoOwner: selectedRepo.owner,
-        repoName: selectedRepo.name,
-        model: selectedModel?.id,
-        baseBranch: selectedRepo.defaultBranch || 'main',
-      })
-    }
-  }, [
-    chat.activeSessionId,
-    chat.isStreaming,
+  const actions = useDashboardSessionActions({
+    chat,
     prompt,
+    setPrompt,
     selectedRepo,
-    isCreating,
     selectedModel,
-    handleSend,
-    handleCreate,
+    selectedAgent,
     mode,
-  ])
+    isCreating,
+    handleSend,
+    streamSessionInBackground,
+    createSession,
+    deleteSession,
+    userId: user.id,
+    mutateSessions,
+    onSessionCreated,
+    onSessionDeleted,
+  })
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        handleSubmit()
-      }
-    },
-    [handleSubmit],
-  )
-
-  const handleSessionClick = useCallback(
-    (session: ChatSession) => {
-      chat.setActiveSessionId(session.id)
-      chat.connectWebSocket(session.id)
-      router.push(`/session/${session.id}`)
-    },
-    [chat, router],
-  )
-
-  const handleDeleteSession = useCallback(
-    async (sessionId: string) => {
-      const session = chat.localSessions.find((s) => s.id === sessionId)
-      chat.setLocalSessions((prev) => prev.filter((s) => s.id !== sessionId))
-      mutateSessions?.()
-      onSessionDeleted?.()
-      try {
-        await deleteSession({ sessionId })
-        if (chat.activeSessionId === sessionId) {
-          chat.setActiveSessionId(null)
-          chat.setMessages([])
-          router.push('/')
-          window.location.href = '/'
-        }
-      } catch (error) {
-        console.error('Failed to delete session:', error)
-        if (session) {
-          chat.setLocalSessions((prev) =>
-            [...prev, session].sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)),
-          )
-        }
-      }
-    },
-    [chat, deleteSession, mutateSessions, onSessionDeleted, router],
-  )
-
-  // Default repo fallback when no saved default
   useEffect(() => {
     if (chat.activeSessionId || defaultRepoLoading || selectedRepo) return
-    if (repos.length === 0) return
-    if (defaultRepoFullName) return
-
+    if (repos.length === 0 || defaultRepoFullName) return
     const userOwnedRepo = repos.find((r) => r.owner === user.username)
     if (userOwnedRepo) setSelectedRepo(userOwnedRepo)
   }, [chat.activeSessionId, defaultRepoLoading, defaultRepoFullName, repos, selectedRepo, user.username])
@@ -409,10 +140,6 @@ export function useDashboardState({
     prompt,
     setPrompt,
     handleAgentSelect,
-    handleCreate,
-    handleSubmit,
-    handleKeyDown,
-    handleSessionClick,
-    handleDeleteSession,
+    ...actions,
   }
 }

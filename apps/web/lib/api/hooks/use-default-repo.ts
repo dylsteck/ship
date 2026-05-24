@@ -4,7 +4,7 @@ import useSWR from 'swr'
 import useSWRMutation from 'swr/mutation'
 import { fetcher, apiUrl, post } from '../client'
 
-interface DefaultRepoResponse {
+export interface DefaultRepoResponse {
   repoFullName: string | null
 }
 

@@ -6,7 +6,7 @@ import { type UIMessage, createAssistantPlaceholder, processPartUpdated } from '
 import { parseSSEEvent } from '@/lib/sse-parser'
 import type { MessagePartUpdatedEvent } from '@/lib/sse-types'
 
-function getStatusFromPart(part: {
+export function getStatusFromPart(part: {
   type?: string
   tool?: string
   state?: { status?: string; input?: Record<string, unknown> }
@@ -29,6 +29,114 @@ function getStatusFromPart(part: {
     return short ? `${part.tool}: ${short}` : `Running: ${part.tool}`
   }
   return null
+}
+
+interface StreamRefs {
+  messageIdRef: React.MutableRefObject<string | null>
+  textRef: React.MutableRefObject<string>
+  reasoningRef: React.MutableRefObject<string>
+  streamStartRef: React.MutableRefObject<number | null>
+}
+
+interface StreamSetters {
+  setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
+  setIsStreaming: React.Dispatch<React.SetStateAction<boolean>>
+  setStatus: React.Dispatch<React.SetStateAction<string>>
+  setStatusSteps: React.Dispatch<React.SetStateAction<string[]>>
+}
+
+function appendStatusStep(setStatusSteps: React.Dispatch<React.SetStateAction<string[]>>, msg: string) {
+  setStatusSteps((prev) => {
+    if (prev.length > 0 && prev[prev.length - 1] === msg) return prev
+    return [...prev, msg]
+  })
+}
+
+function handleSubagentStreamEvent(
+  event: ReturnType<typeof parseSSEEvent>,
+  refs: StreamRefs,
+  setters: StreamSetters,
+): void {
+  if (!event) return
+
+  if (event.type === 'message.part.updated') {
+    const mpu = event as MessagePartUpdatedEvent
+    const part = mpu.properties?.part
+    const msgId = refs.messageIdRef.current
+    if (msgId) {
+      setters.setMessages((prev) =>
+        processPartUpdated(part, mpu.properties?.delta, msgId, prev, refs.textRef, refs.reasoningRef),
+      )
+    }
+    const partStatus = getStatusFromPart(part) || 'Thinking...'
+    setters.setStatus(partStatus)
+    appendStatusStep(setters.setStatusSteps, partStatus)
+  }
+
+  if (event.type === 'status' && (event as { message?: string }).message) {
+    const msg = (event as { message: string }).message
+    setters.setStatus(msg)
+    appendStatusStep(setters.setStatusSteps, msg)
+  }
+
+  if (event.type === 'done' || event.type === 'session.idle') {
+    const msgId = refs.messageIdRef.current
+    const elapsed = refs.streamStartRef.current ? Date.now() - refs.streamStartRef.current : 0
+    if (msgId && elapsed > 0) {
+      setters.setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? {
+                ...m,
+                content: refs.textRef.current,
+                reasoning: refs.reasoningRef.current ? [refs.reasoningRef.current] : undefined,
+                elapsed,
+              }
+            : m,
+        ),
+      )
+    }
+    setters.setIsStreaming(false)
+    setters.setStatus('Complete')
+  }
+
+  if (event.type === 'session.error' || event.type === 'error') {
+    setters.setIsStreaming(false)
+    setters.setStatus('Error')
+  }
+}
+
+async function readSubagentSSEStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  refs: StreamRefs,
+  setters: StreamSetters,
+): Promise<void> {
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    let currentEvent = ''
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim()
+        continue
+      }
+      if (!line.startsWith('data: ')) continue
+      try {
+        const raw = JSON.parse(line.slice(6))
+        handleSubagentStreamEvent(parseSSEEvent(raw), refs, setters)
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
 }
 
 interface UseSubagentStreamParams {
@@ -79,92 +187,15 @@ export function useSubagentStream({
     const controller = new AbortController()
     abortRef.current = controller
 
+    const refs = { messageIdRef, textRef, reasoningRef, streamStartRef }
+    const setters = { setMessages, setIsStreaming, setStatus, setStatusSteps }
+
     streamSubagentSession(parentSessionId, subagentSessionId, controller.signal)
       .then(async (res) => {
         if (!res.ok) throw new Error(`Stream failed: ${res.status}`)
         const reader = res.body?.getReader()
         if (!reader) throw new Error('No response body')
-
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          let currentEvent = ''
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim()
-              continue
-            }
-            if (line.startsWith('data: ')) {
-              try {
-                const raw = JSON.parse(line.slice(6))
-                const event = parseSSEEvent(raw)
-                if (!event) continue
-
-                if (event.type === 'message.part.updated') {
-                  const mpu = event as MessagePartUpdatedEvent
-                  const part = mpu.properties?.part
-                  const msgId = messageIdRef.current
-                  if (msgId) {
-                    setMessages((prev) =>
-                      processPartUpdated(part, mpu.properties?.delta, msgId, prev, textRef, reasoningRef),
-                    )
-                  }
-                  const partStatus = getStatusFromPart(part) || 'Thinking...'
-                  setStatus(partStatus)
-                  setStatusSteps((prev) => {
-                    if (prev.length > 0 && prev[prev.length - 1] === partStatus) return prev
-                    return [...prev, partStatus]
-                  })
-                }
-
-                if (event.type === 'status' && (event as { message?: string }).message) {
-                  const msg = (event as { message: string }).message
-                  setStatus(msg)
-                  setStatusSteps((prev) => {
-                    if (prev.length > 0 && prev[prev.length - 1] === msg) return prev
-                    return [...prev, msg]
-                  })
-                }
-
-                if (event.type === 'done' || event.type === 'session.idle') {
-                  const msgId = messageIdRef.current
-                  const elapsed = streamStartRef.current ? Date.now() - streamStartRef.current : 0
-                  if (msgId && elapsed > 0) {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === msgId
-                          ? {
-                              ...m,
-                              content: textRef.current,
-                              reasoning: reasoningRef.current ? [reasoningRef.current] : undefined,
-                              elapsed,
-                            }
-                          : m,
-                      ),
-                    )
-                  }
-                  setIsStreaming(false)
-                  setStatus('Complete')
-                }
-
-                if (event.type === 'session.error' || event.type === 'error') {
-                  setIsStreaming(false)
-                  setStatus('Error')
-                }
-              } catch {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
+        await readSubagentSSEStream(reader, refs, setters)
       })
       .catch((err) => {
         if (err.name === 'AbortError') return
