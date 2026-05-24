@@ -28,10 +28,13 @@ export function dispatchMessageEvent(
     handleMessagePartUpdated(event, ctx, scheduleFlush)
     const textDelta = extractTextDelta(event)
     const eventStatus = getEventStatus(event)
-    if (textDelta || eventStatus) {
+    const props = event.properties as { part?: { type?: string }; delta?: string } | undefined
+    const isReasoningDelta = props?.part?.type === 'reasoning' && typeof props?.delta === 'string'
+    if (textDelta || eventStatus || isReasoningDelta) {
       sessionStatusStore.update(targetSessionId, {
         ...(textDelta ? { contentPreview: ctx.assistantTextRef.current } : {}),
         ...(eventStatus ? { status: eventStatus.label, step: eventStatus.label } : {}),
+        ...(isReasoningDelta ? { reasoningPreview: ctx.reasoningRef.current.slice(0, 200) } : {}),
       })
     }
     return

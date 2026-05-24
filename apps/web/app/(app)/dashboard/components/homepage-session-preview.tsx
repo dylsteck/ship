@@ -98,19 +98,27 @@ export function SessionPreviewPanel({
   }
 
   if (isStreamingNow && steps.length > 0) {
+    const visibleSteps = steps.slice(-4)
+    const lastStep = visibleSteps[visibleSteps.length - 1]
+    const reasoningText = lastStep === 'Reasoning...' ? liveStatus?.reasoningPreview : undefined
     return (
       <div className="w-full space-y-0.5">
-        {steps.slice(-4).map((step, i) => (
+        {visibleSteps.map((step, i) => (
           <div
             key={i}
             className={cn(
               'text-[10px] leading-tight truncate',
-              i === steps.slice(-4).length - 1 ? 'text-foreground/80 font-medium' : 'text-muted-foreground/50',
+              i === visibleSteps.length - 1 ? 'text-foreground/80 font-medium' : 'text-muted-foreground/50',
             )}
           >
             {step}
           </div>
         ))}
+        {reasoningText && (
+          <p className="text-[10px] leading-tight text-muted-foreground/60 line-clamp-2 mt-0.5">
+            {reasoningText}
+          </p>
+        )}
       </div>
     )
   }

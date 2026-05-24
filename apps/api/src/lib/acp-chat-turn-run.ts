@@ -272,22 +272,41 @@ async function handleFailedTurn(input: RunChatTurnInput, error: unknown): Promis
 
 /**
  * Executes one user prompt against the configured ACP backend inside the sandbox VM.
+ * Retries once on bridge WebSocket disconnects that happen before any visible output.
  */
 export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResult> {
-  const runtime = createTurnRuntime(input.sessionId)
+  let lastError: unknown
 
-  try {
-    const { backend, workingDirectory, canReuseProtocolSession, meta } = await prepareTurnMeta(input)
-    const modelSelection = parseAcpModelId(input.modelId || meta['model'] || DEFAULT_ACP_MODEL_ID)
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const runtime = createTurnRuntime(input.sessionId)
 
-    await runPromptPhase(input, runtime, backend, workingDirectory, meta, canReuseProtocolSession, modelSelection)
-    return finalizeSuccessfulTurn(input, runtime)
-  } catch (error) {
-    if (error instanceof AgentStoppedError || runtime.stoppedByRequest) {
-      return handleStoppedTurn(input, runtime)
+    try {
+      const { backend, workingDirectory, canReuseProtocolSession, meta } = await prepareTurnMeta(input)
+      const modelSelection = parseAcpModelId(input.modelId || meta['model'] || DEFAULT_ACP_MODEL_ID)
+
+      await runPromptPhase(input, runtime, backend, workingDirectory, meta, canReuseProtocolSession, modelSelection)
+      return finalizeSuccessfulTurn(input, runtime)
+    } catch (error) {
+      if (error instanceof AgentStoppedError || runtime.stoppedByRequest) {
+        return handleStoppedTurn(input, runtime)
+      }
+
+      const isBridgeDisconnect =
+        error instanceof Error &&
+        (error.message.startsWith('ACP bridge WebSocket') || error.message.startsWith('ACP bridge closed'))
+
+      if (isBridgeDisconnect && attempt === 0 && !runtime.sawVisibleAssistantOutput) {
+        await writeStatus(input.stream, 'reconnecting', 'Reconnecting to agent…')
+        await delay(2_000)
+        await patchMeta(input.stub, { acp_protocol_session_id: '' })
+        continue
+      }
+
+      lastError = error
     }
-    return handleFailedTurn(input, error)
   }
+
+  return handleFailedTurn(input, lastError ?? new Error('Unexpected retry loop exit'))
 }
 
 /** Re-export for stable import path via chat-runner facade. */

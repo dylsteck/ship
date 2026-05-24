@@ -45,43 +45,41 @@ export async function readMeta(stub: { fetch: typeof fetch }): Promise<Record<st
   return (await res.json()) as Record<string, string>
 }
 
-/** Write one SSE event to the stream and fan out to the DO. */
+/** Write one SSE event to the stream and fan out to the DO via WebSocket broadcast.
+ *
+ * Per-event DO persistence is intentionally omitted — it doubled the subrequest count
+ * per invocation and caused Cloudflare's 1 000-subrequest limit to fire on long turns.
+ * Events are already delivered to the primary client via SSE and to reconnected clients
+ * via the WebSocket broadcast path.
+ */
 export async function emitEvent(input: ChatTurnContext, event: ShipSSEEvent): Promise<void> {
   await input.stream.writeSSE({ event: event.type, data: JSON.stringify(event) })
-  const results = await Promise.allSettled([
-    broadcastToDurableObject(input.stub, event),
-    persistEventToDurableObject(input.stub, event),
-  ])
-  for (const result of results) {
-    if (result.status === 'rejected') console.warn('[acp] failed to fan out event', result.reason)
-  }
+  await broadcastToDurableObject(input.stub, event).catch((err) => {
+    console.warn('[acp] failed to broadcast event', err)
+  })
 }
 
+/**
+ * Broadcast an event to WebSocket clients connected to the SessionDO.
+ *
+ * For streaming text/reasoning parts the accumulated `text` field is stripped before
+ * broadcasting — only the `delta` is needed by WebSocket consumers and the full text
+ * grows linearly with response length, risking Cloudflare's 1 MiB WS message limit.
+ */
 async function broadcastToDurableObject(stub: { fetch: typeof fetch }, event: ShipSSEEvent): Promise<void> {
+  let broadcastEvent = event
+  if (event.type === 'message.part.updated') {
+    const props = event.properties as { part?: { type?: string; text?: unknown; [k: string]: unknown }; [k: string]: unknown } | undefined
+    if (props?.part?.type === 'text' || props?.part?.type === 'reasoning') {
+      const partWithoutText = Object.fromEntries(Object.entries(props.part).filter(([k]) => k !== 'text'))
+      broadcastEvent = { ...event, properties: { ...props, part: partWithoutText } }
+    }
+  }
   await stub.fetch(
     new Request(`${DO_URL}/broadcast`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'agent-event', event }),
-    }),
-  )
-}
-
-async function persistEventToDurableObject(stub: { fetch: typeof fetch }, event: ShipSSEEvent): Promise<void> {
-  await stub.fetch(
-    new Request(`${DO_URL}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        events: [
-          {
-            id: crypto.randomUUID(),
-            type: event.type,
-            timestamp: Date.now(),
-            payload: event,
-          },
-        ],
-      }),
+      body: JSON.stringify({ type: 'agent-event', event: broadcastEvent }),
     }),
   )
 }
