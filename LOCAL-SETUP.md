@@ -173,7 +173,7 @@ npx wrangler d1 execute ship-db --local --command="SELECT COUNT(*) FROM users"
 
 Coding agents run **inside the E2B sandbox** via **Agent Client Protocol** backends.
 The Worker injects **`ship-acp-bridge`** and opens a WebSocket to it. Ensure `E2B_API_KEY`
-is set and your template/VM has **Node** (see `scripts/e2b-template/README.md` for baking CLIs).
+is set and your template/VM has **Node** (see `packages/sandbox/README.md` for baking CLIs).
 Anthropic/OpenAI keys in `apps/api/.dev.vars` are used for **session titles** and optional
 `authenticate` steps for some backends.
 

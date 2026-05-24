@@ -25,7 +25,7 @@ Inspired by Ramp's [Inspect background coding agent](https://builders.ramp.com/p
 - **GitHub account** (for OAuth)
 - **E2B account** (for sandboxes) — [e2b.dev](https://e2b.dev)
 - **Anthropic and/or OpenAI API keys** (optional but recommended) — session **title generation** uses REST from the Worker; ACP backends may also use these keys for `authenticate` (e.g. Codex / Claude flows).
-- **ACP backend CLIs** in your E2B image (or `npx` at cold start) — see `scripts/e2b-template/README.md`.
+- **ACP backend CLIs** in your E2B image (or `npx` at cold start) — see `packages/sandbox/README.md`.
 - Optional: **Cursor** (`CURSOR_API_KEY` / `CURSOR_AUTH_TOKEN`) and **OpenCode** (`OPENCODE_API_KEY`) on the Worker for single-tenant auth injection into the sandbox during bridge bootstrap.
 
 ### 1. Clone and install
@@ -226,8 +226,7 @@ ship/
 │       │       ├── generated/              # acp-bridge-bundled (esbuild output)
 │       ├── migrations/
 │       └── wrangler.toml
-├── scripts/
-│   └── e2b-template/        # Notes for baking CLIs into a custom E2B image
+├── packages/sandbox/           # E2B adapter + custom template notes
 ├── e2b/                      # Custom E2B template (Dockerfile)
 ├── e2b.toml
 └── packages/

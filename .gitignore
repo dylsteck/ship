@@ -30,8 +30,7 @@ dist
 
 # IDE
 .idea
-.vscode/*
-!.vscode/settings.json
+.vscode/
 *.swp
 *.swo
 .DS_Store

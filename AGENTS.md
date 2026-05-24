@@ -166,7 +166,7 @@ Ship runs **ACP agent CLIs inside the E2B sandbox**. The Worker connects to **`s
 | Claude | `claude-agent-acp` | Anthropic env optional |
 | Codex | `codex-acp` | `CODEX_AUTH_JSON` (personal sub) or `CODEX_ACCESS_TOKEN` (enterprise) or `OPENAI_API_KEY` (API billing) |
 
-See `scripts/e2b-template/README.md` for baking CLIs into a custom template.
+See `packages/sandbox/README.md` for baking ACP CLIs into a custom E2B template.
 
 ### Supported models (picker)
 
@@ -215,6 +215,8 @@ Regenerate after schema changes:
 ```bash
 pnpm openapi:export && pnpm sdk:generate
 ```
+
+Client data fetching (SWR → TanStack Query migration): `apps/web/docs/data-fetching.md`.
 
 See `apps/api/docs/openapi.md` and `packages/sdk/docs/README.md`.
 

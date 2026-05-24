@@ -132,4 +132,4 @@ Session title helper: `generate-session-title.ts` (Anthropic → OpenAI REST).
 - `AGENTS.md`
 - `apps/api/src/lib/acp-chat-runner.ts`
 - `packages/acp-bridge/src/server.ts`
-- `scripts/e2b-template/README.md`
+- `packages/sandbox/README.md`
