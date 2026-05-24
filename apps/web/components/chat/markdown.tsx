@@ -139,7 +139,7 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
       <Streamdown
         plugins={PLUGINS}
         components={customComponents}
-        mode={isAnimating ? 'streaming' : 'static'}
+        mode="static"
         isAnimating={isAnimating}
         animated={isAnimating ? STREAMING_ANIMATION : undefined}
       >

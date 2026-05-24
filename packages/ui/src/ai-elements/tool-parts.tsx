@@ -133,7 +133,7 @@ export function ToolPanel({
           !compact && 'border-l border-border/30',
         )}
       >
-        {input && Object.keys(input).length > 0 && !isReadTool && (
+        {input && Object.keys(input).length > 0 && (!isReadTool || !hasOutput) && (
           <div className="space-y-1.5">
             <p className="font-medium text-muted-foreground/60 text-[10px] uppercase tracking-wider">
               Input

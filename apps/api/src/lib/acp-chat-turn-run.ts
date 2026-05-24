@@ -19,7 +19,7 @@ import { ensureAcpBridgeReady, toBridgeWsUrl } from './acp-bridge-bootstrap'
 import { createAcpMultiplexer, openBridgeWebSocket, sendCtl } from './acp-json-rpc'
 import { DEFAULT_ACP_MODEL_ID, resolveAcpBackend, type AcpBackendKind } from './agent-registry'
 import { parseAcpModelId } from './acp-types'
-import { runAcpHandshake, setAdvertisedModelConfig } from './acp-handshake'
+import { runAcpHandshake, setAdvertisedModelConfig, type AcpHandshakeResult } from './acp-handshake'
 import {
   AgentStoppedError,
   delay,
@@ -164,8 +164,10 @@ async function runPromptPhase(
   }
 
   try {
+    await writeStatus(input.stream, 'agent-starting', `Starting ${backend} agent…`)
     sendCtl(ws, 'spawn', backend, modelSelection.upstreamModelId)
     await delay(450)
+    await writeStatus(input.stream, 'agent-connecting', `Connecting to ${backend} agent…`)
 
     const handshake = await runAcpHandshake(
       rpc,
@@ -190,55 +192,63 @@ async function runPromptPhase(
       },
     )
 
-    const transcript = input.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n---\n')
-    const latestUserPrompt = [...input.messages].reverse().find((message) => message.role === 'user')?.content
-    const planPrefix = input.planMode ? '[plan mode — describe steps; avoid edits]\n\n' : ''
-    const promptText = handshake.loadedExisting && latestUserPrompt ? latestUserPrompt : transcript
-
-    let waitingForPrompt = true
-    const stopPromise = waitForStopRequest(
-      input,
-      () => waitingForPrompt,
-      async () => {
-        runtime.stoppedByRequest = true
-        rpc.notify('session/cancel', { sessionId: handshake.sessionId })
-        await delay(1500)
-        try {
-          sendCtl(ws, 'reset')
-        } finally {
-          rpc.close()
-        }
-      },
-    )
-
-    try {
-      await Promise.race([
-        rpc.request(
-          'session/prompt',
-          {
-            sessionId: handshake.sessionId,
-            prompt: [{ type: 'text', text: `${planPrefix}${promptText}` }],
-          },
-          { timeoutMs: ACP_PROMPT_TIMEOUT_MS },
-        ),
-        stopPromise,
-      ])
-    } finally {
-      waitingForPrompt = false
-    }
-
-    if (!runtime.assistantText.trim() && !runtime.sawVisibleAssistantOutput) {
-      const tail = runtime.acpLogTail.at(-1)
-      const detail = tail ? ` Last backend log: ${tail}` : ''
-      throw new Error(`ACP backend completed without returning assistant output.${detail}`)
-    }
+    await sendPrompt(rpc, ws, input, runtime, handshake)
   } finally {
     rpc.close()
   }
 }
 
+async function sendPrompt(
+  rpc: ReturnType<typeof createAcpMultiplexer>,
+  ws: WebSocket,
+  input: RunChatTurnInput,
+  runtime: TurnRuntime,
+  handshake: AcpHandshakeResult,
+): Promise<void> {
+  const transcript = input.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n---\n')
+  const latestUserPrompt = [...input.messages].reverse().find((m) => m.role === 'user')?.content
+  const planPrefix = input.planMode ? '[plan mode — describe steps; avoid edits]\n\n' : ''
+  const promptText = handshake.loadedExisting && latestUserPrompt ? latestUserPrompt : transcript
+
+  let waitingForPrompt = true
+  const stopPromise = waitForStopRequest(
+    input,
+    () => waitingForPrompt,
+    async () => {
+      runtime.stoppedByRequest = true
+      rpc.notify('session/cancel', { sessionId: handshake.sessionId })
+      await delay(1500)
+      try {
+        sendCtl(ws, 'reset')
+      } finally {
+        rpc.close()
+      }
+    },
+  )
+
+  try {
+    await Promise.race([
+      rpc.request(
+        'session/prompt',
+        { sessionId: handshake.sessionId, prompt: [{ type: 'text', text: `${planPrefix}${promptText}` }] },
+        { timeoutMs: ACP_PROMPT_TIMEOUT_MS },
+      ),
+      stopPromise,
+    ])
+  } finally {
+    waitingForPrompt = false
+  }
+
+  if (!runtime.assistantText.trim() && !runtime.sawVisibleAssistantOutput) {
+    const tail = runtime.acpLogTail.at(-1)
+    const detail = tail ? ` Last backend log: ${tail}` : ''
+    throw new Error(`ACP backend completed without returning assistant output.${detail}`)
+  }
+}
+
 async function finalizeSuccessfulTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<ChatTurnResult> {
-  await persistAssistantMessage(input.stub, runtime.assistantText)
+  const finalParts = runtime.translator.getFinalParts()
+  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts)
   await emitEvent(input, makeStepFinishEvent(input.sessionId, runtime.translator.messageId, emptyStepTotals(), 'stop'))
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
   await emitEvent(input, { type: 'done' })
@@ -272,22 +282,41 @@ async function handleFailedTurn(input: RunChatTurnInput, error: unknown): Promis
 
 /**
  * Executes one user prompt against the configured ACP backend inside the sandbox VM.
+ * Retries once on bridge WebSocket disconnects that happen before any visible output.
  */
 export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResult> {
-  const runtime = createTurnRuntime(input.sessionId)
+  let lastError: unknown
 
-  try {
-    const { backend, workingDirectory, canReuseProtocolSession, meta } = await prepareTurnMeta(input)
-    const modelSelection = parseAcpModelId(input.modelId || meta['model'] || DEFAULT_ACP_MODEL_ID)
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const runtime = createTurnRuntime(input.sessionId)
 
-    await runPromptPhase(input, runtime, backend, workingDirectory, meta, canReuseProtocolSession, modelSelection)
-    return finalizeSuccessfulTurn(input, runtime)
-  } catch (error) {
-    if (error instanceof AgentStoppedError || runtime.stoppedByRequest) {
-      return handleStoppedTurn(input, runtime)
+    try {
+      const { backend, workingDirectory, canReuseProtocolSession, meta } = await prepareTurnMeta(input)
+      const modelSelection = parseAcpModelId(input.modelId || meta['model'] || DEFAULT_ACP_MODEL_ID)
+
+      await runPromptPhase(input, runtime, backend, workingDirectory, meta, canReuseProtocolSession, modelSelection)
+      return finalizeSuccessfulTurn(input, runtime)
+    } catch (error) {
+      if (error instanceof AgentStoppedError || runtime.stoppedByRequest) {
+        return handleStoppedTurn(input, runtime)
+      }
+
+      const isBridgeDisconnect =
+        error instanceof Error &&
+        (error.message.startsWith('ACP bridge WebSocket') || error.message.startsWith('ACP bridge closed'))
+
+      if (isBridgeDisconnect && attempt === 0 && !runtime.sawVisibleAssistantOutput) {
+        await writeStatus(input.stream, 'reconnecting', 'Reconnecting to agent…')
+        await delay(2_000)
+        await patchMeta(input.stub, { acp_protocol_session_id: '' })
+        continue
+      }
+
+      lastError = error
     }
-    return handleFailedTurn(input, error)
   }
+
+  return handleFailedTurn(input, lastError ?? new Error('Unexpected retry loop exit'))
 }
 
 /** Re-export for stable import path via chat-runner facade. */

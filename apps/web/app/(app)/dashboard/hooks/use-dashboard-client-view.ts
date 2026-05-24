@@ -4,7 +4,6 @@ import { useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useIsMobile } from '@ship/ui'
 import { setApiToken } from '@/lib/api/client'
-import { useAgentDefaultModel } from '@/lib/api/hooks/use-models'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
@@ -18,6 +17,7 @@ import {
 import { useDashboardSessionSync } from './use-dashboard-session-sync'
 import { useActiveSessionSync } from './use-dashboard-client-effects'
 import { useDashboardClientCore, useDashboardClientRefs } from './use-dashboard-client-core'
+import { useAgentModelDefaults } from './use-agent-model-defaults'
 import { useHomepageComposerDefaults } from './use-homepage-composer-defaults'
 
 export interface DashboardClientViewParams {
@@ -56,13 +56,18 @@ export function useDashboardClientView({
     refs,
   )
 
-  const {
-    defaultModelId: agentDefaultModelId,
-    isLoading: agentDefaultModelLoading,
-    mutate: mutateAgentDefaultModel,
-  } = useAgentDefaultModel(state.selectedAgent?.id, true)
-  const defaultModelId = agentDefaultModelId || dataHooks.globalDefaultModelId
-  const defaultModelLoading = dataHooks.globalDefaultModelLoading || agentDefaultModelLoading
+  const { agentDefaultModels, agentDefaultModelsLoading, mutateAgentDefaultModels } = useAgentModelDefaults({
+    agents: dataHooks.agents,
+    activeSessionId: chat.activeSessionId,
+    selectedAgent: state.selectedAgent,
+    selectedModel: state.selectedModel,
+    setSelectedModel: state.setSelectedModel,
+    globalDefaultModelId: dataHooks.globalDefaultModelId,
+    globalDefaultModelLoading: dataHooks.globalDefaultModelLoading,
+  })
+  const selectedAgentDefaultModelId = state.selectedAgent ? agentDefaultModels[state.selectedAgent.id]?.id : null
+  const defaultModelId = selectedAgentDefaultModelId || dataHooks.globalDefaultModelId
+  const defaultModelLoading = dataHooks.globalDefaultModelLoading || agentDefaultModelsLoading
 
   const { handleRepoSelect, handleAgentSelectWithPersist, persistDefaultModel } = useHomepageComposerDefaults({
     activeSessionId: chat.activeSessionId,
@@ -71,7 +76,7 @@ export function useDashboardClientView({
     handleAgentSelect: state.handleAgentSelect,
     mutateDefaultRepo: dataHooks.mutateDefaultRepo,
     mutateDefaultAgent: dataHooks.mutateDefaultAgent,
-    mutateAgentDefaultModel,
+    mutateAgentDefaultModel: mutateAgentDefaultModels,
   })
 
   const handleModelSelect = useDashboardModelSelect(chat, state, dataHooks, {
@@ -87,6 +92,7 @@ export function useDashboardClientView({
     onRepoSelect: handleRepoSelect,
     onAgentSelect: handleAgentSelectWithPersist,
     onModelSelect: handleModelSelect,
+    agentDefaultModels,
   })
 
   useDashboardSessionSync({

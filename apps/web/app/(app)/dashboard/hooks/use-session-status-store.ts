@@ -10,6 +10,8 @@ export interface SessionLiveStatus {
   contentPreview?: string
   /** Session title from agent or fallback generator */
   title?: string
+  /** Current reasoning text snippet while agent is thinking */
+  reasoningPreview?: string
 }
 
 /** Internal update shape — `step` is consumed and merged into `steps` */

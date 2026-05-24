@@ -27,7 +27,7 @@ jobs:
         run: pnpm lint
 
   type-check:
-    name: Type check
+    name: Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -34,17 +34,9 @@ async function authenticateBackend(
 ): Promise<void> {
   switch (backend) {
     case 'cursor':
-      if (env.CURSOR_API_KEY) {
-        await rpc.request('authenticate', {
-          methodId: 'cursor_login',
-          credentials: { apiKey: env.CURSOR_API_KEY },
-        })
-      } else if (env.CURSOR_AUTH_TOKEN) {
-        await rpc.request('authenticate', {
-          methodId: 'cursor_login',
-          credentials: { token: env.CURSOR_AUTH_TOKEN },
-        })
-      }
+      // Cursor's `cursor_login` auth method is for an existing interactive
+      // login. In E2B we launch `agent acp` with API credentials up front;
+      // sending `authenticate` after that hangs on Linux.
       break
     case 'codex':
       if (env.OPENAI_API_KEY) {
@@ -143,9 +135,9 @@ export async function runAcpHandshake(
 ): Promise<AcpHandshakeResult> {
   const initRaw = await rpc.request('initialize', {
     protocolVersion: 1,
-    clientCapabilities: {},
+    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
     clientInfo: { name: 'Ship', version: '2.0.0' },
-  })
+  }, { timeoutMs: 45_000 })
   const init = initRaw && typeof initRaw === 'object' ? (initRaw as Record<string, unknown>) : {}
   const capabilities =
     init.agentCapabilities && typeof init.agentCapabilities === 'object'

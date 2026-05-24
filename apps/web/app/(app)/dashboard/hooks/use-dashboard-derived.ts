@@ -24,6 +24,7 @@ export interface UseDashboardDerivedParams {
   onRepoSelect?: (repo: GitHubRepo) => void
   onAgentSelect?: (agent: AgentInfo) => void
   onModelSelect?: (model: ModelInfo) => void
+  agentDefaultModels?: Record<string, ModelInfo | undefined>
 }
 
 function buildComposerContext(
@@ -36,6 +37,7 @@ function buildComposerContext(
   onRepoSelect?: (repo: GitHubRepo) => void,
   onAgentSelect?: (agent: AgentInfo) => void,
   onModelSelect?: (model: ModelInfo) => void,
+  agentDefaultModels: Record<string, ModelInfo | undefined> = {},
 ): ComposerContextValue {
   return {
     activeSessionId: chat.activeSessionId,
@@ -54,6 +56,7 @@ function buildComposerContext(
     agents: data.agents,
     agentsLoading: data.agentsLoading,
     selectedModel: state.selectedModel,
+    agentDefaultModels,
     onModelSelect: onModelSelect ?? state.setSelectedModel,
     modelsLoading: data.modelsLoading ?? false,
     groupedByProvider,
@@ -77,6 +80,7 @@ export function useDashboardDerived({
   onRepoSelect,
   onAgentSelect,
   onModelSelect,
+  agentDefaultModels = {},
 }: UseDashboardDerivedParams) {
   const groupedByProvider = useMemo(() => {
     const agentModels = state.selectedAgent?.models || []
@@ -127,6 +131,7 @@ export function useDashboardDerived({
         onRepoSelect,
         onAgentSelect,
         onModelSelect,
+        agentDefaultModels,
       ),
     [
       chat,
@@ -138,6 +143,7 @@ export function useDashboardDerived({
       onRepoSelect,
       onAgentSelect,
       onModelSelect,
+      agentDefaultModels,
     ],
   )
 

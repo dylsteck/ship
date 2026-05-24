@@ -124,6 +124,13 @@ function harnessModel(
 
 const CURSOR_MODELS: AgentModel[] = [
   harnessModel('cursor', 'auto', 'Auto', 'Cursor CLI', 'Cursor chooses the best available model.'),
+  harnessModel(
+    'cursor',
+    'composer-2.5[fast=true]',
+    'Composer 2.5',
+    'Cursor CLI',
+    '`agent --model` selected before ACP startup.',
+  ),
   harnessModel('cursor', 'composer-2', 'Composer 2', 'Cursor CLI', 'Cursor agentic coding model.'),
   harnessModel('cursor', 'gpt-5', 'GPT-5', 'Cursor CLI', '`agent --model` selected before ACP startup.'),
   harnessModel(

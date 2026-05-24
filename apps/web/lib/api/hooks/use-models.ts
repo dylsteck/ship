@@ -138,6 +138,39 @@ export function useAgentDefaultModel(agentId: string | undefined, fetchEnabled: 
 }
 
 /**
+ * Hook to fetch the JWT user's default model for each available agent.
+ */
+export function useAgentDefaultModels(agentIds: string[], fetchEnabled: boolean | undefined) {
+  const key = fetchEnabled && agentIds.length > 0 ? ['agent-default-models', ...agentIds] : null
+  const { data, error, isLoading, mutate } = useSWR<Record<string, string | null>>(
+    key,
+    async ([, ...ids]: string[]) => {
+      const entries = await Promise.all(
+        ids.map(async (agentId) => {
+          try {
+            const response = await fetcher<{ model: string | null }>(apiUrl('/models/default-agent-model', { agentId }))
+            return [agentId, response.model ?? null] as const
+          } catch (err: unknown) {
+            if ((err as { status?: number })?.status === 404) return [agentId, null] as const
+            throw err
+          }
+        }),
+      )
+      return Object.fromEntries(entries)
+    },
+    { revalidateOnFocus: false },
+  )
+
+  return {
+    defaultModelIdsByAgent: data ?? {},
+    isLoading,
+    isError: !!error,
+    error,
+    mutate,
+  }
+}
+
+/**
  * Mutation hook to set user's default model for a specific agent
  */
 export function useSetAgentDefaultModel() {

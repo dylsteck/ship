@@ -236,7 +236,7 @@ export function MessageItem(props: MessageItemProps) {
 
   if (message.role === 'user' && message.content) {
     return (
-      <Message key={message.id} role="user">
+      <Message key={message.id} role="user" timestamp={message.createdAt} copyContent={message.content}>
         <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
       </Message>
     )

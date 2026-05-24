@@ -58,11 +58,19 @@ export function handleAgentRequest(ws: WebSocket, rpc: JsonRpcRecord): boolean {
   }
 
   if (method.includes('permission') || method.endsWith('request_permission')) {
-    sendRpcReply(ws, id, { decision: 'allow-once', status: 'approved' })
+    sendRpcReply(ws, id, {
+      decision: 'allow-once',
+      status: 'approved',
+      outcome: { outcome: 'selected', optionId: 'allow-once' },
+    })
     return true
   }
-  if (method.includes('ask_question') || method.includes('create_plan')) {
-    sendRpcReply(ws, id, { acknowledged: true, auto: true })
+  if (method.includes('ask_question')) {
+    sendRpcReply(ws, id, { acknowledged: true, auto: true, outcome: { outcome: 'skipped', reason: 'auto' } })
+    return true
+  }
+  if (method.includes('create_plan')) {
+    sendRpcReply(ws, id, { acknowledged: true, auto: true, outcome: { outcome: 'accepted' } })
     return true
   }
   sendRpcReply(ws, id, { acknowledged: true })

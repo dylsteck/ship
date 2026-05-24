@@ -36,6 +36,7 @@ export function AgentModelSelector() {
     onAgentSelect,
     onModelSelect,
     agents,
+    agentDefaultModels,
     agentsLoading,
     modelsLoading,
     isStreaming,
@@ -43,7 +44,10 @@ export function AgentModelSelector() {
 
   const loading = agentsLoading || modelsLoading
   const triggerHarness = loading ? 'Loading...' : selectedAgent?.name || 'Select harness'
-  const triggerModel = selectedModelForAgent(selectedAgent, selectedModel)?.name ?? selectedModel?.name
+  const triggerModel =
+    selectedModelForAgent(selectedAgent, selectedModel)?.name ??
+    (selectedAgent ? agentDefaultModels[selectedAgent.id]?.name : undefined) ??
+    selectedModel?.name
 
   if (activeSessionId) {
     return <AgentModelReadOnly harness={triggerHarness} model={triggerModel} loading={loading} />
@@ -74,11 +78,15 @@ export function AgentModelSelector() {
           </Button>
         }
       />
-      <DropdownMenuContent align="start" className="w-[220px]">
+      <DropdownMenuContent
+        align="start"
+        className="w-[220px] rounded-[14px] border border-border/60 bg-card/95 p-1.5 shadow-2xl shadow-black/35 ring-0 backdrop-blur-xl"
+      >
         <AgentModelMenuItems
           agents={agents}
           selectedAgent={selectedAgent}
           selectedModel={selectedModel}
+          agentDefaultModels={agentDefaultModels}
           onAgentSelect={onAgentSelect}
           onModelSelect={onModelSelect}
         />

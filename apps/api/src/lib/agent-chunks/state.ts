@@ -13,8 +13,10 @@ export interface ToolCallTrace {
   callId: string
   toolName: string
   inputJson: string
+  outputJson?: string
   status: 'pending' | 'running' | 'completed' | 'error'
   startedAt: number
+  endedAt?: number
 }
 
 /** Translator state for one chat turn. */

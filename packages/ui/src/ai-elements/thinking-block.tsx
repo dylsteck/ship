@@ -56,7 +56,11 @@ export function ThinkingBlock({
   duration,
   className,
 }: ThinkingBlockProps) {
-  const [open, setOpen] = React.useState(false)
+  const [manualOpen, setManualOpen] = React.useState<boolean | null>(null)
+  const open = manualOpen !== null ? manualOpen : isStreaming
+  React.useEffect(() => {
+    if (isStreaming) setManualOpen(null)
+  }, [isStreaming])
 
   const reasoningText = React.useMemo(() => {
     if (!reasoning) return null
@@ -75,7 +79,7 @@ export function ThinkingBlock({
   return (
     <Collapsible
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={setManualOpen}
       className={cn('overflow-hidden', className)}
     >
       <CollapsibleTrigger className="w-full flex items-center gap-1 py-1.5 -mx-1 px-1 rounded text-left group/trigger">

@@ -14,7 +14,7 @@ import { ACP_BRIDGE_BUNDLE } from '../generated/acp-bridge-bundled'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
 
 export const ACP_RELAY_PORT_DEFAULT = 9847
-const ACP_BRIDGE_VERSION = '3'
+const ACP_BRIDGE_VERSION = '7'
 
 function randomHex(bytes: number): string {
   const u = new Uint8Array(bytes)
@@ -107,6 +107,10 @@ export async function ensureAcpBridgeReady(input: {
     shellExport('OPENCODE_API_KEY', input.env.OPENCODE_API_KEY),
     shellExport('OPENAI_API_KEY', input.env.OPENAI_API_KEY),
     shellExport('ANTHROPIC_API_KEY', input.env.ANTHROPIC_API_KEY),
+    shellExport('SHIP_ACP_CURSOR_CMD', input.env.SHIP_ACP_CURSOR_CMD),
+    shellExport('SHIP_ACP_CODEX_CMD', input.env.SHIP_ACP_CODEX_CMD),
+    shellExport('SHIP_ACP_CLAUDE_CMD', input.env.SHIP_ACP_CLAUDE_CMD),
+    shellExport('SHIP_ACP_OPENCODE_CMD', input.env.SHIP_ACP_OPENCODE_CMD),
   ]
     .filter(Boolean)
     .join(' ; ')
