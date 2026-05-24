@@ -2,6 +2,7 @@ name = "ship-api"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "b6c3bd7b1a1c219a306faf2c3f0a903a"
 
 [[workflows]]
 binding = "SHIP_ACP_WORKFLOW"
@@ -48,6 +49,11 @@ ENVIRONMENT = "development"
 [env.production]
 name = "ship-api-production"
 compatibility_flags = ["nodejs_compat"]
+
+[[env.production.workflows]]
+binding = "SHIP_ACP_WORKFLOW"
+name = "ship-acp-bootstrap"
+class_name = "ShipAcpBootstrapWorkflow"
 
 [env.production.vars]
 ENVIRONMENT = "production"
