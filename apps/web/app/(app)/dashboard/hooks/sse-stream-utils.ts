@@ -11,12 +11,17 @@ export function streamEventKey(sessionId: string, event: { type: string; [k: str
     const properties = event.properties as { part?: Record<string, unknown>; delta?: unknown } | undefined
     const part = properties?.part
     if (!part) return null
+    // For tool parts include status so pending/running/completed updates aren't deduplicated
+    const toolStatus = part.type === 'tool'
+      ? String((part.state as Record<string, unknown> | undefined)?.status ?? '')
+      : ''
     return [
       sessionId,
       event.type,
       String(part.messageID ?? ''),
       String(part.id ?? ''),
       String(part.type ?? ''),
+      toolStatus,
       typeof properties?.delta === 'string' ? properties.delta : '',
       typeof part.text === 'string' ? part.text : '',
     ].join('|')

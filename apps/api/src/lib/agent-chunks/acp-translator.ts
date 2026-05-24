@@ -109,12 +109,12 @@ function tryExtractToolCall(
 
   if (!toolCallId) return null
 
-  // Tool name — backends use title, toolName, name, tool
+  // Tool name — backends use title, toolName, name, tool; skip empty strings
   const name =
-    typeof src.title === 'string' ? src.title :
-    typeof src.toolName === 'string' ? src.toolName :
-    typeof src.name === 'string' ? src.name :
-    typeof src.tool === 'string' ? src.tool : 'tool'
+    (typeof src.title === 'string' && src.title) ? src.title :
+    (typeof src.toolName === 'string' && src.toolName) ? src.toolName :
+    (typeof src.name === 'string' && src.name) ? src.name :
+    (typeof src.tool === 'string' && src.tool) ? src.tool : 'tool'
 
   // Status — OpenCode: "pending" / "in_progress" / "completed" / "error"
   const rawStatus = typeof src.status === 'string' ? src.status : 'pending'
@@ -171,16 +171,17 @@ function translateToolCall(state: TranslatorState, data: ToolCallData): ShipSSEE
     }
   }
 
+  const toolName = trace.toolName
   return [
     makeMessagePartUpdated(state, {
       id: trace.partId,
       type: 'tool',
       callID: data.toolCallId,
-      tool: data.name,
+      tool: toolName,
       state: {
         status,
         input: data.input,
-        title: data.name,
+        title: toolName,
         ...(data.output !== undefined ? { output: data.output } : {}),
         time: { start: trace.startedAt },
       },

@@ -19,7 +19,7 @@ import { ensureAcpBridgeReady, toBridgeWsUrl } from './acp-bridge-bootstrap'
 import { createAcpMultiplexer, openBridgeWebSocket, sendCtl } from './acp-json-rpc'
 import { DEFAULT_ACP_MODEL_ID, resolveAcpBackend, type AcpBackendKind } from './agent-registry'
 import { parseAcpModelId } from './acp-types'
-import { runAcpHandshake, setAdvertisedModelConfig } from './acp-handshake'
+import { runAcpHandshake, setAdvertisedModelConfig, type AcpHandshakeResult } from './acp-handshake'
 import {
   AgentStoppedError,
   delay,
@@ -147,16 +147,7 @@ async function runPromptPhase(
   const ws = await openBridgeWebSocket(wsUrl)
 
   const rpc = createAcpMultiplexer(ws, {
-    onAgentNotification: (note) => {
-      const method = typeof note.method === 'string' ? note.method : ''
-      const params = note.params as Record<string, unknown> | undefined
-      const update = params?.update as Record<string, unknown> | undefined
-      const sessionUpdate = typeof update?.sessionUpdate === 'string' ? update.sessionUpdate : ''
-      if (sessionUpdate.includes('tool') || method.includes('tool')) {
-        console.warn('[acp:tool-note]', JSON.stringify(note).slice(0, 2000))
-      }
-      return createEmitTranslated(input, runtime)(note)
-    },
+    onAgentNotification: (note) => createEmitTranslated(input, runtime)(note),
     onLog: (stream, data) => {
       const trimmed = data.trim()
       if (trimmed) {
@@ -199,50 +190,57 @@ async function runPromptPhase(
       },
     )
 
-    const transcript = input.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n---\n')
-    const latestUserPrompt = [...input.messages].reverse().find((message) => message.role === 'user')?.content
-    const planPrefix = input.planMode ? '[plan mode — describe steps; avoid edits]\n\n' : ''
-    const promptText = handshake.loadedExisting && latestUserPrompt ? latestUserPrompt : transcript
-
-    let waitingForPrompt = true
-    const stopPromise = waitForStopRequest(
-      input,
-      () => waitingForPrompt,
-      async () => {
-        runtime.stoppedByRequest = true
-        rpc.notify('session/cancel', { sessionId: handshake.sessionId })
-        await delay(1500)
-        try {
-          sendCtl(ws, 'reset')
-        } finally {
-          rpc.close()
-        }
-      },
-    )
-
-    try {
-      await Promise.race([
-        rpc.request(
-          'session/prompt',
-          {
-            sessionId: handshake.sessionId,
-            prompt: [{ type: 'text', text: `${planPrefix}${promptText}` }],
-          },
-          { timeoutMs: ACP_PROMPT_TIMEOUT_MS },
-        ),
-        stopPromise,
-      ])
-    } finally {
-      waitingForPrompt = false
-    }
-
-    if (!runtime.assistantText.trim() && !runtime.sawVisibleAssistantOutput) {
-      const tail = runtime.acpLogTail.at(-1)
-      const detail = tail ? ` Last backend log: ${tail}` : ''
-      throw new Error(`ACP backend completed without returning assistant output.${detail}`)
-    }
+    await sendPrompt(rpc, ws, input, runtime, handshake)
   } finally {
     rpc.close()
+  }
+}
+
+async function sendPrompt(
+  rpc: ReturnType<typeof createAcpMultiplexer>,
+  ws: WebSocket,
+  input: RunChatTurnInput,
+  runtime: TurnRuntime,
+  handshake: AcpHandshakeResult,
+): Promise<void> {
+  const transcript = input.messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n---\n')
+  const latestUserPrompt = [...input.messages].reverse().find((m) => m.role === 'user')?.content
+  const planPrefix = input.planMode ? '[plan mode — describe steps; avoid edits]\n\n' : ''
+  const promptText = handshake.loadedExisting && latestUserPrompt ? latestUserPrompt : transcript
+
+  let waitingForPrompt = true
+  const stopPromise = waitForStopRequest(
+    input,
+    () => waitingForPrompt,
+    async () => {
+      runtime.stoppedByRequest = true
+      rpc.notify('session/cancel', { sessionId: handshake.sessionId })
+      await delay(1500)
+      try {
+        sendCtl(ws, 'reset')
+      } finally {
+        rpc.close()
+      }
+    },
+  )
+
+  try {
+    await Promise.race([
+      rpc.request(
+        'session/prompt',
+        { sessionId: handshake.sessionId, prompt: [{ type: 'text', text: `${planPrefix}${promptText}` }] },
+        { timeoutMs: ACP_PROMPT_TIMEOUT_MS },
+      ),
+      stopPromise,
+    ])
+  } finally {
+    waitingForPrompt = false
+  }
+
+  if (!runtime.assistantText.trim() && !runtime.sawVisibleAssistantOutput) {
+    const tail = runtime.acpLogTail.at(-1)
+    const detail = tail ? ` Last backend log: ${tail}` : ''
+    throw new Error(`ACP backend completed without returning assistant output.${detail}`)
   }
 }
 
