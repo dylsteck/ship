@@ -2,29 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import { cn } from '@ship/ui/utils'
-import type { UIMessage, ToolInvocation } from '@/lib/ai-elements-adapter'
+import type { UIMessage } from '@/lib/ai-elements-adapter'
 import type { Todo } from './types'
 import { MiniToolRow } from './mini-tool-row'
-
-function findRelatedTools(todo: Todo, messages: UIMessage[]): ToolInvocation[] {
-  const todoLower = todo.content.toLowerCase()
-  const related: ToolInvocation[] = []
-  for (const msg of messages) {
-    if (!msg.toolInvocations) continue
-    for (const tool of msg.toolInvocations) {
-      const name = tool.toolName.toLowerCase()
-      if (name.includes('task') || name.includes('agent')) {
-        const argsStr = JSON.stringify(tool.args || {}).toLowerCase()
-        if (argsStr.includes(todoLower.slice(0, 30)) || todoLower.includes(name)) {
-          related.push(tool)
-          continue
-        }
-        related.push(tool)
-      }
-    }
-  }
-  return related
-}
+import { findRelatedTools } from './task-item-utils'
+import { TaskStatusIcon } from './task-status-icon'
 
 export function TaskItem({ todo, messages }: { todo: Todo; messages: UIMessage[] }) {
   const [expanded, setExpanded] = useState(false)
@@ -49,22 +31,7 @@ export function TaskItem({ todo, messages }: { todo: Todo; messages: UIMessage[]
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && setExpanded(!expanded)}
       >
-        {isInProgress ? (
-          <span className="relative flex h-3 w-3 shrink-0 mt-0.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/30 opacity-75" />
-            <span className="relative inline-flex rounded-full h-3 w-3 border-[1.5px] border-primary/30 border-t-primary animate-spin" />
-          </span>
-        ) : isCompleted ? (
-          <span className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/40 shrink-0 mt-0.5 flex items-center justify-center">
-            <svg className="w-2 h-2 text-green-500" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </span>
-        ) : isCancelled ? (
-          <span className="w-3 h-3 rounded-full bg-red-500/10 border border-red-500/30 shrink-0 mt-0.5" />
-        ) : (
-          <span className="w-3 h-3 rounded-full border border-muted-foreground/30 shrink-0 mt-0.5" />
-        )}
+        <TaskStatusIcon isInProgress={isInProgress} isCompleted={isCompleted} isCancelled={isCancelled} />
 
         <div className="min-w-0 flex-1">
           <p className={cn(

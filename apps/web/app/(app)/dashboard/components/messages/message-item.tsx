@@ -1,18 +1,11 @@
 'use client'
 
-import * as React from 'react'
-import {
-  Message,
-  Response,
-  Loader,
-  ThinkingBlock,
-  SessionSetup,
-} from '@ship/ui'
+import { Message, Response, Loader, ThinkingBlock, SessionSetup } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { ErrorMessage } from '@/components/chat/error-message'
 import { PermissionPrompt } from '../permission-prompt'
 import { QuestionPrompt } from '../question-prompt'
-import type { UIMessage } from '@/lib/ai-elements-adapter'
+import type { UIMessage, ToolInvocation } from '@/lib/ai-elements-adapter'
 import type { TodoItem } from '../../types'
 import { MessageToolList } from './tool-list'
 
@@ -28,28 +21,22 @@ export interface MessageItemProps {
   onPermissionReply?: (permissionId: string, approved: boolean) => Promise<void>
   onQuestionReply?: (questionId: string, response: string) => Promise<void>
   onQuestionSkip?: (questionId: string) => Promise<void>
-  onSubagentNavigate: (tool: import('@/lib/ai-elements-adapter').ToolInvocation) => void
-  /** Only show SessionSetup for the first assistant in the thread */
+  onSubagentNavigate: (tool: ToolInvocation) => void
   showSessionSetup?: boolean
   onRetry?: () => void
 }
 
-export function MessageItem({
+function MessagePromptContent({
   message,
-  isCurrentlyStreaming,
-  streamStartTime: _streamStartTime,
-  streamingStatusSteps,
-  statusLabel,
-  sessionTodos,
-  todoRenderedRef,
   activeSessionId,
   onPermissionReply,
   onQuestionReply,
   onQuestionSkip,
-  onSubagentNavigate,
-  showSessionSetup = true,
   onRetry,
-}: MessageItemProps) {
+}: Pick<
+  MessageItemProps,
+  'message' | 'activeSessionId' | 'onPermissionReply' | 'onQuestionReply' | 'onQuestionSkip' | 'onRetry'
+>) {
   if (message.type === 'permission' && message.promptData) {
     return (
       <div className="py-2">
@@ -124,61 +111,96 @@ export function MessageItem({
     )
   }
 
+  return null
+}
+
+function MessagePlanItems({ items }: { items: NonNullable<UIMessage['planItems']> }) {
+  return (
+    <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">
+      <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Plan</div>
+      {items.map((item) => (
+        <div key={item.id} className="flex items-center gap-2 text-sm">
+          <span className="shrink-0 w-4 text-center">
+            {item.status === 'completed'
+              ? '✓'
+              : item.status === 'in_progress'
+                ? '●'
+                : item.status === 'cancelled'
+                  ? '✗'
+                  : '○'}
+          </span>
+          <span
+            className={
+              item.status === 'completed'
+                ? 'text-muted-foreground line-through'
+                : item.status === 'in_progress'
+                  ? 'text-foreground font-medium'
+                  : item.status === 'cancelled'
+                    ? 'text-muted-foreground/50 line-through'
+                    : 'text-foreground'
+            }
+          >
+            {item.title}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AssistantMessageBody({
+  message,
+  isCurrentlyStreaming,
+  streamingStatusSteps,
+  statusLabel,
+  sessionTodos,
+  todoRenderedRef,
+  onSubagentNavigate,
+  showSessionSetup,
+}: Pick<
+  MessageItemProps,
+  | 'message'
+  | 'isCurrentlyStreaming'
+  | 'streamingStatusSteps'
+  | 'statusLabel'
+  | 'sessionTodos'
+  | 'todoRenderedRef'
+  | 'onSubagentNavigate'
+  | 'showSessionSetup'
+>) {
   if (
-    message.role === 'assistant' &&
     !message.content &&
     !message.toolInvocations?.length &&
     !message.reasoning?.length &&
     isCurrentlyStreaming
   ) {
-    if (showSessionSetup && streamingStatusSteps.length > 0) {
-      return (
-        <Message key={message.id} role="assistant">
-          <SessionSetup steps={streamingStatusSteps} isStreaming />
-        </Message>
-      )
-    }
     return (
       <Message key={message.id} role="assistant">
-        <Loader message={statusLabel || 'Thinking...'} />
+        {showSessionSetup && streamingStatusSteps.length > 0 ? (
+          <SessionSetup steps={streamingStatusSteps} isStreaming />
+        ) : (
+          <Loader message={statusLabel || 'Thinking...'} />
+        )}
       </Message>
     )
   }
 
-  if (!message.content && !message.toolInvocations?.length && !message.reasoning?.length) {
-    return null
-  }
-
-  const hasReasoning =
-    message.role === 'assistant' && !!message.reasoning && message.reasoning.length > 0
-  const hasSteps =
-    message.role === 'assistant' &&
-    !!(message.toolInvocations && message.toolInvocations.length > 0)
+  const hasReasoning = !!message.reasoning && message.reasoning.length > 0
+  const hasSteps = !!(message.toolInvocations && message.toolInvocations.length > 0)
 
   return (
-    <Message
-      key={message.id}
-      role={message.role}
-    >
-      {message.role === 'user' && message.content && (
-        <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
+    <Message key={message.id} role={message.role}>
+      {message.startupSteps && message.startupSteps.length > 0 && (
+        <SessionSetup steps={message.startupSteps} defaultOpen={false} className="my-1" />
       )}
-
-      {message.role === 'assistant' &&
-        message.startupSteps &&
-        message.startupSteps.length > 0 && (
-          <SessionSetup steps={message.startupSteps} defaultOpen={false} className="my-1" />
-        )}
 
       {(hasReasoning || hasSteps) && (
         <ThinkingBlock
           reasoning={message.reasoning}
           isStreaming={isCurrentlyStreaming}
-          duration={
-            message.elapsed != null ? Math.floor(message.elapsed / 1000) : undefined
-          }
+          duration={message.elapsed != null ? Math.floor(message.elapsed / 1000) : undefined}
         >
-          {hasSteps && message.toolInvocations && message.toolInvocations.length > 0 && (
+          {hasSteps && message.toolInvocations && (
             <MessageToolList
               tools={message.toolInvocations}
               sessionTodos={sessionTodos}
@@ -189,41 +211,9 @@ export function MessageItem({
         </ThinkingBlock>
       )}
 
-      {message.planItems && message.planItems.length > 0 && (
-        <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            Plan
-          </div>
-          {message.planItems.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-sm">
-              <span className="shrink-0 w-4 text-center">
-                {item.status === 'completed'
-                  ? '✓'
-                  : item.status === 'in_progress'
-                    ? '●'
-                    : item.status === 'cancelled'
-                      ? '✗'
-                      : '○'}
-              </span>
-              <span
-                className={
-                  item.status === 'completed'
-                    ? 'text-muted-foreground line-through'
-                    : item.status === 'in_progress'
-                      ? 'text-foreground font-medium'
-                      : item.status === 'cancelled'
-                        ? 'text-muted-foreground/50 line-through'
-                        : 'text-foreground'
-                }
-              >
-                {item.title}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {message.planItems && message.planItems.length > 0 && <MessagePlanItems items={message.planItems} />}
 
-      {message.role === 'assistant' && message.content && (
+      {message.content && (
         <div className={hasSteps ? 'mt-4' : undefined}>
           <Response>
             <Markdown content={message.content} isAnimating={isCurrentlyStreaming} />
@@ -232,4 +222,29 @@ export function MessageItem({
       )}
     </Message>
   )
+}
+
+export function MessageItem(props: MessageItemProps) {
+  const { message } = props
+
+  const promptContent = MessagePromptContent(props)
+  if (promptContent) return promptContent
+
+  if (!message.content && !message.toolInvocations?.length && !message.reasoning?.length) {
+    return null
+  }
+
+  if (message.role === 'user' && message.content) {
+    return (
+      <Message key={message.id} role="user">
+        <div className="text-foreground whitespace-pre-wrap">{message.content}</div>
+      </Message>
+    )
+  }
+
+  if (message.role === 'assistant') {
+    return <AssistantMessageBody {...props} />
+  }
+
+  return null
 }

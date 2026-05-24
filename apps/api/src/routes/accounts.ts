@@ -14,21 +14,6 @@ interface CreateAccountInput {
   scope?: string
 }
 
-// GitHub repo response type
-interface GitHubRepo {
-  id: number
-  name: string
-  full_name: string
-  owner: {
-    login: string
-  }
-  description: string | null
-  private: boolean
-  updated_at: string
-  language: string | null
-  stargazers_count: number
-}
-
 const accounts = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
 /**

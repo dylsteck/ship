@@ -19,17 +19,12 @@ import {
   pushBranch,
   type GitUser,
 } from './git-workflow'
-import {
-  GitHubClient,
-  parseRepoUrl,
-  type CreatePullRequestParams,
-} from './github'
+import { GitHubClient, parseRepoUrl } from './github'
 import {
   executeWithRetry,
   classifyError,
   sanitizeError,
   ErrorCategory,
-  type ErrorDetails,
 } from './error-handler'
 
 /**

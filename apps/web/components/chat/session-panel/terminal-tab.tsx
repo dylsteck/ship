@@ -2,14 +2,16 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { cn } from '@ship/ui/utils'
-import { API_URL } from '@/lib/config'
-import { getApiToken } from '@/lib/api/client'
+import {
+  createTerminalInstance,
+  connectTerminalWebSocket,
+  cleanupTerminalConnection,
+} from './terminal-tab-setup'
 
 interface TerminalTabProps {
   sessionId?: string
   sandboxStatus?: string | null
   sandboxId?: string | null
-  /** Explains why the terminal may be unavailable (e.g. clone/setup error) */
   connectionHint?: string
 }
 
@@ -26,8 +28,23 @@ function TerminalPlaceholder({ message, showSpinner }: { message: string; showSp
   )
 }
 
-const RETRY_INTERVAL = 5000
-const CONNECTION_TIMEOUT_MS = 15000
+function getUnavailableMessage(
+  sessionId: string | undefined,
+  isProvisioning: boolean,
+  hasNoSandbox: boolean,
+  connectionFailed: boolean,
+  connectionHint?: string,
+): string {
+  if (!sessionId) return 'Terminal unavailable — no active session'
+  if (isProvisioning) return 'Sandbox provisioning...'
+  if (hasNoSandbox) return 'Sandbox unavailable — send a message to start the session'
+  if (connectionFailed) {
+    return connectionHint
+      ? `Connection failed — ${connectionHint}`
+      : 'Connection failed — fix any errors in the chat (e.g. GitHub access), then send a message to retry.'
+  }
+  return connectionHint ? `Terminal unavailable — ${connectionHint}` : 'Terminal unavailable'
+}
 
 export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHint }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -45,28 +62,20 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
     sandboxStatus === 'error' || (!sandboxId && sandboxStatus !== undefined && !isProvisioning)
   const canConnect = sessionId && sandboxId && !isProvisioning && !hasNoSandbox
 
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'unavailable'>(
-    'unavailable',
-  )
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'unavailable'>('unavailable')
   const [connectionFailed, setConnectionFailed] = useState(false)
 
-  // Reset exhausted when session or sandbox eligibility changes (e.g. new session, sandbox just provisioned)
   useEffect(() => {
     exhaustedRef.current = false
     setConnectionFailed(false)
   }, [sessionId, canConnect])
 
-  // Update status when sandbox state changes — don't override 'unavailable' if we've exhausted retries
   useEffect(() => {
     if (!sessionId) {
       setStatus('unavailable')
       return
     }
-    if (hasNoSandbox) {
-      setStatus('unavailable')
-      return
-    }
-    if (isProvisioning) {
+    if (hasNoSandbox || isProvisioning) {
       setStatus('unavailable')
       return
     }
@@ -76,23 +85,11 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
   }, [sessionId, sandboxId, isProvisioning, hasNoSandbox])
 
   const cleanup = useCallback(() => {
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current)
-      retryTimerRef.current = null
-    }
-    if (timeoutTimerRef.current) {
-      clearTimeout(timeoutTimerRef.current)
-      timeoutTimerRef.current = null
-    }
-    if (wsRef.current) {
-      wsRef.current.close()
-      wsRef.current = null
-    }
-    if (termRef.current) {
-      termRef.current.dispose()
-      termRef.current = null
-    }
-    fitRef.current = null
+    cleanupTerminalConnection(
+      { wsRef, retryTimerRef, timeoutTimerRef, retryCountRef, exhaustedRef },
+      termRef,
+      fitRef,
+    )
   }, [])
 
   useEffect(() => {
@@ -105,142 +102,26 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
     retryCountRef.current = 0
 
     async function initTerminal() {
-      const [{ Terminal }, { FitAddon }, { WebLinksAddon }] = await Promise.all([
-        import('@xterm/xterm'),
-        import('@xterm/addon-fit'),
-        import('@xterm/addon-web-links'),
-      ])
-
-      if (cancelled || !containerRef.current) return
-
-      const fit = new FitAddon()
-      const webLinks = new WebLinksAddon()
-      const term = new Terminal({
-        cursorBlink: true,
-        fontSize: 13,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        theme: {
-          background: '#1e1e1e',
-          foreground: '#cccccc',
-          cursor: '#cccccc',
-          selectionBackground: '#264f78',
-        },
-        allowProposedApi: true,
-      })
-
-      term.loadAddon(fit)
-      term.loadAddon(webLinks)
-      term.open(containerRef.current)
-      fit.fit()
+      if (!containerRef.current) return
+      const { term, fit } = await createTerminalInstance(containerRef.current)
+      if (cancelled) {
+        term.dispose()
+        return
+      }
 
       termRef.current = term
       fitRef.current = fit
 
-      connectWebSocket(term)
-    }
-
-    function connectWebSocket(term: import('@xterm/xterm').Terminal) {
-      if (cancelled) return
-
-      const token = getApiToken()
-      const wsUrl = `${API_URL.replace('http', 'ws')}/terminal/${sessionId}${token ? `?token=${encodeURIComponent(token)}` : ''}`
-
-      // Connection timeout: if we don't connect in 15s, give up
-      timeoutTimerRef.current = setTimeout(() => {
-        if (cancelled) return
-        if (wsRef.current?.readyState !== WebSocket.OPEN) {
-          retryCountRef.current = maxRetries
-          exhaustedRef.current = true
-          setConnectionFailed(true)
-          setStatus('unavailable')
-          if (wsRef.current) {
-            wsRef.current.close()
-            wsRef.current = null
-          }
-        }
-      }, CONNECTION_TIMEOUT_MS)
-
-      try {
-        const ws = new WebSocket(wsUrl)
-        wsRef.current = ws
-
-        ws.onopen = () => {
-          if (!cancelled) {
-            if (timeoutTimerRef.current) {
-              clearTimeout(timeoutTimerRef.current)
-              timeoutTimerRef.current = null
-            }
-            setStatus('connected')
-            const dims = { cols: term.cols, rows: term.rows }
-            ws.send(JSON.stringify({ type: 'resize', ...dims }))
-          }
-        }
-
-        ws.onmessage = (event) => {
-          if (typeof event.data === 'string') {
-            term.write(event.data)
-          }
-        }
-
-        ws.onclose = () => {
-          if (!cancelled) {
-            if (timeoutTimerRef.current) {
-              clearTimeout(timeoutTimerRef.current)
-              timeoutTimerRef.current = null
-            }
-            retryCountRef.current += 1
-            if (retryCountRef.current >= maxRetries) {
-              exhaustedRef.current = true
-              setConnectionFailed(true)
-              setStatus('unavailable')
-            } else {
-              setStatus('disconnected')
-              scheduleRetry(term)
-            }
-          }
-        }
-
-        ws.onerror = () => {
-          if (!cancelled) {
-            setStatus('disconnected')
-            // onclose will fire after onerror, retry handled there
-          }
-        }
-
-        term.onData((data) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'input', data }))
-          }
-        })
-
-        term.onResize(({ cols, rows }) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'resize', cols, rows }))
-          }
-        })
-      } catch {
-        if (!cancelled) {
-          setStatus('connecting')
-          scheduleRetry(term)
-        }
+      const refs = { wsRef, retryTimerRef, timeoutTimerRef, retryCountRef, exhaustedRef }
+      const callbacks = {
+        setStatus,
+        setConnectionFailed,
+        isCancelled: () => cancelled,
       }
+      connectTerminalWebSocket(sessionId!, term, refs, callbacks, maxRetries)
     }
 
-    function scheduleRetry(term: import('@xterm/xterm').Terminal) {
-      if (cancelled) return
-      retryTimerRef.current = setTimeout(() => {
-        if (!cancelled) {
-          // Close old ws if still around
-          if (wsRef.current) {
-            wsRef.current.close()
-            wsRef.current = null
-          }
-          connectWebSocket(term)
-        }
-      }, RETRY_INTERVAL)
-    }
-
-    initTerminal()
+    void initTerminal()
 
     const resizeObserver = new ResizeObserver(() => {
       fitRef.current?.fit()
@@ -257,19 +138,7 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
   }, [sessionId, canConnect, cleanup])
 
   if (status === 'unavailable') {
-    const message = !sessionId
-      ? 'Terminal unavailable — no active session'
-      : isProvisioning
-        ? 'Sandbox provisioning...'
-        : hasNoSandbox
-          ? 'Sandbox unavailable — send a message to start the session'
-          : connectionFailed
-            ? connectionHint
-              ? `Connection failed — ${connectionHint}`
-              : 'Connection failed — fix any errors in the chat (e.g. GitHub access), then send a message to retry.'
-            : connectionHint
-              ? `Terminal unavailable — ${connectionHint}`
-              : 'Terminal unavailable'
+    const message = getUnavailableMessage(sessionId, isProvisioning, hasNoSandbox, connectionFailed, connectionHint)
     return <TerminalPlaceholder message={message} showSpinner={isProvisioning} />
   }
 

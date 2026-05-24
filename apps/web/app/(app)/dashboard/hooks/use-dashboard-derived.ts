@@ -26,6 +26,49 @@ export interface UseDashboardDerivedParams {
   onModelSelect?: (model: ModelInfo) => void
 }
 
+function buildComposerContext(
+  chat: ReturnType<typeof useDashboardChat>,
+  state: ReturnType<typeof useDashboardState>,
+  data: UseDashboardDerivedParams['data'],
+  groupedByProvider: Record<string, ModelInfo[]>,
+  canSubmit: boolean,
+  isCreating: boolean,
+  onRepoSelect?: (repo: GitHubRepo) => void,
+  onAgentSelect?: (agent: AgentInfo) => void,
+  onModelSelect?: (model: ModelInfo) => void,
+): ComposerContextValue {
+  return {
+    activeSessionId: chat.activeSessionId,
+    prompt: state.prompt,
+    onPromptChange: state.setPrompt,
+    onKeyDown: state.handleKeyDown,
+    selectedRepo: state.selectedRepo,
+    onRepoSelect: onRepoSelect ?? state.setSelectedRepo,
+    repos: data.repos,
+    reposLoading: data.reposLoading ?? false,
+    reposLoadMore: data.reposLoadMore,
+    reposHasMore: data.reposHasMore ?? false,
+    reposLoadingMore: data.reposLoadingMore ?? false,
+    selectedAgent: state.selectedAgent,
+    onAgentSelect: onAgentSelect ?? state.handleAgentSelect,
+    agents: data.agents,
+    agentsLoading: data.agentsLoading,
+    selectedModel: state.selectedModel,
+    onModelSelect: onModelSelect ?? state.setSelectedModel,
+    modelsLoading: data.modelsLoading ?? false,
+    groupedByProvider,
+    mode: state.mode,
+    onModeChange: state.setMode,
+    availableModes: state.availableModes,
+    onSubmit: state.handleSubmit,
+    onStop: chat.handleStop,
+    isCreating: !!isCreating,
+    isStreaming: !!chat.isStreaming,
+    messageQueueLength: chat.messageQueue.length,
+    canSubmit: !!canSubmit,
+  }
+}
+
 export function useDashboardDerived({
   chat,
   state,
@@ -35,38 +78,21 @@ export function useDashboardDerived({
   onAgentSelect,
   onModelSelect,
 }: UseDashboardDerivedParams) {
-  const {
-    prompt,
-    setPrompt,
-    selectedRepo,
-    setSelectedRepo,
-    selectedAgent,
-    selectedModel,
-    setSelectedModel,
-    mode,
-    setMode,
-    availableModes,
-    handleKeyDown,
-    handleAgentSelect,
-    handleSubmit,
-  } = state
-
   const groupedByProvider = useMemo(() => {
-    const agentModels = selectedAgent?.models || []
+    const agentModels = state.selectedAgent?.models || []
     return agentModels.reduce<Record<string, ModelInfo[]>>((acc, model) => {
       const provider = model.provider || 'Other'
       if (!acc[provider]) acc[provider] = []
       acc[provider].push(model)
       return acc
     }, {})
-  }, [selectedAgent])
+  }, [state.selectedAgent])
 
   const activeSession = useMemo(
     () => chat.localSessions.find((session) => session.id === chat.activeSessionId),
     [chat.localSessions, chat.activeSessionId],
   )
 
-  // Use first prompt as initial title until AI-generated title arrives from session.updated
   const fallbackTitle = useMemo(() => {
     const firstUser = chat.messages.find((m) => m.role === 'user')
     if (firstUser?.content) {
@@ -86,68 +112,32 @@ export function useDashboardDerived({
   const displayRepoLabel = useMemo(() => getSessionRepoLabel(activeSession), [activeSession])
 
   const canSubmit = Boolean(
-    chat.activeSessionId ? prompt.trim() && !chat.isStreaming : selectedRepo && prompt.trim() && !isCreating,
+    chat.activeSessionId ? state.prompt.trim() && !chat.isStreaming : state.selectedRepo && state.prompt.trim() && !isCreating,
   )
 
-  const composerContext: ComposerContextValue = useMemo(
-    () => ({
-      activeSessionId: chat.activeSessionId,
-      prompt,
-      onPromptChange: setPrompt,
-      onKeyDown: handleKeyDown,
-      selectedRepo,
-      onRepoSelect: onRepoSelect ?? setSelectedRepo,
-      repos: data.repos,
-      reposLoading: data.reposLoading ?? false,
-      reposLoadMore: data.reposLoadMore,
-      reposHasMore: data.reposHasMore ?? false,
-      reposLoadingMore: data.reposLoadingMore ?? false,
-      selectedAgent,
-      onAgentSelect: onAgentSelect ?? handleAgentSelect,
-      agents: data.agents,
-      agentsLoading: data.agentsLoading,
-      selectedModel,
-      onModelSelect: onModelSelect ?? setSelectedModel,
-      modelsLoading: data.modelsLoading ?? false,
-      groupedByProvider,
-      mode,
-      onModeChange: setMode,
-      availableModes,
-      onSubmit: handleSubmit,
-      onStop: chat.handleStop,
-      isCreating: !!isCreating,
-      isStreaming: !!chat.isStreaming,
-      messageQueueLength: chat.messageQueue.length,
-      canSubmit: !!canSubmit,
-    }),
+  const composerContext = useMemo(
+    () =>
+      buildComposerContext(
+        chat,
+        state,
+        data,
+        groupedByProvider,
+        canSubmit,
+        isCreating,
+        onRepoSelect,
+        onAgentSelect,
+        onModelSelect,
+      ),
     [
-      chat.activeSessionId,
-      prompt,
-      handleKeyDown,
-      selectedRepo,
-      onRepoSelect,
-      data.repos,
-      data.reposLoading,
-      data.reposLoadMore,
-      data.reposHasMore,
-      data.reposLoadingMore,
-      selectedAgent,
-      onAgentSelect,
-      handleAgentSelect,
-      data.agents,
-      data.agentsLoading,
-      selectedModel,
-      onModelSelect,
-      data.modelsLoading,
+      chat,
+      state,
+      data,
       groupedByProvider,
-      mode,
-      availableModes,
-      handleSubmit,
-      chat.handleStop,
-      isCreating,
-      chat.isStreaming,
-      chat.messageQueue.length,
       canSubmit,
+      isCreating,
+      onRepoSelect,
+      onAgentSelect,
+      onModelSelect,
     ],
   )
 

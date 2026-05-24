@@ -11,7 +11,6 @@ interface QuestionPromptProps {
   onSkip?: () => void
 }
 
-/** Parse question text into optional header + options (e.g. "Which would you like?\n\nA) Option 1\nB) Option 2") */
 function parseQuestionText(text: string): { header?: string; options: string[]; hasOptions: boolean } {
   const trimmed = text.trim()
   const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean)
@@ -29,19 +28,64 @@ function parseQuestionText(text: string): { header?: string; options: string[]; 
   return { header: trimmed, options: [], hasOptions: false }
 }
 
-export function QuestionPrompt({
-  id,
-  text,
-  status,
+function QuestionOptionsList({ options }: { options: string[] }) {
+  return (
+    <div className="space-y-1.5 mb-3">
+      {options.map((line, i) => (
+        <div key={i} className="text-sm pl-2 border-l-2 border-muted-foreground/30 text-foreground/90">
+          {line}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function QuestionAnswerForm({
+  answer,
+  isSubmitting,
+  onAnswerChange,
   onReply,
   onSkip,
-}: QuestionPromptProps) {
+}: {
+  answer: string
+  isSubmitting: boolean
+  onAnswerChange: (value: string) => void
+  onReply: () => void
+  onSkip: () => void
+}) {
+  return (
+    <div className="space-y-3">
+      <Textarea
+        value={answer}
+        onChange={(e) => onAnswerChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && answer.trim()) {
+            e.preventDefault()
+            onReply()
+          }
+        }}
+        placeholder="Type your answer..."
+        className="min-h-[80px] resize-none text-sm"
+        disabled={isSubmitting}
+      />
+      <div className="flex gap-2">
+        <Button variant="default" size="sm" onClick={onReply} disabled={!answer.trim() || isSubmitting}>
+          {isSubmitting ? 'Sending…' : 'Reply'}
+        </Button>
+        <Button variant="outline" size="sm" onClick={onSkip} disabled={isSubmitting}>
+          Skip
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function QuestionPrompt({ text, status, onReply, onSkip }: QuestionPromptProps) {
   const [answer, setAnswer] = React.useState('')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const isPending = status === 'pending'
   const isReplied = status === 'replied'
   const isRejected = status === 'rejected'
-
   const { header, options, hasOptions } = parseQuestionText(text)
 
   const handleReply = async () => {
@@ -68,12 +112,9 @@ export function QuestionPrompt({
     <div
       className={cn(
         'rounded-lg border overflow-hidden',
-        isPending &&
-          'border-blue-200/60 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-950/20',
-        isReplied &&
-          'border-emerald-200/60 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-950/20',
-        isRejected &&
-          'border-muted bg-muted/30 dark:border-muted/50 dark:bg-muted/20',
+        isPending && 'border-blue-200/60 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-950/20',
+        isReplied && 'border-emerald-200/60 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-950/20',
+        isRejected && 'border-muted bg-muted/30 dark:border-muted/50 dark:bg-muted/20',
       )}
     >
       <div className="flex items-start gap-3 p-4">
@@ -91,57 +132,16 @@ export function QuestionPrompt({
           <div className="font-medium text-foreground mb-0.5">
             {isPending ? 'Agent Question' : isReplied ? 'Answered' : 'Skipped'}
           </div>
-          {header && (
-            <div className="text-sm text-muted-foreground whitespace-pre-wrap mb-3">
-              {header}
-            </div>
-          )}
-          {hasOptions && options.length > 0 && (
-            <div className="space-y-1.5 mb-3">
-              {options.map((line, i) => (
-                <div
-                  key={i}
-                  className="text-sm pl-2 border-l-2 border-muted-foreground/30 text-foreground/90"
-                >
-                  {line}
-                </div>
-              ))}
-            </div>
-          )}
-          {isPending && (
-            <div className="space-y-3">
-              <Textarea
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && answer.trim() && onReply) {
-                    e.preventDefault()
-                    handleReply()
-                  }
-                }}
-                placeholder="Type your answer..."
-                className="min-h-[80px] resize-none text-sm"
-                disabled={isSubmitting}
-              />
-              <div className="flex gap-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleReply}
-                  disabled={!answer.trim() || isSubmitting}
-                >
-                  {isSubmitting ? 'Sending…' : 'Reply'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSkip}
-                  disabled={isSubmitting}
-                >
-                  Skip
-                </Button>
-              </div>
-            </div>
+          {header && <div className="text-sm text-muted-foreground whitespace-pre-wrap mb-3">{header}</div>}
+          {hasOptions && options.length > 0 && <QuestionOptionsList options={options} />}
+          {isPending && onReply && onSkip && (
+            <QuestionAnswerForm
+              answer={answer}
+              isSubmitting={isSubmitting}
+              onAnswerChange={setAnswer}
+              onReply={handleReply}
+              onSkip={handleSkip}
+            />
           )}
         </div>
       </div>

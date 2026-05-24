@@ -8,12 +8,20 @@
  * @packageDocumentation
  */
 
-export type JsonRpcRecord = Record<string, unknown>
+import {
+  handleBridgeEnvelope,
+  type JsonRpcRecord,
+  type RpcPendingWaiter,
+} from './acp-json-rpc-route'
 
+export type { JsonRpcRecord } from './acp-json-rpc-route'
+
+/** Send a bridge control message (`spawn` or `reset`). */
 export function sendCtl(ws: WebSocket, op: 'spawn' | 'reset', backend?: string, model?: string): void {
   ws.send(JSON.stringify({ type: 'ctl', op, ...(backend ? { backend } : {}), ...(model ? { model } : {}) }))
 }
 
+/** JSON-RPC multiplexer over a bridge WebSocket. */
 export interface AcpMultiplexer {
   request(method: string, params?: unknown, options?: { timeoutMs?: number }): Promise<unknown>
   notify(method: string, params?: unknown): void
@@ -21,12 +29,6 @@ export interface AcpMultiplexer {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
-
-function errorFromUnknown(value: unknown): Error {
-  if (value instanceof Error) return value
-  if (typeof value === 'string') return new Error(value)
-  return new Error(JSON.stringify(value))
-}
 
 /**
  * Bridge envelopes carry NDJSON agent traffic as `{ type:'rpc_in', line:string }`.
@@ -39,10 +41,7 @@ export function createAcpMultiplexer(
     onLog?: (stream: string, data: string) => void
   },
 ): AcpMultiplexer {
-  const pending = new Map<
-    string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
-  >()
+  const pending = new Map<string, RpcPendingWaiter>()
   let counter = 0
   let closed = false
   let closedError: Error | null = null
@@ -58,56 +57,6 @@ export function createAcpMultiplexer(
     }
   }
 
-  const route = async (rawLine: string) => {
-    let rpc: JsonRpcRecord
-    try {
-      rpc = JSON.parse(rawLine) as JsonRpcRecord
-    } catch {
-      return
-    }
-
-    const id = rpc.id
-    const method = typeof rpc.method === 'string' ? rpc.method : undefined
-
-    if (id !== undefined && id !== null && ('result' in rpc || 'error' in rpc)) {
-      const idStr = String(id)
-      const waiter = pending.get(idStr)
-      if (waiter) {
-        pending.delete(idStr)
-        clearTimeout(waiter.timer)
-        if (rpc.error) waiter.reject(errorFromUnknown(rpc.error))
-        else waiter.resolve(rpc.result)
-        return
-      }
-    }
-
-    if (method && id !== undefined && id !== null && !('result' in rpc) && !('error' in rpc)) {
-      if (method.includes('permission') || method.endsWith('request_permission')) {
-        reply(id, { decision: 'allow-once', status: 'approved' })
-        return
-      }
-      if (method.includes('ask_question') || method.includes('create_plan')) {
-        reply(id, { acknowledged: true, auto: true })
-        return
-      }
-      reply(id, { acknowledged: true })
-      return
-    }
-
-    if (method && (id === undefined || id === null)) {
-      await handlers.onAgentNotification(rpc)
-    }
-  }
-
-  function reply(reqId: unknown, result: unknown): void {
-    ws.send(
-      JSON.stringify({
-        type: 'rpc_out',
-        line: JSON.stringify({ jsonrpc: '2.0', id: reqId, result }),
-      }),
-    )
-  }
-
   const onMessage = async (ev: MessageEvent) => {
     let outer: JsonRpcRecord
     try {
@@ -115,23 +64,11 @@ export function createAcpMultiplexer(
     } catch {
       return
     }
-    if (outer.type === 'log' && typeof outer.data === 'string') {
-      handlers.onLog?.(typeof outer.stream === 'string' ? outer.stream : 'stderr', outer.data)
-      return
-    }
-    if (outer.type === 'ctl' && (outer.status === 'error' || outer.status === 'exit')) {
-      const message =
-        typeof outer.message === 'string'
-          ? outer.message
-          : outer.status === 'exit'
-            ? `ACP backend exited before completing the request`
-            : 'ACP backend failed'
-      rejectAll(new Error(message))
-      return
-    }
-    if (outer.type === 'rpc_in' && typeof outer.line === 'string') {
-      await route(outer.line)
-    }
+    await handleBridgeEnvelope(ws, pending, outer, {
+      onAgentNotification: handlers.onAgentNotification,
+      onLog: handlers.onLog,
+      rejectAll,
+    })
   }
 
   ws.addEventListener('message', (ev) => void onMessage(ev))
@@ -172,6 +109,7 @@ export function createAcpMultiplexer(
   }
 }
 
+/** Open a WebSocket to the bridge relay with a connect timeout. */
 export function openBridgeWebSocket(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url)

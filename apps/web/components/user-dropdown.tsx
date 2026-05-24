@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useTheme } from '@/components/providers/theme-context'
 import {
@@ -24,7 +25,7 @@ interface UserDropdownProps {
 
 function UserAvatar({ user }: UserDropdownProps) {
   return user?.avatarUrl ? (
-    <img
+    <Image
       src={user.avatarUrl}
       alt={user.username}
       width={20}

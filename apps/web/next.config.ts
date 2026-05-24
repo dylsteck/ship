@@ -11,6 +11,15 @@ const LOCAL_API_URL = 'http://localhost:8787'
 const config: NextConfig = {
   output: 'standalone',
   transpilePackages: ['@ship/ui'],
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+        pathname: '/u/**',
+      },
+    ],
+  },
   env: {
     NEXT_PUBLIC_API_URL:
       process.env.NEXT_PUBLIC_API_URL ||
