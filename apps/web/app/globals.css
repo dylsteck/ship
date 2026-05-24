@@ -63,7 +63,7 @@
   display: contents;
 }
 [data-streamdown="mermaid-block"] {
-  width: fit-content !important;
+  width: 100% !important;
   max-width: 100%;
   overflow: hidden !important;
   border-color: color-mix(in oklab, var(--border) 82%, transparent) !important;
@@ -80,14 +80,56 @@
 [data-streamdown="mermaid-block"] > div:last-child {
   border: none !important;
   background: transparent !important;
-  padding: 0.75rem !important;
+  padding: 1rem !important;
 }
 [data-streamdown="mermaid"] {
-  min-width: min(38rem, 100%) !important;
+  width: 100% !important;
+  min-width: 100% !important;
+}
+[data-streamdown="mermaid"] > div,
+[data-streamdown="mermaid"] [role="application"],
+[data-streamdown="mermaid"] [aria-label="Mermaid chart"] {
+  width: 100% !important;
 }
 [data-streamdown="mermaid"] svg {
-  max-width: 100%;
-  height: auto;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]:has(
+    [data-streamdown="mermaid"]
+  ) {
+  z-index: 9999 !important;
+  background: color-mix(in oklab, var(--background) 94%, black 6%) !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]:has(
+    [data-streamdown="mermaid"]
+  )
+  > div:last-child {
+  padding: clamp(1rem, 3vw, 2.5rem) !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
+  [data-streamdown="mermaid"] {
+  width: min(96vw, 1600px) !important;
+  height: min(88vh, 1000px) !important;
+  min-width: 0 !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
+  [data-streamdown="mermaid"]
+  [aria-label="Mermaid chart"] {
+  align-items: center;
+  height: 100% !important;
+}
+body
+  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
+  [data-streamdown="mermaid"]
+  svg {
+  width: min(100%, 1500px) !important;
+  max-height: 82vh !important;
 }
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../node_modules/streamdown/dist/*.js";
