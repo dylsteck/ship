@@ -39,6 +39,11 @@ export function normalizeMermaidCodeBlocks(markdown: string): string {
   })
 }
 
+/** Extracts Mermaid fence bodies from already-normalized Markdown. */
+export function extractMermaidCodeBlocks(markdown: string): string[] {
+  return Array.from(markdown.matchAll(MERMAID_FENCE_PATTERN), (match) => match[2]?.trim() ?? '').filter(Boolean)
+}
+
 function convertArrowOutlineToFlowchart(source: string): string | null {
   const nodes: OutlineNode[] = []
   const edges: string[] = []

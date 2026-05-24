@@ -131,6 +131,16 @@ body
   width: min(100%, 1500px) !important;
   max-height: 82vh !important;
 }
+.mermaid-fullscreen-svg svg {
+  width: min(100%, 1600px) !important;
+  height: auto !important;
+  max-height: 82vh !important;
+}
+.mermaid-rendered-svg svg {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+}
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 @source "../../../node_modules/streamdown/dist/*.js";
 

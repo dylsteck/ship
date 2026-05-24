@@ -3,12 +3,13 @@
 import { memo, useMemo } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
-import { mermaid } from '@streamdown/mermaid'
+import { mermaid as mermaidPlugin } from '@streamdown/mermaid'
 import { cn } from '@ship/ui'
 import type { Components } from 'react-markdown'
 import type { ControlsConfig, MermaidErrorComponentProps } from 'streamdown'
 
 import { normalizeMermaidCodeBlocks } from '@/lib/markdown-mermaid'
+import { MermaidBlockRenderer } from './mermaid-block'
 
 interface MarkdownProps {
   content: string
@@ -31,7 +32,7 @@ interface MarkdownProps {
 const STREAMING_ANIMATION = { animation: 'fadeIn', duration: 250, easing: 'ease-out' } as const
 
 // Stable references — hoisted outside component to avoid re-creating on every render
-const PLUGINS = { code, mermaid } as never
+const PLUGINS = { code, mermaid: mermaidPlugin, renderers: [{ language: 'mermaid', component: MermaidBlockRenderer }] } as never
 
 const MERMAID_OPTIONS = { errorComponent: MermaidErrorFallback }
 const STREAMDOWN_CONTROLS: ControlsConfig = {
