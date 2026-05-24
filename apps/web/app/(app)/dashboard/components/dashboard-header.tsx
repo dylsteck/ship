@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { cn, SidebarTrigger, useSidebar } from '@ship/ui'
+import { cn, SidebarTrigger, useSidebar, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
@@ -104,8 +104,35 @@ export function DashboardHeader({
         </Link>
       </div>
       {activeSessionId && (
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 flex items-center gap-1">
           <div className="font-medium truncate text-xs text-muted-foreground">{sessionTitle || 'Untitled session'}</div>
+          {onDeleteSession && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="shrink-0 p-1 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-transparent transition-colors"
+                    aria-label="More options"
+                  >
+                    <svg className="size-3" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="12" cy="12" r="1.5" />
+                      <circle cx="19" cy="12" r="1.5" />
+                      <circle cx="5" cy="12" r="1.5" />
+                    </svg>
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem
+                  onClick={() => void onDeleteSession(activeSessionId!)}
+                  className="cursor-pointer text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+                >
+                  Delete session
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       )}
 
