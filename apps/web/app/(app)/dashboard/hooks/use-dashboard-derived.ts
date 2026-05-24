@@ -21,10 +21,20 @@ export interface UseDashboardDerivedParams {
     modelsLoading: boolean
   }
   isCreating: boolean
+  onRepoSelect?: (repo: GitHubRepo) => void
+  onAgentSelect?: (agent: AgentInfo) => void
   onModelSelect?: (model: ModelInfo) => void
 }
 
-export function useDashboardDerived({ chat, state, data, isCreating, onModelSelect }: UseDashboardDerivedParams) {
+export function useDashboardDerived({
+  chat,
+  state,
+  data,
+  isCreating,
+  onRepoSelect,
+  onAgentSelect,
+  onModelSelect,
+}: UseDashboardDerivedParams) {
   const {
     prompt,
     setPrompt,
@@ -86,14 +96,14 @@ export function useDashboardDerived({ chat, state, data, isCreating, onModelSele
       onPromptChange: setPrompt,
       onKeyDown: handleKeyDown,
       selectedRepo,
-      onRepoSelect: setSelectedRepo,
+      onRepoSelect: onRepoSelect ?? setSelectedRepo,
       repos: data.repos,
       reposLoading: data.reposLoading ?? false,
       reposLoadMore: data.reposLoadMore,
       reposHasMore: data.reposHasMore ?? false,
       reposLoadingMore: data.reposLoadingMore ?? false,
       selectedAgent,
-      onAgentSelect: handleAgentSelect,
+      onAgentSelect: onAgentSelect ?? handleAgentSelect,
       agents: data.agents,
       agentsLoading: data.agentsLoading,
       selectedModel,
@@ -115,12 +125,14 @@ export function useDashboardDerived({ chat, state, data, isCreating, onModelSele
       prompt,
       handleKeyDown,
       selectedRepo,
+      onRepoSelect,
       data.repos,
       data.reposLoading,
       data.reposLoadMore,
       data.reposHasMore,
       data.reposLoadingMore,
       selectedAgent,
+      onAgentSelect,
       handleAgentSelect,
       data.agents,
       data.agentsLoading,

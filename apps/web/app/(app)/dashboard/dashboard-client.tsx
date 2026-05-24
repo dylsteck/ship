@@ -28,6 +28,7 @@ import { useDashboardState } from './hooks/use-dashboard-state'
 import { useDashboardDerived } from './hooks/use-dashboard-derived'
 import { useRightSidebar } from './hooks/use-right-sidebar'
 import { useSessionSync } from './hooks/use-session-sync'
+import { useHomepageComposerDefaults } from './hooks/use-homepage-composer-defaults'
 import { useProvisionSandboxWhenNeeded } from './hooks/use-provision-sandbox-when-needed'
 import { DashboardLayout } from './components/dashboard-layout'
 import { DashboardMainColumn } from './components/dashboard-main-column'
@@ -136,9 +137,9 @@ export function DashboardClient({
   } = useGitHubRepos(true)
   const { models, isLoading: modelsLoading } = useModels(true)
   const { agents, isLoading: agentsLoading } = useAgents()
-  const { defaultAgentId, isLoading: defaultAgentLoading } = useDefaultAgent(true)
+  const { defaultAgentId, isLoading: defaultAgentLoading, mutate: mutateDefaultAgent } = useDefaultAgent(true)
   const { defaultModelId: globalDefaultModelId, isLoading: globalDefaultModelLoading } = useDefaultModel(true)
-  const { defaultRepoFullName, isLoading: defaultRepoLoading } = useDefaultRepo(true)
+  const { defaultRepoFullName, isLoading: defaultRepoLoading, mutate: mutateDefaultRepo } = useDefaultRepo(true)
   const { createSession, isCreating } = useCreateSession()
   const { deleteSession } = useDeleteSession()
   const { sessionModelId, mutate: mutateSessionModel } = useSessionModel(chat.activeSessionId ?? undefined)
@@ -251,11 +252,31 @@ export function DashboardClient({
 
   modelIdRef.current = state.selectedModel?.id ?? null
 
+  const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading, mutate: mutateAgentDefaultModel } =
+    useAgentDefaultModel(state.selectedAgent?.id, true)
+  const defaultModelId = agentDefaultModelId || globalDefaultModelId
+  const defaultModelLoading = globalDefaultModelLoading || agentDefaultModelLoading
+
+  const { handleRepoSelect, handleAgentSelectWithPersist, persistDefaultModel } = useHomepageComposerDefaults({
+    activeSessionId: chat.activeSessionId,
+    selectedAgentId: state.selectedAgent?.id,
+    setSelectedRepo: state.setSelectedRepo,
+    handleAgentSelect: state.handleAgentSelect,
+    mutateDefaultRepo,
+    mutateDefaultAgent,
+    mutateAgentDefaultModel,
+  })
+
   const handleModelSelect = useCallback(
     async (model: NonNullable<typeof state.selectedModel>) => {
       state.setSelectedModel(model)
       const sessionId = chat.activeSessionId
-      if (!sessionId) return
+      if (!sessionId) {
+        const agentId =
+          agents.find((agent) => agent.models.some((entry) => entry.id === model.id))?.id ?? state.selectedAgent?.id
+        await persistDefaultModel(model, agentId)
+        return
+      }
 
       chat.setLocalSessions((prev) =>
         prev.map((session) => (session.id === sessionId ? { ...session, model: model.id } : session)),
@@ -268,17 +289,17 @@ export function DashboardClient({
         console.error('Failed to set session model:', error)
       }
     },
-    [chat.activeSessionId, chat.setLocalSessions, mutateSessionModel, mutateSessions, setSessionModel, state],
+    [
+      agents,
+      chat.activeSessionId,
+      chat.setLocalSessions,
+      mutateSessionModel,
+      mutateSessions,
+      persistDefaultModel,
+      setSessionModel,
+      state,
+    ],
   )
-
-  // Fetch agent-specific default model (must be after state is initialized)
-  const { defaultModelId: agentDefaultModelId, isLoading: agentDefaultModelLoading } = useAgentDefaultModel(
-    state.selectedAgent?.id,
-    true,
-  )
-  // Prefer agent-specific default over global default
-  const defaultModelId = agentDefaultModelId || globalDefaultModelId
-  const defaultModelLoading = globalDefaultModelLoading || agentDefaultModelLoading
 
   const derived = useDashboardDerived({
     chat,
@@ -294,6 +315,8 @@ export function DashboardClient({
       modelsLoading: modelsLoading ?? false,
     },
     isCreating,
+    onRepoSelect: handleRepoSelect,
+    onAgentSelect: handleAgentSelectWithPersist,
     onModelSelect: handleModelSelect,
   })
 
