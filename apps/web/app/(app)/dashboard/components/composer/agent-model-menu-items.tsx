@@ -30,12 +30,14 @@ export function AgentModelMenuItems({
   agents,
   selectedAgent,
   selectedModel,
+  agentDefaultModels,
   onAgentSelect,
   onModelSelect,
 }: {
   agents: AgentInfo[]
   selectedAgent: AgentInfo | null
   selectedModel: ModelInfo | null
+  agentDefaultModels: Record<string, ModelInfo | undefined>
   onAgentSelect: (agent: AgentInfo) => void
   onModelSelect: (model: ModelInfo) => void
 }) {
@@ -44,7 +46,7 @@ export function AgentModelMenuItems({
       {agents.map((agent) => {
         const agentModels = agent.models ?? []
         const isAgentSelected = selectedAgent?.id === agent.id
-        const selectedAgentModel = selectedModelForAgent(agent, selectedModel)
+        const selectedAgentModel = selectedModelForAgent(agent, selectedModel) ?? agentDefaultModels[agent.id]
 
         return (
           <div key={agent.id}>
@@ -64,7 +66,7 @@ export function AgentModelMenuItems({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-[260px] max-h-[360px] overflow-y-auto">
                 {agentModels.map((model) => {
-                  const isModelSelected = isAgentSelected && selectedModel?.id === model.id
+                  const isModelSelected = isAgentSelected && selectedAgentModel?.id === model.id
                   return (
                     <DropdownMenuItem
                       key={model.id}

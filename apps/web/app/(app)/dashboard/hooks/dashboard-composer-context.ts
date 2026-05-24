@@ -18,6 +18,7 @@ export interface BuildComposerContextParams {
   agents: AgentInfo[]
   agentsLoading: boolean
   selectedModel: ModelInfo | null
+  agentDefaultModels?: Record<string, ModelInfo | undefined>
   setSelectedModel: (model: ModelInfo | null) => void
   onModelSelect?: (model: ModelInfo) => void
   modelsLoading: boolean
@@ -51,6 +52,7 @@ export function buildComposerContext(params: BuildComposerContextParams): Compos
     agents: params.agents,
     agentsLoading: params.agentsLoading,
     selectedModel: params.selectedModel,
+    agentDefaultModels: params.agentDefaultModels ?? {},
     onModelSelect: params.onModelSelect ?? params.setSelectedModel,
     modelsLoading: params.modelsLoading ?? false,
     groupedByProvider: params.groupedByProvider,

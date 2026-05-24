@@ -20,6 +20,7 @@ export interface ComposerContextValue {
   agents: AgentInfo[]
   agentsLoading: boolean
   selectedModel: ModelInfo | null
+  agentDefaultModels: Record<string, ModelInfo | undefined>
   onModelSelect: (model: ModelInfo) => void
   modelsLoading: boolean
   groupedByProvider: Record<string, ModelInfo[]>
