@@ -52,6 +52,7 @@ export interface DashboardMainColumnProps {
     isMobile: boolean | null
     toggle: () => void
     setMobileOpen: (open: boolean) => void
+    openMobilePanel: (tab?: RightSidebarTab) => void
     activeTab: RightSidebarTab
     setActiveTab: (tab: RightSidebarTab) => void
     expanded: boolean
@@ -102,7 +103,9 @@ export function DashboardMainColumn({
           sessionTitle={displayTitle}
           wsStatus={wsStatus}
           sandboxStatus={sandboxStatus ?? undefined}
-          rightSidebarOpen={rightSidebar.desktopOpen}
+          rightSidebarOpen={
+            rightSidebar.isMobile ? rightSidebar.mobileOpen : rightSidebar.desktopOpen
+          }
           onToggleRightSidebar={rightSidebar.toggle}
           onDeleteSession={sessions.onDeleteSession}
           user={user}

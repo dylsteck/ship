@@ -67,12 +67,21 @@ export function useRightSidebar() {
     })
   }, [])
 
+  const openMobilePanel = useCallback(
+    (tab: RightSidebarTab = 'git') => {
+      setActiveTab(tab)
+      setMobileOpen(true)
+    },
+    [setActiveTab],
+  )
+
   return {
     isMobile,
     desktopOpen,
     mobileOpen,
     setMobileOpen,
     toggle,
+    openMobilePanel,
     activeTab,
     setActiveTab,
     expanded,

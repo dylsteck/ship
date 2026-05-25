@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Tool, SubagentTool, TodoProgress } from '@ship/ui'
+import { Tool, SubagentTool, TodoProgress, useIsMobile } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import type { ToolInvocation } from '@/lib/ai-elements-adapter'
 import { mapToolState } from '@/lib/ai-elements-adapter'
@@ -28,6 +28,7 @@ function renderSingleTool(
   sessionTodos: TodoItem[],
   todoRenderedRef: React.MutableRefObject<boolean>,
   onSubagentNavigate: (tool: ToolInvocation) => void,
+  stackedLayout: boolean,
 ) {
   const isTodoTool = tool.toolName.toLowerCase().includes('todo')
   if (isTodoTool && sessionTodos.length > 0 && !todoRenderedRef.current) {
@@ -70,7 +71,8 @@ function renderSingleTool(
       input={tool.args}
       output={tool.result}
       duration={tool.duration}
-      compact
+      compact={!stackedLayout}
+      layout={stackedLayout ? 'stacked' : 'default'}
     />
   )
 }
@@ -81,6 +83,7 @@ function renderCollapsedEntry(
   todoRenderedRef: React.MutableRefObject<boolean>,
   onSubagentNavigate: (tool: ToolInvocation) => void,
   key: string,
+  stackedLayout: boolean,
 ) {
   if (entry.kind === 'group') {
     const representative = entry.tools[0]
@@ -97,7 +100,7 @@ function renderCollapsedEntry(
     )
   }
 
-  return renderSingleTool(entry.tool, sessionTodos, todoRenderedRef, onSubagentNavigate)
+  return renderSingleTool(entry.tool, sessionTodos, todoRenderedRef, onSubagentNavigate, stackedLayout)
 }
 
 export const MessageToolList = React.memo(function MessageToolList({
@@ -106,6 +109,7 @@ export const MessageToolList = React.memo(function MessageToolList({
   todoRenderedRef,
   onSubagentNavigate,
 }: MessageToolListProps) {
+  const isMobile = useIsMobile()
   const collapsed = collapseToolInvocations(tools)
 
   return (
@@ -117,6 +121,7 @@ export const MessageToolList = React.memo(function MessageToolList({
           todoRenderedRef,
           onSubagentNavigate,
           entry.kind === 'group' ? `group-${index}` : entry.tool.toolCallId,
+          isMobile,
         ),
       )}
     </div>

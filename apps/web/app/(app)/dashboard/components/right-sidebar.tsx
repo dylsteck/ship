@@ -1,12 +1,13 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import {
   cn,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -16,7 +17,7 @@ import { GitTab } from '@/components/chat/session-panel/git-tab'
 import { DesktopTab } from '@/components/chat/session-panel/desktop-tab'
 import { TerminalTab } from '@/components/chat/session-panel/terminal-tab'
 import { useSandboxStatus } from '@/lib/api/hooks/use-sessions'
-import { EllipsisIcon, MaximizeIcon, PanelToggleIcon } from './right-sidebar-icons'
+import { EllipsisIcon, MaximizeIcon, PanelToggleIcon, CloseIcon } from './right-sidebar-icons'
 import { ResizeHandle, useResizableSidebarWidth } from './right-sidebar-resize'
 import type { SessionPanelData, RightSidebarTab } from '../types'
 
@@ -48,6 +49,7 @@ function SidebarHeader({
   onDeleteSession,
   expanded,
   sessionTitle,
+  isMobile,
 }: {
   activeTab: RightSidebarTab
   onTabChange: (tab: RightSidebarTab) => void
@@ -56,6 +58,7 @@ function SidebarHeader({
   onDeleteSession: () => void
   expanded: boolean
   sessionTitle?: string
+  isMobile?: boolean
 }) {
   return (
     <div className="relative flex h-10 shrink-0 items-center px-1">
@@ -114,9 +117,9 @@ function SidebarHeader({
         <button
           onClick={onTogglePanel}
           className="inline-flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
-          aria-label="Toggle app panel"
+          aria-label={isMobile ? 'Close panel' : 'Toggle app panel'}
         >
-          <PanelToggleIcon className="size-3.5" />
+          {isMobile ? <CloseIcon className="size-3.5" /> : <PanelToggleIcon className="size-3.5" />}
         </button>
       </div>
     </div>
@@ -171,6 +174,11 @@ export function RightSidebar({
   const { sandbox, isReady } = useSandboxStatus(data.sessionId)
   const { sidebarWidth, isResizing, handleResizePointerDown, handleResizeKeyDown } =
     useResizableSidebarWidth()
+  const [mobileExpanded, setMobileExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!mobileOpen) setMobileExpanded(false)
+  }, [mobileOpen])
 
   const desktopSandboxStatus =
     (data.sandboxStatus && data.sandboxStatus !== 'unknown')
@@ -226,15 +234,36 @@ export function RightSidebar({
       )}
 
       {isMobile && (
-        <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
-          <SheetContent side="right" className="w-[85vw] max-w-md p-0 overflow-hidden" showCloseButton={false}>
-            <SheetHeader className="sr-only">
-              <SheetTitle>Session Context</SheetTitle>
-              <SheetDescription>Session details and context panel.</SheetDescription>
-            </SheetHeader>
-            {content}
-          </SheetContent>
-        </Sheet>
+        <Drawer open={mobileOpen} onOpenChange={onMobileOpenChange} noBodyStyles>
+          <DrawerContent className={cn(mobileExpanded ? 'h-[97dvh]' : 'h-[80dvh]', 'p-0 overflow-hidden outline-none transition-[height] duration-200')}>
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Session panel</DrawerTitle>
+              <DrawerDescription>Git, terminal, and desktop tools for this session.</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex h-full min-h-0 flex-col gap-1.5 bg-transparent px-3 pb-3 pt-0 text-zinc-300">
+              <SidebarHeader
+                activeTab={activeTab}
+                onTabChange={onTabChange}
+                onToggleExpanded={() => setMobileExpanded(prev => !prev)}
+                onTogglePanel={() => onMobileOpenChange(false)}
+                expanded={mobileExpanded}
+                sessionTitle={data.sessionInfo?.title}
+                onDeleteSession={() => {
+                  void onDeleteSession(data.sessionId)
+                }}
+                isMobile
+              />
+              <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-[#141414] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <TabContent
+                  activeTab={activeTab}
+                  data={data}
+                  desktopSandboxStatus={desktopSandboxStatus}
+                  sandbox={sandbox}
+                />
+              </div>
+            </div>
+          </DrawerContent>
+        </Drawer>
       )}
     </>
   )
