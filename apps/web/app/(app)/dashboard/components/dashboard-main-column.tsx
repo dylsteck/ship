@@ -52,6 +52,7 @@ export interface DashboardMainColumnProps {
     isMobile: boolean | null
     toggle: () => void
     setMobileOpen: (open: boolean) => void
+    openMobilePanel: (tab?: RightSidebarTab) => void
     activeTab: RightSidebarTab
     setActiveTab: (tab: RightSidebarTab) => void
     expanded: boolean
@@ -119,6 +120,12 @@ export function DashboardMainColumn({
               sessions={sessions}
               serverTimestamp={serverTimestamp}
               isMobile={isMobile ?? false}
+              fileDiffs={rightSidebarData?.fileDiffs}
+              onOpenContextPanel={
+                rightSidebarData
+                  ? () => rightSidebar.openMobilePanel('git')
+                  : undefined
+              }
             />
           </div>
 

@@ -1,12 +1,15 @@
 'use client'
 
 import type { UIMessage } from '@/lib/ai-elements-adapter'
-import type { ComposerContextValue } from './composer/composer-context'
+import { ComposerProvider, type ComposerContextValue } from './composer/composer-context'
 import type { ChatSession } from '@/lib/api/server'
 import type { TodoItem } from '../types'
 import { DashboardMessages } from './dashboard-messages'
 import { DashboardComposer } from './composer'
+import { DashboardComposerMobileFollowUp } from './composer/dashboard-composer-mobile'
+import { DashboardMobileContextBar } from './dashboard-mobile-context-bar'
 import { MobileSessionList } from './mobile-session-list'
+import type { FileDiff } from '../types'
 import { HomepageSessionList } from './homepage-session-list'
 import type { ModelInfo } from '@/lib/api/types'
 
@@ -29,17 +32,30 @@ function ActiveSessionLayout({
   messagesProps,
   composerContext,
   compactComposer,
+  mobileChatLayout,
+  fileDiffs,
+  onOpenContextPanel,
 }: {
   messagesProps: DashboardMessagesPropsBundle
   composerContext: ComposerContextValue
   compactComposer?: boolean
+  mobileChatLayout?: boolean
+  fileDiffs?: FileDiff[]
+  onOpenContextPanel?: () => void
 }) {
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-hidden">
-        <DashboardMessages {...messagesProps} />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      {mobileChatLayout && onOpenContextPanel && (
+        <DashboardMobileContextBar fileDiffs={fileDiffs ?? []} onOpenPanel={onOpenContextPanel} />
+      )}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <DashboardMessages {...messagesProps} mobileChatLayout={mobileChatLayout} />
       </div>
-      <DashboardComposer context={composerContext} compactLayout={compactComposer} />
+      {mobileChatLayout ? (
+        <DashboardComposerMobileFollowUp />
+      ) : (
+        <DashboardComposer context={composerContext} compactLayout={compactComposer} />
+      )}
     </div>
   )
 }
@@ -51,6 +67,8 @@ export function DashboardMobileContent({
   sessions,
   serverTimestamp,
   isMobile,
+  fileDiffs,
+  onOpenContextPanel,
 }: {
   activeSessionId: string | null
   messagesProps: DashboardMessagesPropsBundle
@@ -62,6 +80,8 @@ export function DashboardMobileContent({
   }
   serverTimestamp: number
   isMobile: boolean
+  fileDiffs?: FileDiff[]
+  onOpenContextPanel?: () => void
 }) {
   if (!activeSessionId) {
     return (
@@ -83,11 +103,15 @@ export function DashboardMobileContent({
   }
 
   return (
-    <ActiveSessionLayout
-      messagesProps={messagesProps}
-      composerContext={composerContext}
-      compactComposer={false}
-    />
+    <ComposerProvider value={composerContext}>
+      <ActiveSessionLayout
+        messagesProps={messagesProps}
+        composerContext={composerContext}
+        mobileChatLayout
+        fileDiffs={fileDiffs}
+        onOpenContextPanel={onOpenContextPanel}
+      />
+    </ComposerProvider>
   )
 }
 

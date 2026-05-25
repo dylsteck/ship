@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Conversation, ConversationScrollButton } from '@ship/ui'
+import { cn, Conversation, ConversationScrollButton } from '@ship/ui'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { SubagentView } from './subagent-view'
 import type { TodoItem } from '../types'
@@ -27,6 +27,8 @@ interface DashboardMessagesProps {
   onQuestionReply?: (questionId: string, response: string) => Promise<void>
   onQuestionSkip?: (questionId: string) => Promise<void>
   onRetry?: () => void
+  /** Tighter full-width layout for mobile session chat */
+  mobileChatLayout?: boolean
 }
 
 export function DashboardMessages({
@@ -42,6 +44,7 @@ export function DashboardMessages({
   onQuestionReply,
   onQuestionSkip,
   onRetry,
+  mobileChatLayout = false,
 }: DashboardMessagesProps) {
   const todoRenderedRef = React.useRef(false)
   const messageGroups = React.useMemo(() => groupConsecutiveAssistants(messages), [messages])
@@ -65,10 +68,17 @@ export function DashboardMessages({
 
   return (
     <Conversation className="h-full">
-      <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
+      <div
+        className={cn(
+          'mx-auto w-full',
+          mobileChatLayout
+            ? 'max-w-3xl px-3 py-4'
+            : 'max-w-4xl px-4 py-6 sm:px-8 sm:py-8',
+        )}
+      >
         {!hasContent && !isStreaming && <MessagesEmptyState />}
 
-        <div className="space-y-6">
+        <div className={cn(mobileChatLayout ? 'space-y-4' : 'space-y-6')}>
           {messageGroups.map((group, idx) => {
             if (group.type === 'single') {
               return (
