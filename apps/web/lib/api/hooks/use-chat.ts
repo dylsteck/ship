@@ -77,7 +77,7 @@ export function useGitState(sessionId: string | undefined) {
     queryKey: queryKeys.gitState(sessionId ?? ''),
     queryFn: async () => unwrapSdkData(await getChatBySessionIdGitState({ path: { sessionId: sessionId! } })),
     enabled: Boolean(sessionId),
-    refetchInterval: 15_000,
+    refetchInterval: (query) => ((query.state.data as GitState | undefined)?.pr ? 60_000 : 5_000),
     refetchOnWindowFocus: false,
   })
 

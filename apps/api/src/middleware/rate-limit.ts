@@ -16,6 +16,11 @@ interface RateLimitConfig {
 export function createRateLimiter(config: RateLimitConfig) {
   return createMiddleware<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>(
     async (c, next) => {
+    if (c.env.ENVIRONMENT === 'development') {
+      await next()
+      return
+    }
+
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
     const userId = c.get('userId') as string | undefined
     const key = userId ? `user:${userId}` : `ip:${ip}`

@@ -172,19 +172,53 @@ async function collectPullRequest(
   userId: string,
   state: SessionGitState,
 ): Promise<SessionGitPullRequest | undefined> {
-  const prNumber = state.pr?.number
-  if (!prNumber || !state.repoUrl) return state.pr
+  if (!state.repoUrl) return state.pr
   const token = await getToken(env, userId)
   if (!token) return state.pr
   const { owner, repo } = parseRepoUrl(state.repoUrl)
   const octokit = new Octokit({ auth: token })
-  const { data } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber })
 
+  const prNumber = state.pr?.number
+  if (!prNumber) return collectPullRequestByBranch(octokit, owner, repo, state.branchName || state.branch)
+
+  const { data } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber })
+  return buildPullRequest(data)
+}
+
+async function collectPullRequestByBranch(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  branchName?: string,
+): Promise<SessionGitPullRequest | undefined> {
+  if (!branchName) return undefined
+  const { data } = await octokit.rest.pulls.list({
+    owner,
+    repo,
+    head: `${owner}:${branchName}`,
+    state: 'open',
+    sort: 'updated',
+    direction: 'desc',
+    per_page: 1,
+  })
+  const pr = data[0]
+  return pr ? buildPullRequest(pr) : undefined
+}
+
+function buildPullRequest(data: {
+  number: number
+  html_url: string
+  draft?: boolean | null
+  title?: string | null
+  state?: string
+  head: { sha: string }
+  base: { ref: string }
+}): SessionGitPullRequest {
   return {
     number: data.number,
     url: data.html_url,
     draft: data.draft ?? false,
-    title: data.title,
+    ...(data.title ? { title: data.title } : {}),
     state: data.state,
     headSha: data.head.sha,
     baseBranch: data.base.ref,

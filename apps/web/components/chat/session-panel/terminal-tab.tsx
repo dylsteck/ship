@@ -60,8 +60,14 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
   }
 
   return (
-    <div className="size-full relative bg-[#101010] p-3">
-      <div className="size-full overflow-hidden">
+    <div className="size-full relative flex flex-col overflow-hidden rounded-[17px] bg-[#101010]">
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-white/[0.06] px-6 text-sm text-zinc-200">
+        <span>Terminal 1</span>
+        <svg className="size-4 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m7 10 5 5 5-5" />
+        </svg>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden p-4">
         <div
           ref={containerRef}
           className={cn(

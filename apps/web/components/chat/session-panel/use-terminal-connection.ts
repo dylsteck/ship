@@ -58,13 +58,18 @@ export function useTerminalConnection({ sessionId, sandboxStatus, sandboxId }: U
   }, [])
 
   useEffect(() => {
-    if (!containerRef.current || !sessionId || !canConnect || status !== 'connecting') {
+    if (status === 'unavailable') cleanup()
+  }, [cleanup, status])
+
+  useEffect(() => {
+    if (!containerRef.current || !sessionId || !canConnect) {
       if (!canConnect && sessionId) setStatus('unavailable')
       return
     }
 
     let cancelled = false
     retryCountRef.current = 0
+    setStatus('connecting')
 
     void initTerminal({
       container: containerRef.current,
@@ -84,7 +89,7 @@ export function useTerminalConnection({ sessionId, sandboxStatus, sandboxId }: U
       resizeObserver.disconnect()
       cleanup()
     }
-  }, [sessionId, canConnect, cleanup, status])
+  }, [sessionId, sandboxId, canConnect, cleanup])
 
   return { containerRef, termRef, status, isProvisioning, hasNoSandbox, connectionFailed, errorMessage }
 }
