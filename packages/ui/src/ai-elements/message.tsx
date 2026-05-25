@@ -30,10 +30,10 @@ function UserMessage({
   }
 
   return (
-    <div className={cn('flex justify-end py-1', className)}>
-      <div className="group max-w-[85%]">
-        <div className="rounded-2xl bg-secondary/50 text-secondary-foreground px-4 py-2 md:rounded-full">
-          <div className="text-sm">{children}</div>
+    <div className={cn('flex justify-end py-1.5', className)}>
+      <div className="group max-w-[min(82%,46rem)]">
+        <div className="rounded-[20px] border border-border/45 bg-foreground/[0.055] px-4 py-3 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[14.5px] leading-relaxed">{children}</div>
         </div>
         {(timeLabel || copyContent) && (
           <div className="flex items-center justify-end gap-1.5 mt-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/50">
