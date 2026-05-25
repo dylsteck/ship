@@ -102,7 +102,9 @@ export function DashboardMainColumn({
           sessionTitle={displayTitle}
           wsStatus={wsStatus}
           sandboxStatus={sandboxStatus ?? undefined}
-          rightSidebarOpen={rightSidebar.desktopOpen}
+          rightSidebarOpen={
+            rightSidebar.isMobile ? rightSidebar.mobileOpen : rightSidebar.desktopOpen
+          }
           onToggleRightSidebar={rightSidebar.toggle}
           onDeleteSession={sessions.onDeleteSession}
           user={user}

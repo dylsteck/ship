@@ -2,11 +2,11 @@
 
 import {
   cn,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -226,15 +226,15 @@ export function RightSidebar({
       )}
 
       {isMobile && (
-        <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
-          <SheetContent side="right" className="w-[85vw] max-w-md p-0 overflow-hidden" showCloseButton={false}>
-            <SheetHeader className="sr-only">
-              <SheetTitle>Session Context</SheetTitle>
-              <SheetDescription>Session details and context panel.</SheetDescription>
-            </SheetHeader>
+        <Drawer open={mobileOpen} onOpenChange={onMobileOpenChange} direction="right">
+          <DrawerContent className="w-[85vw] max-w-md p-0 overflow-hidden outline-none">
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Session panel</DrawerTitle>
+              <DrawerDescription>Git, terminal, and desktop tools for this session.</DrawerDescription>
+            </DrawerHeader>
             {content}
-          </SheetContent>
-        </Sheet>
+          </DrawerContent>
+        </Drawer>
       )}
     </>
   )

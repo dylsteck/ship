@@ -25,7 +25,8 @@
     "nanoid": "^5.1.5",
     "shiki": "^3.23.0",
     "tailwind-merge": "^3.4.0",
-    "use-stick-to-bottom": "^1.0.0"
+    "use-stick-to-bottom": "^1.0.0",
+    "vaul": "^1.1.2"
   },
   "peerDependencies": {
     "react": "^19.0.0",
