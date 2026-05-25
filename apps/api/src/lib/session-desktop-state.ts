@@ -6,7 +6,7 @@ import type { Env } from '../env.d'
 const DO_URL = 'https://do'
 const NOVNC_PORT = 6080
 const VNC_PORT = 5900
-const DESKTOP_BRIDGE_VERSION = '2'
+const DESKTOP_BRIDGE_VERSION = '4'
 
 /** Desktop state exposed to the web right sidebar. */
 export interface SessionDesktopState {
@@ -57,19 +57,23 @@ export async function collectSessionDesktopState(input: CollectSessionDesktopSta
   try {
     const connect = input.connectSandbox ?? connectE2BSandbox
     const sandbox = await connect(sandboxStatus.sandboxId, input.env)
-    await ensureDesktopBridge(sandbox)
-    const url = buildDesktopUrl(sandbox)
+    const status = await inspectDesktopBridge(sandbox)
+    if (status === 'ready') {
+      const url = buildDesktopUrl(sandbox)
+      await setReadyMeta(input.stub, url, token)
+      return { status: 'ready', url }
+    }
+    if (!input.force && status === 'starting') return { status: 'starting' }
+    if (!input.force && status.startsWith('error:')) return { status: 'error', message: status.slice('error:'.length).trim() }
+
+    await launchDesktopBridge(sandbox)
     await setMeta(input.stub, {
-      desktop_status: 'ready',
-      desktop_url: url,
-      desktop_port: NOVNC_PORT.toString(),
-      desktop_vnc_port: VNC_PORT.toString(),
+      desktop_status: 'starting',
       desktop_token: token,
       desktop_bridge_version: DESKTOP_BRIDGE_VERSION,
-      desktop_message: '',
       desktop_updated_at: Date.now().toString(),
     })
-    return { status: 'ready', url }
+    return { status: 'starting' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await setMeta(input.stub, {
@@ -78,6 +82,50 @@ export async function collectSessionDesktopState(input: CollectSessionDesktopSta
       desktop_updated_at: Date.now().toString(),
     }).catch(() => undefined)
     return { status: 'error', message }
+  }
+}
+
+async function setReadyMeta(stub: { fetch: typeof fetch }, url: string, token: string): Promise<void> {
+  await setMeta(stub, {
+    desktop_status: 'ready',
+    desktop_url: url,
+    desktop_port: NOVNC_PORT.toString(),
+    desktop_vnc_port: VNC_PORT.toString(),
+    desktop_token: token,
+    desktop_bridge_version: DESKTOP_BRIDGE_VERSION,
+    desktop_message: '',
+    desktop_updated_at: Date.now().toString(),
+  })
+}
+
+async function inspectDesktopBridge(sandbox: DesktopSandbox): Promise<string> {
+  const result = await sandbox.commands.run(
+    [
+      'if curl -fsS http://127.0.0.1:6080/vnc.html >/dev/null 2>&1 && pgrep -f "websockify.*6080" >/dev/null 2>&1; then echo ready; exit 0; fi',
+      'if [ -f /tmp/ship-desktop/status ]; then cat /tmp/ship-desktop/status; exit 0; fi',
+      'echo missing',
+    ].join('\n'),
+    { timeoutMs: 8_000 },
+  )
+  return (result.stdout || '').trim() || 'missing'
+}
+
+async function launchDesktopBridge(sandbox: DesktopSandbox): Promise<void> {
+  const script = buildDesktopStartupScript()
+  const launcher = `
+set -euo pipefail
+mkdir -p /tmp/ship-desktop
+cat > /tmp/ship-desktop/start.sh <<'SHIP_DESKTOP_SCRIPT'
+${script}
+SHIP_DESKTOP_SCRIPT
+chmod +x /tmp/ship-desktop/start.sh
+printf starting > /tmp/ship-desktop/status
+nohup /bin/bash /tmp/ship-desktop/start.sh >/tmp/ship-desktop/start.log 2>&1 &
+echo starting
+`.trim()
+  const result = await sandbox.commands.run(launcher, { timeoutMs: 8_000 })
+  if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
+    throw new Error(trimCommandOutput(result) || `Desktop startup launch failed with exit code ${result.exitCode}`)
   }
 }
 
@@ -91,21 +139,25 @@ function buildDesktopUrl(sandbox: DesktopSandbox): string {
     autoconnect: '1',
     resize: 'scale',
     reconnect: '1',
+    path: 'websockify',
   })
   return `https://${host}/vnc.html?${params.toString()}`
 }
 
-async function ensureDesktopBridge(sandbox: DesktopSandbox): Promise<void> {
-  const command = buildDesktopStartupScript()
-  const result = await sandbox.commands.run(command, { timeoutMs: 240_000 })
-  if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
-    throw new Error(trimCommandOutput(result) || `Desktop startup failed with exit code ${result.exitCode}`)
-  }
-}
-
 function buildDesktopStartupScript(): string {
   return `
+#!/bin/bash
 set -euo pipefail
+
+status_file=/tmp/ship-desktop/status
+fail() {
+  message="$1"
+  printf "error:%s" "$message" > "$status_file"
+  exit 1
+}
+trap 'fail "desktop setup failed"' ERR
+
+printf starting > "$status_file"
 
 export DEBIAN_FRONTEND=noninteractive
 export DISPLAY=:99
@@ -118,7 +170,7 @@ mkdir -p "$WORK_DIR"
 
 install_desktop_deps() {
   missing=""
-  for bin in Xvfb x11vnc git python3; do
+  for bin in Xvfb x11vnc git python3 curl; do
     if ! command -v "$bin" >/dev/null 2>&1; then
       missing="$missing $bin"
     fi
@@ -127,15 +179,14 @@ install_desktop_deps() {
     return 0
   fi
   if ! command -v apt-get >/dev/null 2>&1; then
-    echo "Desktop dependencies are missing and apt-get is unavailable in this sandbox."
-    exit 86
+    fail "desktop dependencies are missing"
   fi
   SUDO=""
   if command -v sudo >/dev/null 2>&1; then
     SUDO="sudo"
   fi
-  $SUDO apt-get update -y
-  $SUDO apt-get install -y xvfb x11vnc openbox xterm dbus-x11 git python3 python3-pip curl wget net-tools x11-apps
+  $SUDO apt-get update -y || fail "apt-get update failed"
+  $SUDO apt-get install -y xvfb x11vnc openbox xterm dbus-x11 git python3 python3-pip curl wget net-tools x11-apps || fail "desktop dependency install failed"
 }
 
 start_if_missing() {
@@ -170,16 +221,15 @@ start_if_missing "x11vnc.*-rfbport $VNC_PORT" x11vnc -display :99 -forever -shar
 NOVNC_WEB="$WORK_DIR/noVNC"
 if [ ! -f "$NOVNC_WEB/vnc.html" ]; then
   rm -rf "$NOVNC_WEB"
-  git clone --depth 1 --branch e2b-desktop https://github.com/e2b-dev/noVNC.git "$NOVNC_WEB"
+  git clone --depth 1 --branch e2b-desktop https://github.com/e2b-dev/noVNC.git "$NOVNC_WEB" || fail "noVNC download failed"
   ln -sf "$NOVNC_WEB/vnc.html" "$NOVNC_WEB/index.html"
 fi
 if [ ! -d "$NOVNC_WEB/utils/websockify" ]; then
   rm -rf "$NOVNC_WEB/utils/websockify"
-  git clone --depth 1 --branch v0.12.0 https://github.com/novnc/websockify "$NOVNC_WEB/utils/websockify"
+  git clone --depth 1 --branch v0.12.0 https://github.com/novnc/websockify "$NOVNC_WEB/utils/websockify" || fail "websockify download failed"
 fi
 if [ ! -f "$NOVNC_WEB/vnc.html" ]; then
-  echo "noVNC web assets were not found after installation."
-  exit 87
+  fail "noVNC web assets missing"
 fi
 
 pkill -f "novnc_proxy.*$NOVNC_PORT" >/dev/null 2>&1 || true
@@ -187,18 +237,21 @@ pkill -f "websockify.*$NOVNC_PORT" >/dev/null 2>&1 || true
 cd "$NOVNC_WEB/utils"
 nohup ./novnc_proxy --vnc localhost:"$VNC_PORT" --listen "$NOVNC_PORT" --web "$NOVNC_WEB" --heartbeat 30 >/tmp/ship-desktop/novnc.log 2>&1 &
 
-for _ in $(seq 1 45); do
-  if curl -fsS "http://127.0.0.1:$NOVNC_PORT/vnc.html" >/dev/null 2>&1; then
+for _ in $(seq 1 90); do
+  if curl -fsS "http://127.0.0.1:$NOVNC_PORT/vnc.html" >/dev/null 2>&1 && pgrep -f "websockify.*$NOVNC_PORT" >/dev/null 2>&1; then
+    printf ready > "$status_file"
     exit 0
   fi
   sleep 1
 done
 
-echo "Timed out waiting for noVNC on port $NOVNC_PORT."
-cat /tmp/ship-desktop/novnc.log 2>/dev/null || true
-exit 88
+fail "timed out waiting for noVNC"
 `.trim()
 }
+
+/*
+ * Everything below is small DO plumbing and output cleanup.
+ */
 
 async function fetchMeta(stub: { fetch: typeof fetch }): Promise<Record<string, string>> {
   const response = await stub.fetch(new Request(`${DO_URL}/meta`))

@@ -21,7 +21,7 @@ describe('collectSessionDesktopState', () => {
       stub: fakeStub({
         meta: {
           desktop_status: 'ready',
-          desktop_bridge_version: '2',
+          desktop_bridge_version: '4',
           desktop_url: 'https://desktop.example/vnc.html',
         },
         sandbox: { sandboxId: 'sandbox-1' },
@@ -32,7 +32,7 @@ describe('collectSessionDesktopState', () => {
     expect(connectSandbox).not.toHaveBeenCalled()
   })
 
-  it('returns structured errors when desktop startup fails', async () => {
+  it('returns structured errors from the background startup status file', async () => {
     const postedMeta: Record<string, string>[] = []
     const state = await collectSessionDesktopState({
       env: {} as Env,
@@ -40,14 +40,33 @@ describe('collectSessionDesktopState', () => {
       connectSandbox: async () => ({
         getHost: () => 'desktop.example',
         commands: {
-          run: async () => ({ exitCode: 86, stderr: 'missing desktop dependencies' }),
+          run: async () => ({ exitCode: 0, stdout: 'error:missing desktop dependencies' }),
         },
       }),
       stub: fakeStub({ meta: {}, sandbox: { sandboxId: 'sandbox-1' }, postedMeta }),
     })
 
     expect(state).toEqual({ status: 'error', message: 'missing desktop dependencies' })
-    expect(postedMeta.at(-1)).toMatchObject({ desktop_status: 'error', desktop_message: 'missing desktop dependencies' })
+    expect(postedMeta.at(-1)).toMatchObject({ desktop_status: 'starting' })
+  })
+
+  it('launches desktop setup in the background when not ready', async () => {
+    const postedMeta: Record<string, string>[] = []
+    let calls = 0
+    const state = await collectSessionDesktopState({
+      env: {} as Env,
+      createToken: () => 'token-1',
+      connectSandbox: async () => ({
+        getHost: () => 'desktop.example',
+        commands: {
+          run: async () => ({ exitCode: 0, stdout: calls++ === 0 ? 'missing' : 'starting' }),
+        },
+      }),
+      stub: fakeStub({ meta: {}, sandbox: { sandboxId: 'sandbox-1' }, postedMeta }),
+    })
+
+    expect(state).toEqual({ status: 'starting' })
+    expect(postedMeta.at(-1)).toMatchObject({ desktop_status: 'starting', desktop_bridge_version: '4' })
   })
 })
 

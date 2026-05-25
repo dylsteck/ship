@@ -27,14 +27,14 @@ function DesktopStatusView({
       <div className="max-w-[280px]">
         {quiet && loading ? (
           <div className="mx-auto size-5 animate-spin rounded-full border-2 border-white/10 border-t-zinc-300" aria-label="Loading desktop" />
-        ) : (
+        ) : loading ? (
           <div className="mx-auto mb-3 flex size-8 items-center justify-center rounded-full bg-white/[0.06]">
             <span
               className={cn('block size-2 rounded-full bg-zinc-500', loading && 'animate-pulse bg-emerald-400')}
               aria-hidden="true"
             />
           </div>
-        )}
+        ) : null}
         {!quiet && (
           <>
             <div className="text-sm font-medium text-zinc-200">{title}</div>

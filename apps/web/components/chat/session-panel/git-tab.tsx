@@ -202,7 +202,7 @@ export function GitTab({ sessionId, diffs, sessionInfo }: GitTabProps) {
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">{content}</div>
+      <div className="flex min-h-0 flex-1 overflow-hidden">{content}</div>
     </div>
   )
 }

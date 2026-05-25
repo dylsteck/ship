@@ -37,7 +37,7 @@ export function DiffContent({ state, legacyDiffs }: { state?: GitDiffState; lega
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <DiffSummaryBar
         additions={state?.diff?.additions ?? sumLegacy(legacyDiffs, 'additions')}
         deletions={state?.diff?.deletions ?? sumLegacy(legacyDiffs, 'deletions')}
@@ -209,14 +209,6 @@ function statusClass(status: string): string {
 function buildPatchByFile(patch: string): Map<string, string> {
   const chunks = splitPatchFiles(patch)
   return new Map(chunks.map((chunk) => [chunk.filename, chunk.patch]))
-}
-
-function pickFilePatch(patch: string, filename?: string): string {
-  if (!patch.trim()) return ''
-  const chunks = splitPatchFiles(patch)
-  if (chunks.length <= 1) return patch
-  const selected = chunks.find((chunk) => chunk.filename === filename)
-  return selected?.patch ?? chunks[0]?.patch ?? ''
 }
 
 function splitPatchFiles(patch: string): Array<{ filename: string; patch: string }> {
