@@ -265,7 +265,7 @@ This is especially useful when debugging agent execution, sandbox provisioning, 
 pnpm dev         # Start all development servers
 pnpm build       # Build all apps
 pnpm lint        # Lint all packages
-pnpm type-check  # TypeScript type checking
+pnpm typecheck   # TypeScript type checking
 ```
 
 ### API-Specific Commands

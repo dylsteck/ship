@@ -131,7 +131,7 @@ pnpm dev
 | `pnpm dev`         | Start web + API               |
 | `pnpm build`       | Build all apps                |
 | `pnpm lint`        | Lint                          |
-| `pnpm type-check`  | TypeScript check              |
+| `pnpm typecheck`   | TypeScript check              |
 | `pnpm deploy`      | Deploy preview (web + API)    |
 | `pnpm deploy:prod` | Deploy production (web + API) |
 
@@ -170,7 +170,7 @@ pnpm dev
 7. ACP notifications are translated into Ship’s existing SSE (`message.part.updated`) for the web UI.
 8. After the turn the Worker persists the assistant message and (optionally) triggers auto-commit / PR via the GitHub flow.
 
-Bridge source: `packages/acp-bridge` (also embedded into `apps/api/src/generated/acp-bridge-bundled.ts` via `pnpm` `pretype-check` / `bundle:acp-bridge`).
+Bridge source: `packages/acp-bridge` (also embedded into `apps/api/src/generated/acp-bridge-bundled.ts` via `pnpm` `pretypecheck` / `bundle:acp-bridge`).
 
 ---
 
