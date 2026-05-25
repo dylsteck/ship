@@ -12,9 +12,14 @@
  */
 
 import type { Hono } from 'hono'
+import { Octokit } from '@octokit/rest'
 import { streamSSE } from 'hono/streaming'
 import type { AuthedEnv } from '../lib/session-authorization'
 import { requireSessionOwner } from '../lib/session-authorization'
+import { collectSessionGitState } from '../lib/session-git-state'
+import { collectSessionDesktopState } from '../lib/session-desktop-state'
+import { getGitHubAccessTokenForUser } from '../lib/github-token'
+import { parseRepoUrl } from '../lib/github'
 
 const DO_URL = 'https://do'
 
@@ -85,8 +90,14 @@ function registerHistoryRoutes(app: Hono<AuthedEnv>): void {
     const gate = await requireSessionOwner(c, c.req.param('sessionId'))
     if (!gate.ok) return gate.response
     const stub = sessionStub(c)
-    const response = await stub.fetch(new Request(`${DO_URL}/git/state`))
-    return new Response(response.body, response)
+    return c.json(await collectSessionGitState({ env: c.env, stub, userId: gate.userId }))
+  })
+
+  app.get('/:sessionId/desktop/state', async (c) => {
+    const gate = await requireSessionOwner(c, c.req.param('sessionId'))
+    if (!gate.ok) return gate.response
+    const stub = sessionStub(c)
+    return c.json(await collectSessionDesktopState({ env: c.env, stub, force: c.req.query('retry') === '1' }))
   })
 
   app.post('/:sessionId/git/pr/ready', async (c) => {
@@ -95,6 +106,35 @@ function registerHistoryRoutes(app: Hono<AuthedEnv>): void {
     const stub = sessionStub(c)
     const response = await stub.fetch(new Request(`${DO_URL}/git/pr/ready`, { method: 'POST' }))
     return new Response(response.body, response)
+  })
+
+  app.post('/:sessionId/git/pr/merge', async (c) => {
+    const gate = await requireSessionOwner(c, c.req.param('sessionId'))
+    if (!gate.ok) return gate.response
+    const body = await c.req.json<{ method?: 'merge' | 'squash' | 'rebase' }>().catch(() => ({} as { method?: 'merge' | 'squash' | 'rebase' }))
+    const mergeMethod = body.method
+    if (!mergeMethod || !['merge', 'squash', 'rebase'].includes(mergeMethod)) {
+      return c.json({ error: 'method must be merge, squash, or rebase' }, 400)
+    }
+    const stub = sessionStub(c)
+    const state = await collectSessionGitState({ env: c.env, stub, userId: gate.userId })
+    if (!state.repoUrl || !state.pr?.number) return c.json({ error: 'No pull request found for this session' }, 404)
+    const token = await getGitHubAccessTokenForUser(c.env.DB, c.env, gate.userId)
+    if (token.token === null) return c.json({ error: token.message }, 401)
+    const { owner, repo } = parseRepoUrl(state.repoUrl)
+    const octokit = new Octokit({ auth: token.token })
+    const { data } = await octokit.rest.pulls.merge({
+      owner,
+      repo,
+      pull_number: state.pr.number,
+      merge_method: mergeMethod,
+    })
+    return c.json({
+      success: data.merged,
+      merged: data.merged,
+      message: data.message,
+      ...(data.sha ? { sha: data.sha } : {}),
+    })
   })
 }
 

@@ -8,6 +8,7 @@
 
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi'
 import { z } from 'zod'
+export { gitMergeBodySchema, gitMergeResponseSchema, gitStateSchema } from './git-schemas'
 
 extendZodWithOpenApi(z)
 
@@ -127,24 +128,13 @@ export const chatTaskSchema = z
   })
   .openapi('ChatTask')
 
-export const gitStateSchema = z
+export const desktopStateSchema = z
   .object({
-    branchName: z.string().optional(),
-    branch: z.string().optional(),
-    hasChanges: z.boolean().optional(),
-    pr: z
-      .object({
-        number: z.number(),
-        url: z.string(),
-        draft: z.boolean(),
-      })
-      .nullable()
-      .optional(),
-    prUrl: z.string().optional(),
-    prStatus: z.string().optional(),
-    repoUrl: z.string().optional(),
+    status: z.enum(['starting', 'ready', 'unavailable', 'error']),
+    url: z.string().optional(),
+    message: z.string().optional(),
   })
-  .openapi('GitState')
+  .openapi('DesktopState')
 
 export const questionReplyBodySchema = z
   .object({

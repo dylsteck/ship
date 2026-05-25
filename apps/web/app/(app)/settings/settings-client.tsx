@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Search01Icon, PlusSignIcon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
+import { PlusSignIcon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
 import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
 import { useSessions } from '@/lib/api'
@@ -29,16 +29,6 @@ function SettingsSidebarTrigger() {
   return (
     <div className="flex items-center gap-2 shrink-0">
       <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
-      <button
-        type="button"
-        onClick={() => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
-        }}
-        className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-        title="Search (⌘K)"
-      >
-        <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
-      </button>
       <Link
         href="/"
         className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"

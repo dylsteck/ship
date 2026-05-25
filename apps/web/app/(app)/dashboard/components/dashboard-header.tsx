@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { cn, SidebarTrigger, useSidebar, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Search01Icon, PlusSignIcon } from '@hugeicons/core-free-icons'
+import { PlusSignIcon } from '@hugeicons/core-free-icons'
 import type { WebSocketStatus } from '@/lib/websocket'
 import { UserDropdown } from '@/components/user-dropdown'
 import {
@@ -85,16 +85,6 @@ export function DashboardHeader({
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
       <div className={cn('flex items-center gap-2 shrink-0', !showSidebarTrigger && 'md:hidden')}>
         <SidebarTrigger className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground" />
-        <button
-          type="button"
-          onClick={() => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
-          }}
-          className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-          title="Search (⌘K)"
-        >
-          <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-3.5" />
-        </button>
         <Link
           href="/"
           className="size-3.5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors"

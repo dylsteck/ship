@@ -1,11 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useDeleteSession } from '@/lib/api'
 import type { ChatSession } from '@/lib/api/server'
-import { Sidebar, useSidebar, useIsMobile } from '@ship/ui'
-import { ChatSearchCommand } from '../chat-search-command'
+import { Sidebar } from '@ship/ui'
 import { SidebarHeaderSection } from './sidebar-header'
 import { SidebarSessionsList } from './sidebar-sessions-list'
 import { SidebarFooterSection } from './sidebar-footer'
@@ -18,7 +17,6 @@ export function AppSidebar({
   sessions,
   user,
   searchQuery,
-  onSearchChange,
   currentSessionId,
   currentSessionTitle,
   onSessionDeleted,
@@ -30,23 +28,9 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const router = useRouter()
   const { deleteSession } = useDeleteSession()
-  const { setOpenMobile } = useSidebar()
-  const isMobile = useIsMobile()
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
-  const [searchOpen, setSearchOpen] = useState(false)
   const [groupBy, setGroupBy] = useState<'none' | 'project' | 'date' | 'status'>('none')
   const [compact, setCompact] = useState(true)
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setSearchOpen((v) => !v)
-      }
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [])
 
   // Filter by search query
   const filtered = sessions.filter(
@@ -75,13 +59,7 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="offcanvas" className={className}>
-      <SidebarHeaderSection
-        onSearchOpen={() => {
-          if (isMobile) setOpenMobile(false)
-          setSearchOpen(true)
-        }}
-        onNewChat={onNewChat}
-      />
+      <SidebarHeaderSection onNewChat={onNewChat} />
 
       <SidebarSessionsList
         sessions={filtered}
@@ -103,13 +81,6 @@ export function AppSidebar({
         onCompactChange={setCompact}
       />
 
-      <ChatSearchCommand
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        sessions={sessions}
-        currentSessionId={currentSessionId}
-        currentSessionTitle={currentSessionTitle}
-      />
     </Sidebar>
   )
 }

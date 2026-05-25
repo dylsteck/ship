@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "streamdown/styles.css";
+@import "@xterm/xterm/css/xterm.css";
+
+.ship-terminal-host .xterm,
+.ship-terminal-host .xterm-screen,
+.ship-terminal-host .xterm-viewport,
+.ship-terminal-host .xterm-scroll-area {
+  background-color: #141414 !important;
+}
 
 /* Code and diagram blocks: compact, work-focused chrome for chat messages. */
 :has(> [data-streamdown="code-block"]) {

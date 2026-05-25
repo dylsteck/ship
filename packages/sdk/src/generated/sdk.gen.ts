@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteSessionsBySessionIdData, DeleteSessionsBySessionIdErrors, DeleteSessionsBySessionIdResponses, DeleteSessionsData, DeleteSessionsResponses, GetAccountsGithubDefaultRepoData, GetAccountsGithubDefaultRepoResponses, GetAccountsGithubReposData, GetAccountsGithubReposResponses, GetChatBySessionIdEventsData, GetChatBySessionIdEventsResponses, GetChatBySessionIdGitStateData, GetChatBySessionIdGitStateResponses, GetChatBySessionIdMessagesData, GetChatBySessionIdMessagesResponses, GetChatBySessionIdSubscribeData, GetChatBySessionIdSubscribeResponses, GetChatBySessionIdTasksData, GetChatBySessionIdTasksResponses, GetConnectorsByNameStatusData, GetConnectorsByNameStatusResponses, GetConnectorsData, GetConnectorsResponses, GetModelsAgentsData, GetModelsAgentsResponses, GetModelsAvailableData, GetModelsAvailableResponses, GetModelsDefaultAgentData, GetModelsDefaultAgentModelData, GetModelsDefaultAgentModelResponses, GetModelsDefaultAgentResponses, GetModelsDefaultData, GetModelsDefaultResponses, GetModelsSessionsBySessionIdData, GetModelsSessionsBySessionIdResponses, GetSessionsBySessionIdData, GetSessionsBySessionIdErrors, GetSessionsBySessionIdResponses, GetSessionsBySessionIdSandboxData, GetSessionsBySessionIdSandboxResponses, GetSessionsData, GetSessionsErrors, GetSessionsResponses, GetUsersByIdData, GetUsersByIdResponses, GetUsersMeData, GetUsersMeResponses, PostAccountsGithubData, PostAccountsGithubDefaultRepoData, PostAccountsGithubDefaultRepoResponses, PostAccountsGithubResponses, PostChatBySessionIdData, PostChatBySessionIdGitPrReadyData, PostChatBySessionIdGitPrReadyResponses, PostChatBySessionIdPauseData, PostChatBySessionIdPauseResponses, PostChatBySessionIdPermissionByPermissionIdData, PostChatBySessionIdPermissionByPermissionIdResponses, PostChatBySessionIdQuestionByQuestionIdData, PostChatBySessionIdQuestionByQuestionIdRejectData, PostChatBySessionIdQuestionByQuestionIdRejectResponses, PostChatBySessionIdQuestionByQuestionIdResponses, PostChatBySessionIdResponses, PostChatBySessionIdResumeData, PostChatBySessionIdResumeResponses, PostChatBySessionIdRetryData, PostChatBySessionIdRetryResponses, PostChatBySessionIdStopData, PostChatBySessionIdStopResponses, PostConnectorsByNameDisableData, PostConnectorsByNameDisableResponses, PostConnectorsByNameEnableData, PostConnectorsByNameEnableResponses, PostModelsDefaultAgentData, PostModelsDefaultAgentModelData, PostModelsDefaultAgentModelResponses, PostModelsDefaultAgentResponses, PostModelsDefaultData, PostModelsDefaultResponses, PostModelsSessionsBySessionIdData, PostModelsSessionsBySessionIdResponses, PostSandboxData, PostSandboxResponses, PostSessionsData, PostSessionsErrors, PostSessionsResponses, PostUsersUpsertData, PostUsersUpsertResponses } from './types.gen';
+import type { DeleteSessionsBySessionIdData, DeleteSessionsBySessionIdErrors, DeleteSessionsBySessionIdResponses, DeleteSessionsData, DeleteSessionsResponses, GetAccountsGithubDefaultRepoData, GetAccountsGithubDefaultRepoResponses, GetAccountsGithubReposData, GetAccountsGithubReposResponses, GetChatBySessionIdDesktopStateData, GetChatBySessionIdDesktopStateResponses, GetChatBySessionIdEventsData, GetChatBySessionIdEventsResponses, GetChatBySessionIdGitStateData, GetChatBySessionIdGitStateResponses, GetChatBySessionIdMessagesData, GetChatBySessionIdMessagesResponses, GetChatBySessionIdSubscribeData, GetChatBySessionIdSubscribeResponses, GetChatBySessionIdTasksData, GetChatBySessionIdTasksResponses, GetConnectorsByNameStatusData, GetConnectorsByNameStatusResponses, GetConnectorsData, GetConnectorsResponses, GetModelsAgentsData, GetModelsAgentsResponses, GetModelsAvailableData, GetModelsAvailableResponses, GetModelsDefaultAgentData, GetModelsDefaultAgentModelData, GetModelsDefaultAgentModelResponses, GetModelsDefaultAgentResponses, GetModelsDefaultData, GetModelsDefaultResponses, GetModelsSessionsBySessionIdData, GetModelsSessionsBySessionIdResponses, GetSessionsBySessionIdData, GetSessionsBySessionIdErrors, GetSessionsBySessionIdResponses, GetSessionsBySessionIdSandboxData, GetSessionsBySessionIdSandboxResponses, GetSessionsData, GetSessionsErrors, GetSessionsResponses, GetUsersByIdData, GetUsersByIdResponses, GetUsersMeData, GetUsersMeResponses, PostAccountsGithubData, PostAccountsGithubDefaultRepoData, PostAccountsGithubDefaultRepoResponses, PostAccountsGithubResponses, PostChatBySessionIdData, PostChatBySessionIdGitPrMergeData, PostChatBySessionIdGitPrMergeResponses, PostChatBySessionIdGitPrReadyData, PostChatBySessionIdGitPrReadyResponses, PostChatBySessionIdPauseData, PostChatBySessionIdPauseResponses, PostChatBySessionIdPermissionByPermissionIdData, PostChatBySessionIdPermissionByPermissionIdResponses, PostChatBySessionIdQuestionByQuestionIdData, PostChatBySessionIdQuestionByQuestionIdRejectData, PostChatBySessionIdQuestionByQuestionIdRejectResponses, PostChatBySessionIdQuestionByQuestionIdResponses, PostChatBySessionIdResponses, PostChatBySessionIdResumeData, PostChatBySessionIdResumeResponses, PostChatBySessionIdRetryData, PostChatBySessionIdRetryResponses, PostChatBySessionIdStopData, PostChatBySessionIdStopResponses, PostConnectorsByNameDisableData, PostConnectorsByNameDisableResponses, PostConnectorsByNameEnableData, PostConnectorsByNameEnableResponses, PostModelsDefaultAgentData, PostModelsDefaultAgentModelData, PostModelsDefaultAgentModelResponses, PostModelsDefaultAgentResponses, PostModelsDefaultData, PostModelsDefaultResponses, PostModelsSessionsBySessionIdData, PostModelsSessionsBySessionIdResponses, PostSandboxData, PostSandboxResponses, PostSessionsData, PostSessionsErrors, PostSessionsResponses, PostUsersUpsertData, PostUsersUpsertResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -208,6 +208,23 @@ export const getChatBySessionIdMessages = <ThrowOnError extends boolean = false>
     });
 };
 
+export const postChatBySessionIdGitPrMerge = <ThrowOnError extends boolean = false>(options: Options<PostChatBySessionIdGitPrMergeData, ThrowOnError>) => {
+    return (options.client ?? client).post<PostChatBySessionIdGitPrMergeResponses, unknown, ThrowOnError>({
+        security: [
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
+        url: '/chat/{sessionId}/git/pr/merge',
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    });
+};
+
 export const getChatBySessionIdEvents = <ThrowOnError extends boolean = false>(options: Options<GetChatBySessionIdEventsData, ThrowOnError>) => {
     return (options.client ?? client).get<GetChatBySessionIdEventsResponses, unknown, ThrowOnError>({
         security: [
@@ -243,6 +260,19 @@ export const getChatBySessionIdGitState = <ThrowOnError extends boolean = false>
             }
         ],
         url: '/chat/{sessionId}/git/state',
+        ...options
+    });
+};
+
+export const getChatBySessionIdDesktopState = <ThrowOnError extends boolean = false>(options: Options<GetChatBySessionIdDesktopStateData, ThrowOnError>) => {
+    return (options.client ?? client).get<GetChatBySessionIdDesktopStateResponses, unknown, ThrowOnError>({
+        security: [
+            {
+                scheme: 'bearer',
+                type: 'http'
+            }
+        ],
+        url: '/chat/{sessionId}/desktop/state',
         ...options
     });
 };

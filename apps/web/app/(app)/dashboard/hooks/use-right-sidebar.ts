@@ -23,7 +23,7 @@ export function useRightSidebar() {
   const [desktopOpen, setDesktopOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const [activeTab, setActiveTabState] = useState<RightSidebarTab>('overview')
+  const [activeTab, setActiveTabState] = useState<RightSidebarTab>('git')
 
   const [expanded, setExpanded] = useState(false)
 
@@ -31,9 +31,9 @@ export function useRightSidebar() {
     setDesktopOpen(readStorage(STORAGE_KEY, 'false') !== 'false')
     setExpanded(readStorage(EXPANDED_STORAGE_KEY, 'false') === 'true')
 
-    const savedTab = readStorage(TAB_STORAGE_KEY, 'overview')
-    const valid: RightSidebarTab[] = ['git', 'terminal', 'overview']
-    setActiveTabState(valid.includes(savedTab as RightSidebarTab) ? (savedTab as RightSidebarTab) : 'overview')
+    const savedTab = readStorage(TAB_STORAGE_KEY, 'git')
+    const valid: RightSidebarTab[] = ['git', 'desktop', 'terminal']
+    setActiveTabState(valid.includes(savedTab as RightSidebarTab) ? (savedTab as RightSidebarTab) : 'git')
   }, [])
 
   const toggle = useCallback(() => {

@@ -83,14 +83,66 @@ export type GitState = {
     branchName?: string;
     branch?: string;
     hasChanges?: boolean;
+    dirty?: boolean;
     pr?: {
         number: number;
         url: string;
         draft: boolean;
+        title?: string;
+        body?: string;
+        merged?: boolean;
+        state?: string;
+        headSha?: string;
+        headBranch?: string;
+        baseBranch?: string;
     };
     prUrl?: string;
     prStatus?: string;
     repoUrl?: string;
+    baseBranch?: string;
+    checks?: {
+        state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'unknown';
+        total: number;
+        pending: number;
+        success: number;
+        failure: number;
+        jobs?: Array<{
+            name: string;
+            state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'unknown';
+            status?: string;
+            conclusion?: string;
+            url?: string;
+            startedAt?: string;
+            completedAt?: string;
+        }>;
+    };
+    diff?: {
+        patch: string;
+        truncated?: boolean;
+        files: Array<{
+            filename: string;
+            oldFilename?: string;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'changed';
+            additions: number;
+            deletions: number;
+        }>;
+        additions: number;
+        deletions: number;
+    };
+    commits?: Array<{
+        hash: string;
+        shortHash: string;
+        subject: string;
+        authorName: string;
+        authorEmail: string;
+        authoredAt: string;
+    }>;
+};
+
+export type DesktopState = {
+    status: 'starting' | 'ready' | 'unavailable' | 'error';
+    url?: string;
+    message?: string;
 };
 
 export type PermissionReplyBody = {
@@ -563,6 +615,31 @@ export type GetChatBySessionIdMessagesResponses = {
 
 export type GetChatBySessionIdMessagesResponse = GetChatBySessionIdMessagesResponses[keyof GetChatBySessionIdMessagesResponses];
 
+export type PostChatBySessionIdGitPrMergeData = {
+    body?: {
+        method: 'merge' | 'squash' | 'rebase';
+    };
+    path: {
+        sessionId: SessionId;
+    };
+    query?: never;
+    url: '/chat/{sessionId}/git/pr/merge';
+};
+
+export type PostChatBySessionIdGitPrMergeResponses = {
+    /**
+     * Merged pull request
+     */
+    200: {
+        success: boolean;
+        merged?: boolean;
+        message?: string;
+        sha?: string;
+    };
+};
+
+export type PostChatBySessionIdGitPrMergeResponse = PostChatBySessionIdGitPrMergeResponses[keyof PostChatBySessionIdGitPrMergeResponses];
+
 export type GetChatBySessionIdEventsData = {
     body?: never;
     path: {
@@ -618,6 +695,26 @@ export type GetChatBySessionIdGitStateResponses = {
 };
 
 export type GetChatBySessionIdGitStateResponse = GetChatBySessionIdGitStateResponses[keyof GetChatBySessionIdGitStateResponses];
+
+export type GetChatBySessionIdDesktopStateData = {
+    body?: never;
+    path: {
+        sessionId: SessionId;
+    };
+    query?: {
+        retry?: string;
+    };
+    url: '/chat/{sessionId}/desktop/state';
+};
+
+export type GetChatBySessionIdDesktopStateResponses = {
+    /**
+     * Desktop state
+     */
+    200: DesktopState;
+};
+
+export type GetChatBySessionIdDesktopStateResponse = GetChatBySessionIdDesktopStateResponses[keyof GetChatBySessionIdDesktopStateResponses];
 
 export type PostChatBySessionIdPermissionByPermissionIdData = {
     body?: PermissionReplyBody;

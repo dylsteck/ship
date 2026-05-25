@@ -7,6 +7,39 @@ import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
 import { isActiveSseSession } from '@/lib/active-sse-session'
 import { SessionSummarySchema } from '@ship/contracts'
 
+function replaceOptimisticUserMessage(messages: UIMessage[], uiMsg: UIMessage): UIMessage[] | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role !== 'user' || !message.id.startsWith('user-') || message.content !== uiMsg.content) continue
+    return messages.map((item, itemIndex) => (itemIndex === index ? uiMsg : item))
+  }
+  return null
+}
+
+function routeMessageEvent(
+  message: APIMessage,
+  setMessages: Dispatch<SetStateAction<UIMessage[]>>,
+  streamingMessageRef: React.MutableRefObject<string | null>,
+): void {
+  const uiMsg: UIMessage = {
+    id: message.id,
+    role: message.role as UIMessage['role'],
+    content: message.content,
+    createdAt: new Date(message.createdAt * 1000),
+  }
+  setMessages((prev) => {
+    if (uiMsg.role === 'assistant' && streamingMessageRef.current) {
+      return prev.map((m) =>
+        m.id === streamingMessageRef.current ? { ...m, content: uiMsg.content, createdAt: uiMsg.createdAt } : m,
+      )
+    }
+    const exists = prev.some((m) => m.id === uiMsg.id)
+    if (exists) return prev
+    if (uiMsg.role === 'user') return replaceOptimisticUserMessage(prev, uiMsg) ?? [...prev, uiMsg]
+    return [...prev, uiMsg]
+  })
+}
+
 /** Handlers for dashboard WebSocket frames routed through {@link SessionConnection}. */
 export interface RouteWebSocketEventHandlers {
   setMessages: Dispatch<SetStateAction<UIMessage[]>>
@@ -62,23 +95,7 @@ export function routeWebSocketEvent(
   }
 
   if (event.type === 'message') {
-    const msg = event.message as APIMessage
-    const uiMsg: UIMessage = {
-      id: msg.id,
-      role: msg.role as UIMessage['role'],
-      content: msg.content,
-      createdAt: new Date(msg.createdAt * 1000),
-    }
-    setMessages((prev) => {
-      if (uiMsg.role === 'assistant' && streamingMessageRef.current) {
-        return prev.map((m) =>
-          m.id === streamingMessageRef.current ? { ...m, content: uiMsg.content, createdAt: uiMsg.createdAt } : m,
-        )
-      }
-      const exists = prev.some((m) => m.id === uiMsg.id)
-      if (exists) return prev
-      return [...prev, uiMsg]
-    })
+    routeMessageEvent(event.message as APIMessage, setMessages, streamingMessageRef)
     return
   }
 

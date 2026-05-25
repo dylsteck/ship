@@ -27,8 +27,11 @@ import {
   defaultRepoBodySchema,
   defaultRepoResponseSchema,
   deleteAllSessionsResponseSchema,
+  desktopStateSchema,
   errorSchema,
   gitStateSchema,
+  gitMergeBodySchema,
+  gitMergeResponseSchema,
   githubAccountBodySchema,
   githubReposResponseSchema,
   modelInfoSchema,
@@ -216,6 +219,18 @@ function registerPaths(): void {
   })
 
   registry.registerPath({
+    method: 'post',
+    path: '/chat/{sessionId}/git/pr/merge',
+    tags: ['Chat'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      body: { content: { 'application/json': { schema: gitMergeBodySchema } } },
+    },
+    responses: { 200: jsonResponse(gitMergeResponseSchema, 'Merged pull request') },
+  })
+
+  registry.registerPath({
     method: 'get',
     path: '/chat/{sessionId}/events',
     tags: ['Chat'],
@@ -243,6 +258,18 @@ function registerPaths(): void {
     security: [{ [bearerAuth.name]: [] }],
     request: { params: z.object({ sessionId: sessionIdParam }) },
     responses: { 200: jsonResponse(gitStateSchema, 'Git state') },
+  })
+
+  registry.registerPath({
+    method: 'get',
+    path: '/chat/{sessionId}/desktop/state',
+    tags: ['Chat'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      query: z.object({ retry: z.string().optional() }),
+    },
+    responses: { 200: jsonResponse(desktopStateSchema, 'Desktop state') },
   })
 
   registry.registerPath({

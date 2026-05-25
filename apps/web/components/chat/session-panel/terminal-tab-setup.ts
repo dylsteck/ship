@@ -16,6 +16,7 @@ export interface TerminalConnectionRefs {
 export interface TerminalConnectionCallbacks {
   setStatus: (status: 'connecting' | 'connected' | 'disconnected' | 'unavailable') => void
   setConnectionFailed: (failed: boolean) => void
+  setErrorMessage: (message: string | null) => void
   isCancelled: () => boolean
 }
 
@@ -33,7 +34,7 @@ export async function createTerminalInstance(container: HTMLDivElement) {
     fontSize: 13,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     theme: {
-      background: '#1e1e1e',
+      background: '#141414',
       foreground: '#cccccc',
       cursor: '#cccccc',
       selectionBackground: '#264f78',
@@ -92,6 +93,13 @@ export function connectTerminalWebSocket(
 
     ws.onmessage = (event) => {
       if (typeof event.data === 'string') {
+        const control = parseTerminalControlMessage(event.data)
+        if (control?.type === 'terminal.error') {
+          callbacks.setErrorMessage(control.message)
+          callbacks.setConnectionFailed(true)
+          callbacks.setStatus('unavailable')
+          return
+        }
         term.write(event.data)
       }
     }
@@ -136,6 +144,19 @@ export function connectTerminalWebSocket(
       callbacks.setStatus('connecting')
       scheduleTerminalRetry(sessionId, term, refs, callbacks, maxRetries)
     }
+  }
+}
+
+function parseTerminalControlMessage(data: string): { type: 'terminal.error'; message: string } | null {
+  if (!data.startsWith('{')) return null
+  try {
+    const parsed = JSON.parse(data) as { type?: unknown; message?: unknown }
+    if (parsed.type === 'terminal.error' && typeof parsed.message === 'string') {
+      return { type: 'terminal.error', message: parsed.message }
+    }
+    return null
+  } catch {
+    return null
   }
 }
 

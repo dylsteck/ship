@@ -21,6 +21,7 @@ export interface Env {
 
   // Environment variables
   ENVIRONMENT: string;
+  DISABLE_RATE_LIMITS?: string;
 
   // Secrets (set via wrangler secret put or .dev.vars locally)
   ANTHROPIC_API_KEY: string;

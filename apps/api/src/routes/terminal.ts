@@ -38,8 +38,12 @@ terminal.get('/:sessionId', async (c) => {
   const doStub = c.env.SESSION_DO.get(doId)
 
   let sandboxId: string | null = null
+  let cwd = '/home/user'
   try {
-    const sandboxResponse = await doStub.fetch('http://do/sandbox/status')
+    const [sandboxResponse, metaResponse] = await Promise.all([
+      doStub.fetch('http://do/sandbox/status'),
+      doStub.fetch('http://do/meta'),
+    ])
     if (!sandboxResponse.ok) {
       return c.json({ error: 'No sandbox found for session' }, 404)
     }
@@ -47,7 +51,9 @@ terminal.get('/:sessionId', async (c) => {
       sandboxId: string | null
       status: string | null
     }
+    const meta = metaResponse.ok ? ((await metaResponse.json()) as Record<string, string>) : {}
     sandboxId = sandboxStatus.sandboxId
+    cwd = meta['repo_path'] || (meta['repo_url'] ? '/home/user/repo' : '/home/user')
   } catch {
     return c.json({ error: 'Failed to get sandbox status' }, 500)
   }
@@ -88,7 +94,7 @@ terminal.get('/:sessionId', async (c) => {
           }
         },
         timeoutMs: 0,
-        cwd: '/home/user',
+        cwd,
       })
 
       ptyPid = pty.pid
@@ -118,7 +124,7 @@ terminal.get('/:sessionId', async (c) => {
       const msg = error instanceof Error ? error.message : 'Terminal connection failed'
       console.error('[terminal] Connection failed', { sessionId, sandboxId, error })
       try {
-        server.send(JSON.stringify({ type: 'error', message: msg }))
+        server.send(JSON.stringify({ type: 'terminal.error', message: msg }))
         server.close(1011, msg)
       } catch {
         // Already closed

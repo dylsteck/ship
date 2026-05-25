@@ -353,9 +353,11 @@
           "hasChanges": {
             "type": "boolean"
           },
+          "dirty": {
+            "type": "boolean"
+          },
           "pr": {
             "type": "object",
-            "nullable": true,
             "properties": {
               "number": {
                 "type": "number"
@@ -365,6 +367,27 @@
               },
               "draft": {
                 "type": "boolean"
+              },
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "merged": {
+                "type": "boolean"
+              },
+              "state": {
+                "type": "string"
+              },
+              "headSha": {
+                "type": "string"
+              },
+              "headBranch": {
+                "type": "string"
+              },
+              "baseBranch": {
+                "type": "string"
               }
             },
             "required": [
@@ -381,8 +404,204 @@
           },
           "repoUrl": {
             "type": "string"
+          },
+          "baseBranch": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "success",
+                  "failure",
+                  "error",
+                  "neutral",
+                  "unknown"
+                ]
+              },
+              "total": {
+                "type": "integer"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "success": {
+                "type": "integer"
+              },
+              "failure": {
+                "type": "integer"
+              },
+              "jobs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "success",
+                        "failure",
+                        "error",
+                        "neutral",
+                        "unknown"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "conclusion": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "startedAt": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "state"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "state",
+              "total",
+              "pending",
+              "success",
+              "failure"
+            ]
+          },
+          "diff": {
+            "type": "object",
+            "properties": {
+              "patch": {
+                "type": "string"
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string"
+                    },
+                    "oldFilename": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "added",
+                        "modified",
+                        "deleted",
+                        "renamed",
+                        "copied",
+                        "changed"
+                      ]
+                    },
+                    "additions": {
+                      "type": "integer"
+                    },
+                    "deletions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "status",
+                    "additions",
+                    "deletions"
+                  ]
+                }
+              },
+              "additions": {
+                "type": "integer"
+              },
+              "deletions": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "patch",
+              "files",
+              "additions",
+              "deletions"
+            ]
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hash": {
+                  "type": "string"
+                },
+                "shortHash": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "authorName": {
+                  "type": "string"
+                },
+                "authorEmail": {
+                  "type": "string"
+                },
+                "authoredAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "hash",
+                "shortHash",
+                "subject",
+                "authorName",
+                "authorEmail",
+                "authoredAt"
+              ]
+            }
           }
         }
+      },
+      "DesktopState": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "ready",
+              "unavailable",
+              "error"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "PermissionReplyBody": {
         "type": "object",
@@ -1472,6 +1691,74 @@
         }
       }
     },
+    "/chat/{sessionId}/git/pr/merge": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "merge",
+                      "squash",
+                      "rebase"
+                    ]
+                  }
+                },
+                "required": [
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merged pull request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "merged": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "sha": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat/{sessionId}/events": {
       "get": {
         "tags": [
@@ -1566,6 +1853,43 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GitState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/{sessionId}/desktop/state": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "retry",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Desktop state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopState"
                 }
               }
             }

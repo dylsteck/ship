@@ -18,4 +18,5 @@ export const queryKeys = {
     ['chat-messages', sessionId, limit, before] as const,
   chatTasks: (sessionId: string) => ['chat-tasks', sessionId] as const,
   gitState: (sessionId: string) => ['git-state', sessionId] as const,
+  desktopState: (sessionId: string, retryToken = 0) => ['desktop-state', sessionId, retryToken] as const,
 }
