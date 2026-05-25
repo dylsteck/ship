@@ -1,4 +1,5 @@
 'use client'
+
 import {
   cn,
   Sheet,
@@ -15,6 +16,7 @@ import { GitTab } from '@/components/chat/session-panel/git-tab'
 import { TerminalTab } from '@/components/chat/session-panel/terminal-tab'
 import { useSandboxStatus } from '@/lib/api/hooks/use-sessions'
 import { EllipsisIcon, MaximizeIcon, PanelToggleIcon } from './right-sidebar-icons'
+import { ResizeHandle, useResizableSidebarWidth } from './right-sidebar-resize'
 import type { SessionPanelData, RightSidebarTab } from '../types'
 
 const TABS: { id: RightSidebarTab; label: string }[] = [
@@ -50,7 +52,7 @@ function SidebarHeader({
   onDeleteSession: () => void
 }) {
   return (
-    <div className="flex h-11 shrink-0 items-center border-b border-white/10 bg-[#151515] px-2">
+    <div className="flex h-10 shrink-0 items-center px-1">
       <div className="flex items-center flex-1 min-w-0">
         {TABS.map((tab) => (
           <button
@@ -154,6 +156,8 @@ export function RightSidebar({
   onDeleteSession,
 }: RightSidebarProps) {
   const { sandbox, isReady } = useSandboxStatus(data.sessionId)
+  const { sidebarWidth, isResizing, handleResizePointerDown, handleResizeKeyDown } =
+    useResizableSidebarWidth()
 
   const desktopSandboxStatus =
     (data.sandboxStatus && data.sandboxStatus !== 'unknown')
@@ -161,7 +165,7 @@ export function RightSidebar({
       : isReady ? 'active' : sandbox?.status ?? undefined
 
   const content = (
-    <div className="flex h-full min-h-0 flex-col bg-[#111212] text-zinc-300">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 bg-transparent px-3 pb-3 pt-2 text-zinc-300">
       <SidebarHeader
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -171,7 +175,7 @@ export function RightSidebar({
           void onDeleteSession(data.sessionId)
         }}
       />
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-[#141414] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <TabContent
           activeTab={activeTab}
           data={data}
@@ -186,13 +190,22 @@ export function RightSidebar({
     <>
       {desktopOpen && !isMobile && (
         <div
+          style={expanded ? undefined : { width: sidebarWidth }}
           className={cn(
-            'hidden border-l border-white/10 bg-[#111212] shadow-2xl shadow-black/30 md:flex md:flex-col',
+            'hidden bg-transparent md:flex md:flex-col',
             expanded
-              ? 'absolute inset-0 z-40 w-auto border-l-0'
-              : 'relative z-20 w-[390px] transition-[width] duration-200',
+              ? 'absolute inset-0 z-40 w-auto'
+              : 'relative z-20',
+            !isResizing && 'transition-[width] duration-200',
           )}
         >
+          {!expanded && (
+            <ResizeHandle
+              width={sidebarWidth}
+              onPointerDown={handleResizePointerDown}
+              onKeyDown={handleResizeKeyDown}
+            />
+          )}
           {content}
         </div>
       )}

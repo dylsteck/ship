@@ -12,7 +12,7 @@ interface TerminalTabProps {
 
 function TerminalPlaceholder({ message, showSpinner }: { message: string; showSpinner?: boolean }) {
   return (
-    <div className="size-full bg-[#1e1e1e] rounded-sm flex flex-col p-3 font-mono text-sm">
+    <div className="size-full bg-[#101010] flex flex-col p-3 font-mono text-sm">
       <div className="flex items-center gap-1">
         <span className="text-[#4ec9b0]">workspace</span>
         <span className="text-muted-foreground/60">$</span>
@@ -60,13 +60,18 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
   }
 
   return (
-    <div className="size-full relative">
-      <div
-        ref={containerRef}
-        className={cn('size-full', status === 'connecting' && !termRef.current && 'opacity-50')}
-      />
+    <div className="size-full relative bg-[#101010] p-3">
+      <div className="size-full overflow-hidden">
+        <div
+          ref={containerRef}
+          className={cn(
+            'size-full [&_.xterm]:h-full [&_.xterm-viewport]:overflow-y-auto',
+            status === 'connecting' && !termRef.current && 'opacity-50',
+          )}
+        />
+      </div>
       {status === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e]/80">
+        <div className="absolute inset-0 flex items-center justify-center bg-[#101010]/80">
           <span className="text-xs text-muted-foreground animate-pulse">Connecting to sandbox...</span>
         </div>
       )}

@@ -5,7 +5,7 @@ import { PatchDiff } from '@pierre/diffs/react'
 import { cn } from '@ship/ui'
 import { useGitState } from '@/lib/api/hooks/use-chat'
 import { BranchIcon, FolderIcon } from './git-tab-icons'
-import { CommitsContent, EmptyState, PRContent } from './git-tab-details'
+import { CommitsContent, PRContent } from './git-tab-details'
 import type { DiffSummary } from './types'
 import type { SessionInfo as SSESessionInfo } from '@/lib/sse-types'
 
@@ -43,13 +43,12 @@ function GitHeader({
   dirty?: boolean
 }) {
   return (
-    <div className="border-b border-white/10">
-      <div className="flex h-10 items-center gap-3 px-3">
-        <div className="flex size-6 items-center justify-center rounded-md bg-white/5 text-emerald-400">
-          <BranchIcon className="size-3.5" />
-        </div>
-        <div className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-400">
-          {branch || 'No branch'}
+    <div className="px-6 pt-5 pb-2">
+      <div className="flex min-h-7 items-center gap-3">
+        <div className="min-w-0 flex-1 text-[17px] font-medium text-zinc-100">Pull request summary</div>
+        <div className="hidden min-w-0 items-center gap-2 text-xs text-zinc-500 lg:flex">
+          <BranchIcon className="size-3.5 shrink-0 text-zinc-600" />
+          <span className="max-w-32 truncate font-mono">{branch || 'No branch'}</span>
         </div>
         {dirty && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-300">Modified</span>}
         {prUrl && (
@@ -57,12 +56,22 @@ function GitHeader({
             href={prUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-md border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs text-zinc-200 hover:bg-white/10"
+            className="rounded-md bg-white/[0.06] px-2.5 py-1 text-xs text-zinc-200 hover:bg-white/10"
           >
             View PR
           </a>
         )}
       </div>
+    </div>
+  )
+}
+
+function NoPushedChangesState() {
+  return (
+    <div className="flex size-full items-center justify-center px-8">
+      <span className="rounded-full bg-white/[0.07] px-5 py-2 text-sm text-zinc-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        No pushed changes
+      </span>
     </div>
   )
 }
@@ -79,7 +88,7 @@ function DiffFileList({
   if (files.length === 0) return null
 
   return (
-    <div className="border-b border-white/10">
+    <div className="border-b border-white/[0.06]">
       <div className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500">
         <FolderIcon className="size-3.5" />
         <span>Uncommitted Changes</span>
@@ -123,12 +132,7 @@ function DiffContent({ state, legacyDiffs }: { state?: GitState; legacyDiffs?: D
   const fallbackCount = legacyDiffs?.length ?? 0
 
   if (!hasLiveDiff && fallbackCount === 0) {
-    return (
-      <EmptyState
-        title="No uncommitted changes"
-        detail="Changes made by the agent on this local branch will appear here."
-      />
-    )
+    return <NoPushedChangesState />
   }
 
   return (
@@ -167,7 +171,7 @@ function DiffContent({ state, legacyDiffs }: { state?: GitState; legacyDiffs?: D
 
 function DiffSummaryBar({ additions, deletions, fileCount }: { additions: number; deletions: number; fileCount: number }) {
   return (
-    <div className="flex h-8 items-center gap-3 border-b border-white/10 px-3 font-mono text-[11px] text-zinc-500">
+    <div className="flex h-8 items-center gap-3 border-b border-white/[0.06] px-3 font-mono text-[11px] text-zinc-500">
       <span>{fileCount} file{fileCount === 1 ? '' : 's'}</span>
       <span className="text-emerald-400">+{additions}</span>
       <span className="text-red-400">-{deletions}</span>
@@ -216,16 +220,16 @@ export function GitTab({ sessionId, diffs, sessionInfo }: GitTabProps) {
   }, [diffs, gitState, subTab])
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#111212] text-zinc-300">
+    <div className="flex h-full min-h-0 flex-col bg-transparent text-zinc-300">
       <GitHeader branch={branch} prUrl={gitState?.prUrl || gitState?.pr?.url} dirty={dirty} />
-      <div className="flex h-9 items-center gap-1 border-b border-white/10 px-2">
+      <div className="flex h-12 items-center gap-6 border-b border-white/[0.06] px-6">
         {SUB_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setSubTab(tab.id)}
             className={cn(
-              'rounded-md px-2.5 py-1 text-xs transition-colors',
+              'rounded-lg px-3 py-1.5 text-sm transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50',
               subTab === tab.id ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300',
             )}

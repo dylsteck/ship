@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "streamdown/styles.css";
+@import "@xterm/xterm/css/xterm.css";
 
 /* Code and diagram blocks: compact, work-focused chrome for chat messages. */
 :has(> [data-streamdown="code-block"]) {
