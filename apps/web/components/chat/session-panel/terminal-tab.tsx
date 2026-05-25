@@ -60,24 +60,18 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
   }
 
   return (
-    <div className="size-full relative flex flex-col overflow-hidden rounded-[17px] bg-[#101010]">
-      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-white/[0.06] px-6 text-sm text-zinc-200">
-        <span>Terminal 1</span>
-        <svg className="size-4 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m7 10 5 5 5-5" />
-        </svg>
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden p-4">
-        <div
-          ref={containerRef}
-          className={cn(
-            'size-full [&_.xterm]:h-full [&_.xterm-viewport]:overflow-y-auto',
-            status === 'connecting' && !termRef.current && 'opacity-50',
-          )}
-        />
-      </div>
+    <div className="size-full relative overflow-hidden rounded-[17px] bg-[#1e1e1e]">
+      <div
+        ref={containerRef}
+        className={cn(
+          'ship-terminal-host size-full overflow-hidden',
+          '[&_.xterm]:box-border [&_.xterm]:h-full [&_.xterm]:p-3',
+          '[&_.xterm-screen]:h-full [&_.xterm-viewport]:overflow-y-auto',
+          status === 'connecting' && !termRef.current && 'opacity-50',
+        )}
+      />
       {status === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#101010]/80">
+        <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e]/80">
           <span className="text-xs text-muted-foreground animate-pulse">Connecting to sandbox...</span>
         </div>
       )}
