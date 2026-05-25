@@ -23,6 +23,7 @@ export interface StepCostInfo {
 
 export interface SessionPanelData {
   sessionId: string
+  sessionTitle?: string
   selectedRepo: { id: number; name: string; fullName: string; owner: string; private: boolean; description: string | null } | null
   selectedAgent: { id: string; name: string } | null
   selectedModel: { id: string; name: string; provider: string } | null

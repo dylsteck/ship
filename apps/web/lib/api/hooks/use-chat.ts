@@ -116,6 +116,7 @@ export function useDesktopState(sessionId: string | undefined, retryToken = 0) {
       ),
     enabled: Boolean(sessionId),
     refetchInterval: (query) => ((query.state.data as DesktopState | undefined)?.status === 'starting' ? 3_000 : false),
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
   })
 

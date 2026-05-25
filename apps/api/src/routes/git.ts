@@ -17,7 +17,7 @@ import { cloneRepo, createBranch, commitChanges, pushBranch, generateBranchName 
 import { createGitHubClient, parseRepoUrl } from '../lib/github'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
 import { requireSessionOwner } from '../lib/session-authorization'
-import { Sandbox } from '@e2b/code-interpreter'
+import { requireComputeSandbox } from '../lib/compute-provider'
 
 const git = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
@@ -92,10 +92,7 @@ git.post('/clone', async (c) => {
     }
 
     // Connect to sandbox
-    const sandbox = await Sandbox.connect(sandboxStatus.sandboxId, {
-      apiKey: c.env.E2B_API_KEY,
-      timeoutMs: 5 * 60 * 1000,
-    })
+    const sandbox = await requireComputeSandbox(c.env.E2B_API_KEY, sandboxStatus.sandboxId)
 
     // Clone repository
     const repoPath = await cloneRepo(sandbox, repoUrl, githubToken)
@@ -195,10 +192,7 @@ git.post('/commit', async (c) => {
     }
 
     // Connect to sandbox
-    const sandbox = await Sandbox.connect(sandboxStatus.sandboxId, {
-      apiKey: c.env.E2B_API_KEY,
-      timeoutMs: 5 * 60 * 1000,
-    })
+    const sandbox = await requireComputeSandbox(c.env.E2B_API_KEY, sandboxStatus.sandboxId)
 
     // Commit changes
     const commitHash = await commitChanges(
@@ -289,10 +283,7 @@ git.post('/push', async (c) => {
     }
 
     // Connect to sandbox
-    const sandbox = await Sandbox.connect(sandboxStatus.sandboxId, {
-      apiKey: c.env.E2B_API_KEY,
-      timeoutMs: 5 * 60 * 1000,
-    })
+    const sandbox = await requireComputeSandbox(c.env.E2B_API_KEY, sandboxStatus.sandboxId)
 
     // Push branch
     await pushBranch(sandbox, branchName, githubToken, '/home/user/repo')

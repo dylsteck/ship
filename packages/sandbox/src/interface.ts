@@ -67,7 +67,7 @@ export interface Sandbox {
   exec(command: string, cwd: string, timeoutMs: number, options?: { signal?: AbortSignal }): Promise<ExecResult>
 
   /** Get the public URL/host for an exposed port (e.g. dev server). */
-  domain?(port: number): string
+  domain?(port: number): Promise<string>
 
   /** Refresh the sandbox auto-pause timeout. */
   extendTimeout(timeoutMs: number): Promise<void>

@@ -3,7 +3,7 @@
 import { sendChatMessage } from '@/lib/api/chat-client'
 import { setActiveSseSession } from '@/lib/active-sse-session'
 import { postSessionSync } from '@/lib/session-sync-channel'
-import { getStreamingRefs } from '@/lib/chat-store/store'
+import { getStreamingRefs, useChatStore } from '@/lib/chat-store/store'
 import { sessionStatusStore } from './use-session-status-store'
 import { createErrorMessage, classifyError } from '@/lib/ai-elements-adapter'
 import { isGenericError } from './sse-event-handlers'
@@ -13,6 +13,13 @@ import { readChatSSEStream } from './sse-read-stream'
 import { prepareChatSend, queueChatSend } from './sse-handle-send-prepare'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { UseSseHandleSendParams } from './use-sse-handle-send'
+
+function clearSessionStreamingState(chat: ReturnType<typeof useDashboardChat>, targetSessionId: string): void {
+  useChatStore.getState().setIsStreaming(targetSessionId, false)
+  if (chat.activeSessionIdRef.current === targetSessionId) {
+    chat.setIsStreaming(false)
+  }
+}
 
 async function handleSendError(
   response: Response,
@@ -35,7 +42,8 @@ async function handleSendError(
   })
 
   sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
-  chat.setIsStreaming(false)
+  postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
+  clearSessionStreamingState(chat, targetSessionId)
   chat.setStreamingStatus('')
   streamingRefs.streamingMessageRef.current = null
   terminalStreamSessionsRef.current.add(targetSessionId)
@@ -49,6 +57,7 @@ function handleSendCatch(
 ): void {
   console.error('Chat error:', err)
   sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
+  postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
   const streamingRefs = getStreamingRefs(targetSessionId)
   chat.setMessages((prev) => {
     const filtered = prev.filter((m) => m.id !== streamingRefs.streamingMessageRef.current)
@@ -61,7 +70,7 @@ function handleSendCatch(
       ),
     ]
   })
-  chat.setIsStreaming(false)
+  clearSessionStreamingState(chat, targetSessionId)
   chat.setStreamingStatus('')
   streamingRefs.streamingMessageRef.current = null
   terminalStreamSessionsRef.current.add(targetSessionId)
@@ -130,7 +139,9 @@ export async function executeChatSend(
         sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Done' })
       }
     }
+    clearSessionStreamingState(chat, targetSessionId)
     if (doneOrIdleReceived) postSessionSync({ type: 'sessions-invalidate' })
+    postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
   } catch (err) {
     watchdog.clear()
     handleSendCatch(err, chat, targetSessionId, terminalStreamSessionsRef)

@@ -33,7 +33,7 @@ export interface SessionFetchHost {
   startTask(taskDescription: string): Promise<unknown>
   handleAgentResponse(response: { summary: string; hasChanges: boolean }): Promise<void>
   initializeAgentExecutor(
-    sandbox: import('@e2b/code-interpreter').Sandbox,
+    sandbox: import('../lib/sandbox-command').ComputeCommandSandbox,
     githubToken: string,
     gitUser: { name: string; email: string },
   ): Promise<unknown>

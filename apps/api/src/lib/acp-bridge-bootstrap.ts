@@ -134,7 +134,7 @@ export async function ensureAcpBridgeReady(input: {
   let port = Number.parseInt(portStr, 10)
   if (!Number.isFinite(port)) port = ACP_RELAY_PORT_DEFAULT
 
-  const httpsOrigin = domainFn.call(input.sandbox, port)
+  const httpsOrigin = await domainFn.call(input.sandbox, port)
   const healthInput = {
     sandbox: input.sandbox,
     cwd: input.workingDirectory,

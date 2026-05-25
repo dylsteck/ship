@@ -75,7 +75,10 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
       </div>
       {status === 'connecting' && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#141414]/80">
-          <span className="text-xs text-muted-foreground animate-pulse">Connecting to sandbox...</span>
+          <div
+            className="size-5 animate-spin rounded-full border-2 border-white/10 border-t-zinc-300"
+            aria-label="Loading terminal"
+          />
         </div>
       )}
     </div>

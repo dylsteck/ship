@@ -1,7 +1,7 @@
 import { sendChatMessage } from '@/lib/api/chat-client'
 import { parseSSEEvent, getEventStatus, extractTextDelta } from '@/lib/sse-parser'
 import { consumeSSEBody } from '@/lib/session-connection'
-import { getStreamingRefs } from '@/lib/chat-store/store'
+import { getStreamingRefs, useChatStore } from '@/lib/chat-store/store'
 import { isAgentHarnessEvent } from '@/lib/sse-types'
 import { sessionStatusStore } from './use-session-status-store'
 import { eventsStore } from './use-events-store'
@@ -121,6 +121,8 @@ export async function runBackgroundSessionStream(
     })
     if (!response.ok || !response.body) {
       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+      useChatStore.getState().setIsStreaming(sessionId, false)
+      postSessionSync({ type: 'session-stopped', sessionId })
       return
     }
 
@@ -141,9 +143,13 @@ export async function runBackgroundSessionStream(
     if (current?.isRunning) {
       sessionStatusStore.update(sessionId, { isRunning: false, status: 'Done' })
     }
+    useChatStore.getState().setIsStreaming(sessionId, false)
+    postSessionSync({ type: 'session-stopped', sessionId })
     postSessionSync({ type: 'sessions-invalidate' })
   } catch (err) {
     console.error('Background SSE error:', err)
     sessionStatusStore.update(sessionId, { isRunning: false, status: 'Error' })
+    useChatStore.getState().setIsStreaming(sessionId, false)
+    postSessionSync({ type: 'session-stopped', sessionId })
   }
 }

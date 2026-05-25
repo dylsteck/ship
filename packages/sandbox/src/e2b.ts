@@ -1,12 +1,12 @@
 /**
  * E2B-backed Sandbox implementation.
  *
- * Wraps `@e2b/code-interpreter` so the agent's tools call a small, stable
+ * Wraps `@computesdk/e2b` so the agent's tools call a small, stable
  * surface (`exec`, `readFile`, `writeFile`, ...) instead of speaking to an
  * in-VM HTTP server. The agent harness lives outside the VM.
  */
 
-import { Sandbox as E2BSandbox } from '@e2b/code-interpreter'
+import { e2b } from '@computesdk/e2b'
 import type {
   ExecResult,
   Sandbox,
@@ -21,6 +21,9 @@ export const E2B_TEMPLATE_ID = 'n1exdf9kj7gpwk6810c9'
 const MAX_OUTPUT_LENGTH = 50_000
 const DEFAULT_WORKING_DIRECTORY = '/home/user'
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
+
+type E2BCompute = ReturnType<typeof e2b>
+type E2BProviderSandbox = Awaited<ReturnType<E2BCompute['sandbox']['create']>>
 
 function truncate(output: string): { output: string; truncated: boolean } {
   if (output.length <= MAX_OUTPUT_LENGTH) return { output, truncated: false }
@@ -59,11 +62,11 @@ interface E2BSandboxConfig {
  */
 export async function createE2BSandbox(config: E2BSandboxConfig): Promise<E2BSandboxAdapter> {
   const template = config.template ?? E2B_TEMPLATE_ID
-  const sandbox = await E2BSandbox.betaCreate({
-    apiKey: config.apiKey,
-    ...(template ? { template } : {}),
-    autoPause: true,
-    timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  const provider = e2b({ apiKey: config.apiKey })
+  const sandbox = await provider.sandbox.create({
+    ...(template ? { templateId: template } : {}),
+    lifecycle: { onTimeout: 'pause' },
+    timeout: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     ...(config.metadata && { metadata: config.metadata }),
     ...(config.envs && Object.keys(config.envs).length > 0 && { envs: config.envs }),
   })
@@ -82,10 +85,10 @@ export async function connectE2BSandbox(
   apiKey: string,
   options: { workingDirectory?: string; timeoutMs?: number } = {},
 ): Promise<E2BSandboxAdapter> {
-  const sandbox = await E2BSandbox.connect(state.sandboxId, {
-    apiKey,
-    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  })
+  const provider = e2b({ apiKey })
+  const sandbox = await provider.sandbox.getById(state.sandboxId)
+  if (!sandbox) throw new Error(`Sandbox not found: ${state.sandboxId}`)
+  await sandbox.getInstance().setTimeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
 
   return new E2BSandboxAdapter(sandbox, apiKey, {
     workingDirectory: options.workingDirectory ?? DEFAULT_WORKING_DIRECTORY,
@@ -104,10 +107,10 @@ export class E2BSandboxAdapter implements Sandbox {
   readonly currentBranch?: string
   readonly environmentDetails?: string
 
-  private sandbox: E2BSandbox
+  private sandbox: E2BProviderSandbox
   private apiKey: string
 
-  constructor(sandbox: E2BSandbox, apiKey: string, options: AdapterOptions) {
+  constructor(sandbox: E2BProviderSandbox, apiKey: string, options: AdapterOptions) {
     this.sandbox = sandbox
     this.apiKey = apiKey
     this.workingDirectory = options.workingDirectory
@@ -130,8 +133,7 @@ export class E2BSandboxAdapter implements Sandbox {
   }
 
   async readFile(path: string, _encoding: 'utf-8'): Promise<string> {
-    const content = await this.sandbox.files.read(path)
-    return typeof content === 'string' ? content : new TextDecoder().decode(content as ArrayBuffer)
+    return this.sandbox.filesystem.readFile(path)
   }
 
   async writeFile(path: string, content: string, _encoding: 'utf-8'): Promise<void> {
@@ -140,16 +142,16 @@ export class E2BSandboxAdapter implements Sandbox {
     if (lastSep > 0) {
       const parent = path.slice(0, lastSep)
       try {
-        await this.sandbox.files.makeDir(parent)
+        await this.sandbox.filesystem.mkdir(parent)
       } catch {
         // Directory may already exist — ignore.
       }
     }
-    await this.sandbox.files.write(path, content)
+    await this.sandbox.filesystem.writeFile(path, content)
   }
 
   async stat(path: string): Promise<SandboxStats> {
-    const result = await this.sandbox.commands.run(`stat -c '%F\t%s\t%Y' ${shellQuote(path)}`).catch((e) => {
+    const result = await this.runNativeCommand(`stat -c '%F\t%s\t%Y' ${shellQuote(path)}`).catch((e) => {
       throw new Error(`ENOENT: no such file or directory, stat '${path}': ${(e as Error).message}`)
     })
     const [fileType, sizeStr, mtimeStr] = (result.stdout ?? '').trim().split('\t')
@@ -163,16 +165,17 @@ export class E2BSandboxAdapter implements Sandbox {
   }
 
   async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
-    const args = options?.recursive ? `-p ${shellQuote(path)}` : shellQuote(path)
-    await this.sandbox.commands.run(`mkdir ${args}`)
+    if (options?.recursive) {
+      await this.sandbox.filesystem.mkdir(path)
+      return
+    }
+    await this.runNativeCommand(`mkdir ${shellQuote(path)}`)
   }
 
   async readdir(path: string): Promise<SandboxDirent[]> {
-    const result = await this.sandbox.commands
-      .run(`find ${shellQuote(path)} -maxdepth 1 -mindepth 1 -printf '%y %f\\n'`)
-      .catch((e) => {
-        throw new Error(`ENOENT: no such file or directory, scandir '${path}': ${(e as Error).message}`)
-      })
+    const result = await this.runNativeCommand(`find ${shellQuote(path)} -maxdepth 1 -mindepth 1 -printf '%y %f\\n'`).catch((e) => {
+      throw new Error(`ENOENT: no such file or directory, scandir '${path}': ${(e as Error).message}`)
+    })
 
     const output = (result.stdout ?? '').trim()
     if (!output) return []
@@ -200,11 +203,8 @@ export class E2BSandboxAdapter implements Sandbox {
   ): Promise<ExecResult> {
     try {
       const wrapped = `cd ${shellQuote(cwd)} && ${command}`
-      const runOpts: { timeoutMs: number; cwd?: string } = { timeoutMs }
-      // Pass cwd at sdk level too for better error messages.
-      runOpts.cwd = cwd
       // Race against caller's abort signal.
-      const exec = this.sandbox.commands.run(wrapped, runOpts)
+      const exec = this.runNativeCommand(wrapped, { timeoutMs, cwd })
       const result = await raceWithSignal(exec, options?.signal)
       const stdout = truncate(result.stdout ?? '')
       const stderr = truncate(result.stderr ?? '')
@@ -234,21 +234,27 @@ export class E2BSandboxAdapter implements Sandbox {
     }
   }
 
-  domain(port: number): string {
-    const host = this.sandbox.getHost(port)
-    return `https://${host}`
+  domain(port: number): Promise<string> {
+    return this.sandbox.getUrl({ port })
   }
 
   async extendTimeout(timeoutMs: number): Promise<void> {
-    await this.sandbox.setTimeout(timeoutMs)
+    await this.sandbox.getInstance().setTimeout(timeoutMs)
   }
 
   async pause(): Promise<void> {
-    await this.sandbox.betaPause()
+    await this.sandbox.getInstance().pause()
   }
 
   getState(): SandboxState {
     return { type: 'e2b', sandboxId: this.sandbox.sandboxId }
+  }
+
+  private runNativeCommand(
+    command: string,
+    options?: { timeoutMs?: number; cwd?: string; envs?: Record<string, string> },
+  ): Promise<{ stdout?: string; stderr?: string; exitCode?: number }> {
+    return this.sandbox.getInstance().commands.run(command, options)
   }
 }
 

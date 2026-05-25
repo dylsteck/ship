@@ -91,7 +91,7 @@ sandbox.get('/:id/status', async (c) => {
  * POST /sandbox/:id/pause
  * Pause a sandbox by sandbox ID
  *
- * This calls E2B betaPause() to explicitly pause the sandbox
+ * This explicitly pauses the sandbox to avoid ongoing runtime costs.
  */
 sandbox.post('/:id/pause', async (c) => {
   try {

@@ -10,7 +10,6 @@
  * Pattern: Bridges OpenCode SDK events with Git workflow automation
  */
 
-import type { Sandbox } from '@e2b/code-interpreter'
 import type { SessionDO } from '../durable-objects/session'
 import {
   generateBranchName,
@@ -19,6 +18,7 @@ import {
   pushBranch,
   type GitUser,
 } from './git-workflow'
+import type { ComputeCommandSandbox } from './sandbox-command'
 import { GitHubClient, parseRepoUrl } from './github'
 import {
   executeWithRetry,
@@ -43,7 +43,7 @@ export interface ErrorEvent {
  */
 export interface AgentExecutorConfig {
   sessionDO: SessionDO
-  sandbox: Sandbox
+  sandbox: ComputeCommandSandbox
   githubToken: string
   repoUrl: string
   gitUser: GitUser
@@ -75,7 +75,7 @@ export interface AgentResponse {
  */
 export class AgentExecutor {
   private sessionDO: SessionDO
-  private sandbox: Sandbox
+  private sandbox: ComputeCommandSandbox
   private githubClient: GitHubClient
   private repoUrl: string
   private gitUser: GitUser

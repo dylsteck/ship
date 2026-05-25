@@ -106,7 +106,7 @@ export function useDashboardClientView({
     defaultModelLoading,
   })
 
-  const rightSidebar = useRightSidebar()
+  const rightSidebar = useRightSidebar(chat.activeSessionId)
   const { activeSession, activeSessionAgent, activeSessionModel } = useActiveSessionSync(
     chat,
     {

@@ -9,7 +9,7 @@ import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.d'
 import { SandboxManager, type SandboxInfo } from '../lib/e2b'
 import type { AgentExecutor } from '../lib/agent-executor'
-import type { Sandbox } from '@e2b/code-interpreter'
+import type { ComputeCommandSandbox } from '../lib/sandbox-command'
 import { handleSessionFetch } from './session-fetch-handlers'
 import {
   initializeAgentExecutor as initializeAgentExecutorBinding,
@@ -313,7 +313,7 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   async initializeAgentExecutor(
-    sandbox: Sandbox,
+    sandbox: ComputeCommandSandbox,
     githubToken: string,
     gitUser: { name: string; email: string },
   ): Promise<AgentExecutor> {
