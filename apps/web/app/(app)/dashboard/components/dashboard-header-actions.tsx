@@ -32,15 +32,8 @@ export function SandboxStatusBadge({ sandboxStatus }: { sandboxStatus: string })
   )
 }
 
-export function ConnectionStatusBadge({ wsStatus }: { wsStatus: WebSocketStatus }) {
-  if (wsStatus === 'connected') return null
-
-  return (
-    <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mr-2">
-      <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-      {wsStatus === 'connecting' ? 'Connecting...' : 'Reconnecting...'}
-    </div>
-  )
+export function ConnectionStatusBadge({ wsStatus: _wsStatus }: { wsStatus: WebSocketStatus }) {
+  return null
 }
 
 export function SessionHeaderActions({
