@@ -12,7 +12,7 @@ interface TerminalTabProps {
 
 function TerminalPlaceholder({ message, showSpinner }: { message: string; showSpinner?: boolean }) {
   return (
-    <div className="size-full bg-[#101010] flex flex-col p-3 font-mono text-sm">
+    <div className="size-full bg-transparent flex flex-col p-3 font-mono text-sm">
       <div className="flex items-center gap-1">
         <span className="text-[#4ec9b0]">workspace</span>
         <span className="text-muted-foreground/60">$</span>
@@ -60,18 +60,21 @@ export function TerminalTab({ sessionId, sandboxStatus, sandboxId, connectionHin
   }
 
   return (
-    <div className="size-full relative overflow-hidden rounded-[17px] bg-[#1e1e1e]">
-      <div
-        ref={containerRef}
-        className={cn(
-          'ship-terminal-host size-full overflow-hidden',
-          '[&_.xterm]:box-border [&_.xterm]:h-full [&_.xterm]:p-3',
-          '[&_.xterm-screen]:h-full [&_.xterm-viewport]:overflow-y-auto',
-          status === 'connecting' && !termRef.current && 'opacity-50',
-        )}
-      />
+    <div className="size-full relative overflow-hidden rounded-[17px] bg-[#141414]">
+      <div className="size-full overflow-hidden p-3">
+        <div
+          ref={containerRef}
+          className={cn(
+            'ship-terminal-host size-full overflow-hidden',
+            '[&_.xterm]:h-full [&_.xterm]:bg-[#141414]',
+            '[&_.xterm-screen]:h-full [&_.xterm-viewport]:overflow-y-auto [&_.xterm-viewport]:bg-[#141414]',
+            '[&_.xterm-scroll-area]:bg-[#141414] [&_.xterm-screen]:bg-[#141414]',
+            status === 'connecting' && !termRef.current && 'opacity-50',
+          )}
+        />
+      </div>
       {status === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#1e1e1e]/80">
+        <div className="absolute inset-0 flex items-center justify-center bg-[#141414]/80">
           <span className="text-xs text-muted-foreground animate-pulse">Connecting to sandbox...</span>
         </div>
       )}

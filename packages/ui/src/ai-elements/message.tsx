@@ -31,9 +31,9 @@ function UserMessage({
 
   return (
     <div className={cn('flex justify-end py-1.5', className)}>
-      <div className="group max-w-[min(82%,46rem)]">
-        <div className="rounded-[20px] border border-border/45 bg-foreground/[0.055] px-4 py-3 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-          <div className="text-[14.5px] leading-relaxed">{children}</div>
+      <div className="group w-fit max-w-[min(74%,38rem)]">
+        <div className="rounded-[18px] border border-border/45 bg-foreground/[0.055] px-3.5 py-2.5 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[14.5px] leading-[1.55]">{children}</div>
         </div>
         {(timeLabel || copyContent) && (
           <div className="flex items-center justify-end gap-1.5 mt-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/50">

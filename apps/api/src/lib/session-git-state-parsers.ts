@@ -32,12 +32,24 @@ export interface SessionGitCommit {
 }
 
 /** CI/check rollup for the current PR/head commit. */
+export interface SessionGitCheckJob {
+  name: string
+  state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'unknown'
+  status?: string
+  conclusion?: string
+  url?: string
+  startedAt?: string
+  completedAt?: string
+}
+
+/** CI/check rollup for the current PR/head commit. */
 export interface SessionGitCheckSummary {
   state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'unknown'
   total: number
   pending: number
   success: number
   failure: number
+  jobs?: SessionGitCheckJob[]
 }
 
 /** Parse `git diff --name-status` output into stable per-file rows. */
@@ -139,16 +151,14 @@ export function summarizeChecks(states: string[]): SessionGitCheckSummary {
 
   let sawError = false
   for (const raw of states) {
-    const state = raw.toLowerCase()
-    if (state === 'success' || state === 'neutral' || state === 'skipped') summary.success += 1
-    else if (state === 'failure' || state === 'cancelled' || state === 'timed_out' || state === 'action_required') {
-      summary.failure += 1
-    } else if (state === 'error') {
+    const state = normalizeGitCheckState(raw)
+    if (state === 'success' || state === 'neutral') summary.success += 1
+    else if (state === 'failure') summary.failure += 1
+    else if (state === 'error') {
       sawError = true
       summary.failure += 1
-    } else {
-      summary.pending += 1
-    }
+    } else if (state === 'pending') summary.pending += 1
+    else summary.pending += 1
   }
 
   if (summary.total === 0) summary.state = 'unknown'
@@ -158,6 +168,25 @@ export function summarizeChecks(states: string[]): SessionGitCheckSummary {
   else summary.state = 'success'
 
   return summary
+}
+
+/** Normalize GitHub check/status strings into sidebar states. */
+export function normalizeGitCheckState(raw: string | null | undefined): SessionGitCheckSummary['state'] {
+  const state = (raw || '').toLowerCase()
+  if (state === 'success' || state === 'neutral' || state === 'skipped') return state === 'neutral' ? 'neutral' : 'success'
+  if (
+    state === 'failure' ||
+    state === 'cancelled' ||
+    state === 'timed_out' ||
+    state === 'action_required' ||
+    state === 'stale' ||
+    state === 'startup_failure'
+  ) return 'failure'
+  if (state === 'error' || state === 'infrastructure_failure') return 'error'
+  if (state === 'pending' || state === 'queued' || state === 'in_progress' || state === 'waiting' || state === 'requested') {
+    return 'pending'
+  }
+  return 'unknown'
 }
 
 function parseStatusCode(code: string): GitFileStatus {

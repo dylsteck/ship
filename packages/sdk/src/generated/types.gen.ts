@@ -89,8 +89,11 @@ export type GitState = {
         url: string;
         draft: boolean;
         title?: string;
+        body?: string;
+        merged?: boolean;
         state?: string;
         headSha?: string;
+        headBranch?: string;
         baseBranch?: string;
     };
     prUrl?: string;
@@ -103,6 +106,15 @@ export type GitState = {
         pending: number;
         success: number;
         failure: number;
+        jobs?: Array<{
+            name: string;
+            state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'unknown';
+            status?: string;
+            conclusion?: string;
+            url?: string;
+            startedAt?: string;
+            completedAt?: string;
+        }>;
     };
     diff?: {
         patch: string;
@@ -596,6 +608,31 @@ export type GetChatBySessionIdMessagesResponses = {
 };
 
 export type GetChatBySessionIdMessagesResponse = GetChatBySessionIdMessagesResponses[keyof GetChatBySessionIdMessagesResponses];
+
+export type PostChatBySessionIdGitPrMergeData = {
+    body?: {
+        method: 'merge' | 'squash' | 'rebase';
+    };
+    path: {
+        sessionId: SessionId;
+    };
+    query?: never;
+    url: '/chat/{sessionId}/git/pr/merge';
+};
+
+export type PostChatBySessionIdGitPrMergeResponses = {
+    /**
+     * Merged pull request
+     */
+    200: {
+        success: boolean;
+        merged?: boolean;
+        message?: string;
+        sha?: string;
+    };
+};
+
+export type PostChatBySessionIdGitPrMergeResponse = PostChatBySessionIdGitPrMergeResponses[keyof PostChatBySessionIdGitPrMergeResponses];
 
 export type GetChatBySessionIdEventsData = {
     body?: never;

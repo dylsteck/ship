@@ -6,6 +6,7 @@ import {
   parseGitNameStatus,
   parseGitStatusFiles,
   summarizeChecks,
+  normalizeGitCheckState,
 } from './session-git-state-parsers'
 
 describe('session git state parsers', () => {
@@ -54,7 +55,18 @@ describe('session git state parsers', () => {
     expect(summarizeChecks(['success', 'completed']).state).toBe('pending')
     expect(summarizeChecks(['success', 'failure']).state).toBe('failure')
     expect(summarizeChecks(['success', 'error']).state).toBe('error')
+    expect(summarizeChecks(['success', 'stale']).state).toBe('failure')
+    expect(summarizeChecks(['success', 'startup_failure']).state).toBe('failure')
     expect(summarizeChecks(['success', 'neutral']).state).toBe('success')
     expect(summarizeChecks([]).state).toBe('unknown')
+  })
+
+  it('normalizes GitHub check conclusions used by job rows and summaries', () => {
+    expect(normalizeGitCheckState('success')).toBe('success')
+    expect(normalizeGitCheckState('skipped')).toBe('success')
+    expect(normalizeGitCheckState('stale')).toBe('failure')
+    expect(normalizeGitCheckState('startup_failure')).toBe('failure')
+    expect(normalizeGitCheckState('infrastructure_failure')).toBe('error')
+    expect(normalizeGitCheckState('in_progress')).toBe('pending')
   })
 })

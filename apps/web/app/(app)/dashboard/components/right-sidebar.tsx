@@ -192,10 +192,10 @@ export function RightSidebar({
         <div
           style={expanded ? undefined : { width: sidebarWidth }}
           className={cn(
-            'hidden bg-transparent md:flex md:flex-col',
+            'hidden md:flex md:flex-col',
             expanded
-              ? 'absolute inset-0 z-40 w-auto'
-              : 'relative z-20',
+              ? 'fixed inset-0 z-[100] w-auto bg-[#0d0d0d]'
+              : 'relative z-20 bg-transparent',
             !isResizing && 'transition-[width] duration-200',
           )}
         >

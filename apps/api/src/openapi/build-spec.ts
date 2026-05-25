@@ -29,6 +29,8 @@ import {
   deleteAllSessionsResponseSchema,
   errorSchema,
   gitStateSchema,
+  gitMergeBodySchema,
+  gitMergeResponseSchema,
   githubAccountBodySchema,
   githubReposResponseSchema,
   modelInfoSchema,
@@ -213,6 +215,18 @@ function registerPaths(): void {
       }),
     },
     responses: { 200: jsonResponse(z.array(chatMessageSchema), 'Messages') },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/chat/{sessionId}/git/pr/merge',
+    tags: ['Chat'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      body: { content: { 'application/json': { schema: gitMergeBodySchema } } },
+    },
+    responses: { 200: jsonResponse(gitMergeResponseSchema, 'Merged pull request') },
   })
 
   registry.registerPath({

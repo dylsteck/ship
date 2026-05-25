@@ -8,9 +8,33 @@ const gitPrSchema = z.object({
   url: z.string(),
   draft: z.boolean(),
   title: z.string().optional(),
+  body: z.string().optional(),
+  merged: z.boolean().optional(),
   state: z.string().optional(),
   headSha: z.string().optional(),
+  headBranch: z.string().optional(),
   baseBranch: z.string().optional(),
+})
+
+export const gitMergeBodySchema = z.object({
+  method: z.enum(['merge', 'squash', 'rebase']),
+})
+
+export const gitMergeResponseSchema = z.object({
+  success: z.boolean(),
+  merged: z.boolean().optional(),
+  message: z.string().optional(),
+  sha: z.string().optional(),
+})
+
+const gitCheckJobSchema = z.object({
+  name: z.string(),
+  state: z.enum(['pending', 'success', 'failure', 'error', 'neutral', 'unknown']),
+  status: z.string().optional(),
+  conclusion: z.string().optional(),
+  url: z.string().optional(),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
 })
 
 const gitChecksSchema = z.object({
@@ -19,6 +43,7 @@ const gitChecksSchema = z.object({
   pending: z.number().int(),
   success: z.number().int(),
   failure: z.number().int(),
+  jobs: z.array(gitCheckJobSchema).optional(),
 })
 
 const gitDiffFileSchema = z.object({

@@ -8,7 +8,7 @@
 
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi'
 import { z } from 'zod'
-export { gitStateSchema } from './git-schemas'
+export { gitMergeBodySchema, gitMergeResponseSchema, gitStateSchema } from './git-schemas'
 
 extendZodWithOpenApi(z)
 

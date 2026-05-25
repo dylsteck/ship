@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   getChatBySessionIdEvents,
@@ -19,6 +20,9 @@ import {
 import type { Message, RawEvent } from '../chat-types'
 import { normalizeChatEvent, normalizeChatMessage } from '../normalize'
 import { queryKeys } from '../query-keys'
+import { useGitStateStore } from '../git-state-store'
+import { API_URL } from '../../config'
+import { getApiToken } from '../configure'
 
 /**
  * Hook to fetch chat messages (API returns array directly).
@@ -73,16 +77,23 @@ export function useChatTasks(sessionId: string | undefined) {
 
 /** Hook to fetch git state for a session */
 export function useGitState(sessionId: string | undefined) {
+  const cachedGitState = useGitStateStore((state) => (sessionId ? state.bySession[sessionId] : undefined))
+  const setGitState = useGitStateStore((state) => state.setGitState)
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: queryKeys.gitState(sessionId ?? ''),
     queryFn: async () => unwrapSdkData(await getChatBySessionIdGitState({ path: { sessionId: sessionId! } })),
     enabled: Boolean(sessionId),
+    placeholderData: cachedGitState,
     refetchInterval: (query) => ((query.state.data as GitState | undefined)?.pr ? 60_000 : 5_000),
     refetchOnWindowFocus: false,
   })
 
+  useEffect(() => {
+    if (sessionId && data) setGitState(sessionId, data)
+  }, [data, sessionId, setGitState])
+
   return {
-    gitState: data,
+    gitState: data ?? cachedGitState,
     isLoading,
     isError: !!error,
     error,
@@ -129,6 +140,33 @@ export function useMarkPRReady(sessionId: string | undefined) {
   return {
     markPRReady: mutation.mutateAsync,
     isMarking: mutation.isPending,
+    error: mutation.error,
+  }
+}
+
+/** Mutation hook to merge the session pull request. */
+export function useMergePullRequest(sessionId: string | undefined) {
+  const mutation = useMutation({
+    mutationFn: async (method: 'merge' | 'squash' | 'rebase') => {
+      if (!sessionId) throw new Error('No session ID')
+      const token = getApiToken()
+      const response = await fetch(`${API_URL}/chat/${sessionId}/git/pr/merge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ method }),
+      })
+      const data = (await response.json().catch(() => ({}))) as { error?: string; message?: string }
+      if (!response.ok) throw new Error(data.error || data.message || 'Failed to merge pull request')
+      return data
+    },
+  })
+
+  return {
+    mergePullRequest: mutation.mutateAsync,
+    isMerging: mutation.isPending,
     error: mutation.error,
   }
 }

@@ -34,7 +34,7 @@ export async function createTerminalInstance(container: HTMLDivElement) {
     fontSize: 13,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     theme: {
-      background: '#1e1e1e',
+      background: '#141414',
       foreground: '#cccccc',
       cursor: '#cccccc',
       selectionBackground: '#264f78',

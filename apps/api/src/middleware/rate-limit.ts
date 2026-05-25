@@ -16,7 +16,8 @@ interface RateLimitConfig {
 export function createRateLimiter(config: RateLimitConfig) {
   return createMiddleware<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>(
     async (c, next) => {
-    if (c.env.ENVIRONMENT === 'development') {
+    const environment = (c.env.ENVIRONMENT || '').toLowerCase()
+    if (environment === 'development' || environment === 'dev' || c.env.DISABLE_RATE_LIMITS === 'true') {
       await next()
       return
     }

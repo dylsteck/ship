@@ -371,10 +371,19 @@
               "title": {
                 "type": "string"
               },
+              "body": {
+                "type": "string"
+              },
+              "merged": {
+                "type": "boolean"
+              },
               "state": {
                 "type": "string"
               },
               "headSha": {
+                "type": "string"
+              },
+              "headBranch": {
                 "type": "string"
               },
               "baseBranch": {
@@ -424,6 +433,47 @@
               },
               "failure": {
                 "type": "integer"
+              },
+              "jobs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "success",
+                        "failure",
+                        "error",
+                        "neutral",
+                        "unknown"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "conclusion": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "startedAt": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "state"
+                  ]
+                }
               }
             },
             "required": [
@@ -1611,6 +1661,74 @@
                   "items": {
                     "$ref": "#/components/schemas/ChatMessage"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/{sessionId}/git/pr/merge": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "merge",
+                      "squash",
+                      "rebase"
+                    ]
+                  }
+                },
+                "required": [
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merged pull request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "merged": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "sha": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
                 }
               }
             }
