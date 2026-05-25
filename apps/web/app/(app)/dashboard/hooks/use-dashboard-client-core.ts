@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { postSessionSync } from '@/lib/session-sync-channel'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -45,19 +45,10 @@ export function useDashboardClientCore(
     modelIdRef: refs.modelIdRef,
   })
 
-  useEffect(() => {
-    refs.resumeStreamRef.current = resumeStream
-    return () => {
-      refs.resumeStreamRef.current = null
-    }
-  }, [resumeStream, refs.resumeStreamRef])
-
-  useEffect(() => {
-    refs.onAgentEventRef.current = processStreamEventForSession
-    return () => {
-      refs.onAgentEventRef.current = null
-    }
-  }, [processStreamEventForSession, refs.onAgentEventRef])
+  // Assign synchronously during render so the refs are always populated before
+  // any effect (including useChatHistoryLoader) reads them.
+  refs.resumeStreamRef.current = resumeStream
+  refs.onAgentEventRef.current = processStreamEventForSession
 
   const dataHooks = useDashboardDataHooks(chat)
   const { pendingCreateIdsRef } = useDashboardSessionEffects(

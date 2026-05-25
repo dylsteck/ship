@@ -4,11 +4,12 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { setApiToken } from '@/lib/api/configure'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useIsMobile, SidebarTrigger, useSidebar } from '@ship/ui'
+import { useIsMobile, SidebarTrigger, useSidebar, cn } from '@ship/ui'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { PlusSignIcon, ArrowLeft01Icon } from '@hugeicons/core-free-icons'
-import { UserDropdown } from '@/components/user-dropdown'
 import { ConnectorSettings } from '@/components/settings/connector-settings'
+import { MobileNav } from '../dashboard/components/dashboard-header'
+import { useTheme } from '@/components/providers/theme-context'
 import { useSessions } from '@/lib/api'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -58,6 +59,7 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
   const router = useRouter()
   const isMobile = useIsMobile()
   const [searchQuery, setSearchQuery] = useState('')
+  const { theme, setTheme, themes } = useTheme()
 
   const { sessions: swrSessions } = useSessions(true, { refetchOnFocus: true })
   const sessions = swrSessions.length > 0 ? swrSessions : initialSessions
@@ -72,22 +74,42 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
 
   const settingsContent = (
     <div className="mx-auto max-w-2xl px-4 py-10">
-      {/* Mobile header */}
-      {isMobile && (
-        <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 -mx-4 -mt-10 mb-6 justify-end">
-          <UserDropdown user={user} />
-        </div>
+      {!isMobile && (
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} className="size-3" />
+          Back to Home
+        </Link>
       )}
 
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6"
-      >
-        <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} className="size-3" />
-        Back to Home
-      </Link>
-
       <h1 className="text-2xl font-semibold text-foreground mb-10">Settings</h1>
+
+      {/* Appearance */}
+      <section className="mb-10">
+        <h2 className="text-xs text-muted-foreground mb-3">Appearance</h2>
+        <div className="rounded-lg border border-border bg-card px-4 py-3 flex items-center justify-between">
+          <span className="text-sm text-foreground">Theme</span>
+          <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
+            {themes.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTheme(t)}
+                className={cn(
+                  'px-3 py-1 rounded-md text-xs transition-colors',
+                  theme === t
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t === 'system' ? 'Auto' : t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Integrations */}
       <section className="mb-10">
@@ -124,6 +146,7 @@ export function SettingsClient({ user, sessions: initialSessions, apiToken, side
         <SidebarAutoClose />
         <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 pt-3 pb-1.5 relative z-10">
           <SettingsSidebarTrigger />
+          <MobileNav activeSessionId={null} user={user} />
         </header>
         {settingsContent}
       </div>

@@ -131,21 +131,33 @@ export function useActiveSessionSync(
     ? (models.find((model) => model.id === activeModelId) ?? null)
     : selectedModel
 
+  // Use refs so the effect body always reads the latest objects while only
+  // re-running when IDs change (not on every new object reference from SWR).
+  const activeSessionAgentRef = useRef(activeSessionAgent)
+  activeSessionAgentRef.current = activeSessionAgent
+  const activeSessionModelRef = useRef(activeSessionModel)
+  activeSessionModelRef.current = activeSessionModel
+
+  const activeSessionAgentId = activeSessionAgent?.id ?? null
+  const activeSessionModelId = activeSessionModel?.id ?? null
+
   useEffect(() => {
-    if (!chat.activeSessionId || !activeSessionAgent) return
-    if (selectedAgent?.id !== activeSessionAgent.id) {
-      handleAgentSelect(activeSessionAgent)
+    const agent = activeSessionAgentRef.current
+    const model = activeSessionModelRef.current
+    if (!chat.activeSessionId || !agent) return
+    if (selectedAgent?.id !== agent.id) {
+      handleAgentSelect(agent)
       return
     }
-    if (activeSessionModel && selectedModel?.id !== activeSessionModel.id) {
-      setSelectedModel(activeSessionModel)
+    if (model && selectedModel?.id !== model.id) {
+      setSelectedModel(model)
     }
   }, [
     chat.activeSessionId,
-    activeSessionAgent,
-    activeSessionModel,
-    selectedAgent,
-    selectedModel,
+    activeSessionAgentId,
+    activeSessionModelId,
+    selectedAgent?.id,
+    selectedModel?.id,
     handleAgentSelect,
     setSelectedModel,
   ])

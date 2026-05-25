@@ -72,7 +72,7 @@ export function DashboardMessages({
         className={cn(
           'mx-auto w-full',
           mobileChatLayout
-            ? 'max-w-3xl px-3 py-4'
+            ? 'max-w-3xl px-3 py-3'
             : 'max-w-4xl px-4 py-6 sm:px-8 sm:py-8',
         )}
       >

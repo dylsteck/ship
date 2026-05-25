@@ -28,7 +28,7 @@ interface DashboardHeaderProps {
   }
 }
 
-function MobileNav({
+export function MobileNav({
   activeSessionId,
   user,
 }: {

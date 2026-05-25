@@ -31,6 +31,7 @@ export function generateViewport(): Viewport {
     width: 'device-width',
     initialScale: 1,
     maximumScale: 1,
+    interactiveWidget: 'resizes-content',
     viewportFit: 'cover',
     themeColor: [
       { media: '(prefers-color-scheme: light)', color: '#ffffff' },
@@ -49,7 +50,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body>
+      <body className="overflow-hidden overscroll-none">
         <div className="pwa-titlebar-drag" />
         <ThemeProvider>
           <QueryProvider>{children}</QueryProvider>
