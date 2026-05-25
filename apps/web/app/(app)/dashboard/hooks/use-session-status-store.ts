@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface SessionLiveStatus {
   status: string
@@ -84,11 +84,26 @@ const store = createSessionStatusStore()
 
 /**
  * Subscribe to a single session's live status.
- * Only re-renders when that specific session changes — not on any other session update.
+ * Uses deferred useState instead of useSyncExternalStore to avoid incrementing React's
+ * nestedUpdateCount on every high-frequency WebSocket event (which triggers the
+ * "Maximum update depth exceeded" error when many sessions are subscribed simultaneously).
  */
 export function useSessionStatus(sessionId: string): SessionLiveStatus | undefined {
-  const snapshot = useMemo(() => store.getSessionSnapshot(sessionId), [sessionId])
-  useSyncExternalStore(store.subscribe, snapshot, snapshot)
+  const [, setVersion] = useState(0)
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
+
+  useEffect(() => {
+    let lastVersion = store.getSessionSnapshot(sessionId)()
+    return store.subscribe(() => {
+      const next = store.getSessionSnapshot(sessionIdRef.current)()
+      if (next !== lastVersion) {
+        lastVersion = next
+        setVersion((v) => v + 1)
+      }
+    })
+  }, [sessionId])
+
   return store.get(sessionId)
 }
 
@@ -97,7 +112,13 @@ export function useSessionStatus(sessionId: string): SessionLiveStatus | undefin
  * Only use when you need to react to ANY session change (e.g. dashboard-client cross-tab sync).
  */
 export function useSessionStatusVersion(): number {
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+  const [version, setVersion] = useState(() => store.getSnapshot())
+
+  useEffect(() => {
+    return store.subscribe(() => setVersion(store.getSnapshot()))
+  }, [])
+
+  return version
 }
 
 export { store as sessionStatusStore }

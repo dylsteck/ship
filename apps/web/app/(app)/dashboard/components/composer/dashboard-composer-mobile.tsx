@@ -21,7 +21,7 @@ export function DashboardComposerMobileFollowUp() {
             <ModeToggle />
           </ClientOnly>
         </div>
-        <div className="min-w-0 flex-1 py-2">
+        <div className="min-w-0 flex-1 pt-[9px] pb-[7px]">
           <ComposerTextarea />
         </div>
         <div className="flex shrink-0 items-center pr-2">
