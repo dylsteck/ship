@@ -293,6 +293,10 @@ npx wrangler deploy --env production
 - [ ] Production GitHub OAuth App (callback = prod web URL)
 - [ ] Test: sign in, create session, chat with agent
 
+### Notes for automation and AI agents
+
+If you are a human or an automated agent working in this repo, start with `AGENTS.md` for architecture, commands, and conventions. Curated agent skills live under `.agents/skills/`.
+
 ---
 
 ## License
