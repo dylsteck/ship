@@ -128,6 +128,14 @@ export const chatTaskSchema = z
   })
   .openapi('ChatTask')
 
+export const desktopStateSchema = z
+  .object({
+    status: z.enum(['starting', 'ready', 'unavailable', 'error']),
+    url: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .openapi('DesktopState')
+
 export const questionReplyBodySchema = z
   .object({
     response: z.string().min(1),

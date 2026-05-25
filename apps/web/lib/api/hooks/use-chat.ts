@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
+  getChatBySessionIdDesktopState,
   getChatBySessionIdEvents,
   getChatBySessionIdGitState,
   getChatBySessionIdMessages,
@@ -15,6 +16,7 @@ import {
   postChatBySessionIdStop,
   unwrapSdkData,
   type ChatTask,
+  type DesktopState,
   type GitState,
 } from '@ship/sdk'
 import type { Message, RawEvent } from '../chat-types'
@@ -95,6 +97,32 @@ export function useGitState(sessionId: string | undefined) {
   return {
     gitState: data ?? cachedGitState,
     isLoading,
+    isError: !!error,
+    error,
+    mutate: refetch,
+  }
+}
+
+/** Hook to fetch the noVNC desktop state for a session sandbox. */
+export function useDesktopState(sessionId: string | undefined, retryToken = 0) {
+  const { data, error, isLoading, isFetching, refetch } = useQuery({
+    queryKey: queryKeys.desktopState(sessionId ?? '', retryToken),
+    queryFn: async () =>
+      unwrapSdkData(
+        await getChatBySessionIdDesktopState({
+          path: { sessionId: sessionId! },
+          query: retryToken > 0 ? { retry: '1' } : undefined,
+        }),
+      ),
+    enabled: Boolean(sessionId),
+    refetchInterval: (query) => ((query.state.data as DesktopState | undefined)?.status === 'starting' ? 3_000 : false),
+    refetchOnWindowFocus: false,
+  })
+
+  return {
+    desktopState: data,
+    isLoading,
+    isFetching,
     isError: !!error,
     error,
     mutate: refetch,

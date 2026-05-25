@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@ship/ui'
 import { GitTab } from '@/components/chat/session-panel/git-tab'
+import { DesktopTab } from '@/components/chat/session-panel/desktop-tab'
 import { TerminalTab } from '@/components/chat/session-panel/terminal-tab'
 import { useSandboxStatus } from '@/lib/api/hooks/use-sessions'
 import { EllipsisIcon, MaximizeIcon, PanelToggleIcon } from './right-sidebar-icons'
@@ -22,6 +23,7 @@ import type { SessionPanelData, RightSidebarTab } from '../types'
 const TABS: { id: RightSidebarTab; label: string }[] = [
   { id: 'git', label: 'Git' },
   { id: 'terminal', label: 'Terminal' },
+  { id: 'desktop', label: 'Desktop' },
 ]
 
 interface RightSidebarProps {
@@ -44,15 +46,19 @@ function SidebarHeader({
   onToggleExpanded,
   onTogglePanel,
   onDeleteSession,
+  expanded,
+  sessionTitle,
 }: {
   activeTab: RightSidebarTab
   onTabChange: (tab: RightSidebarTab) => void
   onToggleExpanded: () => void
   onTogglePanel: () => void
   onDeleteSession: () => void
+  expanded: boolean
+  sessionTitle?: string
 }) {
   return (
-    <div className="flex h-10 shrink-0 items-center px-1">
+    <div className="relative flex h-10 shrink-0 items-center px-1">
       <div className="flex items-center flex-1 min-w-0">
         {TABS.map((tab) => (
           <button
@@ -70,6 +76,11 @@ function SidebarHeader({
           </button>
         ))}
       </div>
+      {expanded && sessionTitle && (
+        <div className="pointer-events-none absolute left-1/2 top-1/2 hidden max-w-[38vw] -translate-x-1/2 -translate-y-1/2 truncate text-xs font-medium text-zinc-300 md:block">
+          {sessionTitle}
+        </div>
+      )}
 
       <div className="flex items-center gap-0.5 shrink-0">
         <DropdownMenu>
@@ -126,6 +137,8 @@ function TabContent({
   switch (activeTab) {
     case 'git':
       return <GitTab sessionId={data.sessionId} diffs={data.fileDiffs} sessionInfo={data.sessionInfo ?? undefined} />
+    case 'desktop':
+      return <DesktopTab sessionId={data.sessionId} sandboxStatus={desktopSandboxStatus} />
     case 'terminal':
       return (
         <TerminalTab
@@ -171,6 +184,8 @@ export function RightSidebar({
         onTabChange={onTabChange}
         onToggleExpanded={onToggleExpanded}
         onTogglePanel={onTogglePanel}
+        expanded={expanded}
+        sessionTitle={data.sessionInfo?.title}
         onDeleteSession={() => {
           void onDeleteSession(data.sessionId)
         }}

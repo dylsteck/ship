@@ -24,6 +24,7 @@ type GitDiffState = {
 }
 
 const PATCH_FILE_HEADER = /^diff --git a\/.+ b\/(.+)$/gm
+const INITIAL_OPEN_FILE_COUNT = 3
 
 export function DiffContent({ state, legacyDiffs }: { state?: GitDiffState; legacyDiffs?: DiffSummary[] }) {
   const files = useMemo(() => state?.diff?.files ?? [], [state?.diff?.files])
@@ -42,7 +43,7 @@ export function DiffContent({ state, legacyDiffs }: { state?: GitDiffState; lega
         deletions={state?.diff?.deletions ?? sumLegacy(legacyDiffs, 'deletions')}
         fileCount={files.length || fallbackCount}
       />
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto overflow-x-hidden">
         {patch.trim() && files.length > 0 ? (
           <AllFilesDiff files={files} patch={patch} />
         ) : (
@@ -68,7 +69,10 @@ function NoPushedChangesState() {
 }
 
 function AllFilesDiff({ files, patch }: { files: GitDiffFile[]; patch: string }) {
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(() => new Set())
+  const patchByFile = useMemo(() => buildPatchByFile(patch), [patch])
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(
+    () => new Set(files.slice(INITIAL_OPEN_FILE_COUNT).map((file) => file.filename)),
+  )
 
   function toggleFile(filename: string) {
     setCollapsedFiles((current) => {
@@ -87,7 +91,7 @@ function AllFilesDiff({ files, patch }: { files: GitDiffFile[]; patch: string })
           file={file}
           isOpen={!collapsedFiles.has(file.filename)}
           onToggle={() => toggleFile(file.filename)}
-          patch={pickFilePatch(patch, file.filename)}
+          patch={patchByFile.get(file.filename) ?? ''}
         />
       ))}
     </div>
@@ -200,6 +204,11 @@ function statusClass(status: string): string {
   if (status === 'deleted') return 'text-red-400'
   if (status === 'renamed' || status === 'copied') return 'text-sky-300'
   return 'text-amber-300'
+}
+
+function buildPatchByFile(patch: string): Map<string, string> {
+  const chunks = splitPatchFiles(patch)
+  return new Map(chunks.map((chunk) => [chunk.filename, chunk.patch]))
 }
 
 function pickFilePatch(patch: string, filename?: string): string {

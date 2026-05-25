@@ -139,6 +139,12 @@ export type GitState = {
     }>;
 };
 
+export type DesktopState = {
+    status: 'starting' | 'ready' | 'unavailable' | 'error';
+    url?: string;
+    message?: string;
+};
+
 export type PermissionReplyBody = {
     reply?: 'once' | 'always' | 'reject';
 };
@@ -689,6 +695,26 @@ export type GetChatBySessionIdGitStateResponses = {
 };
 
 export type GetChatBySessionIdGitStateResponse = GetChatBySessionIdGitStateResponses[keyof GetChatBySessionIdGitStateResponses];
+
+export type GetChatBySessionIdDesktopStateData = {
+    body?: never;
+    path: {
+        sessionId: SessionId;
+    };
+    query?: {
+        retry?: string;
+    };
+    url: '/chat/{sessionId}/desktop/state';
+};
+
+export type GetChatBySessionIdDesktopStateResponses = {
+    /**
+     * Desktop state
+     */
+    200: DesktopState;
+};
+
+export type GetChatBySessionIdDesktopStateResponse = GetChatBySessionIdDesktopStateResponses[keyof GetChatBySessionIdDesktopStateResponses];
 
 export type PostChatBySessionIdPermissionByPermissionIdData = {
     body?: PermissionReplyBody;

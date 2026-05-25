@@ -32,7 +32,7 @@ export function useRightSidebar() {
     setExpanded(readStorage(EXPANDED_STORAGE_KEY, 'false') === 'true')
 
     const savedTab = readStorage(TAB_STORAGE_KEY, 'git')
-    const valid: RightSidebarTab[] = ['git', 'terminal']
+    const valid: RightSidebarTab[] = ['git', 'desktop', 'terminal']
     setActiveTabState(valid.includes(savedTab as RightSidebarTab) ? (savedTab as RightSidebarTab) : 'git')
   }, [])
 

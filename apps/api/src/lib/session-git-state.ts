@@ -222,12 +222,14 @@ async function collectPullRequestByBranch(
     owner,
     repo,
     head: `${owner}:${branchName}`,
-    state: 'open',
+    state: 'all',
     sort: 'updated',
     direction: 'desc',
-    per_page: 1,
+    per_page: 10,
   })
-  const pr = data[0] ?? (await collectPullRequestByBranchName(octokit, owner, repo, branchName))
+  const pr =
+    data.find((pull) => pull.head.ref === branchName || pull.head.label.endsWith(`:${branchName}`)) ??
+    (await collectPullRequestByBranchName(octokit, owner, repo, branchName))
   return pr ? buildPullRequest(pr) : undefined
 }
 
@@ -240,7 +242,7 @@ async function collectPullRequestByBranchName(
   const { data } = await octokit.rest.pulls.list({
     owner,
     repo,
-    state: 'open',
+    state: 'all',
     sort: 'updated',
     direction: 'desc',
     per_page: 30,

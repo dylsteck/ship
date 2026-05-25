@@ -17,6 +17,7 @@ import { streamSSE } from 'hono/streaming'
 import type { AuthedEnv } from '../lib/session-authorization'
 import { requireSessionOwner } from '../lib/session-authorization'
 import { collectSessionGitState } from '../lib/session-git-state'
+import { collectSessionDesktopState } from '../lib/session-desktop-state'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
 import { parseRepoUrl } from '../lib/github'
 
@@ -90,6 +91,13 @@ function registerHistoryRoutes(app: Hono<AuthedEnv>): void {
     if (!gate.ok) return gate.response
     const stub = sessionStub(c)
     return c.json(await collectSessionGitState({ env: c.env, stub, userId: gate.userId }))
+  })
+
+  app.get('/:sessionId/desktop/state', async (c) => {
+    const gate = await requireSessionOwner(c, c.req.param('sessionId'))
+    if (!gate.ok) return gate.response
+    const stub = sessionStub(c)
+    return c.json(await collectSessionDesktopState({ env: c.env, stub, force: c.req.query('retry') === '1' }))
   })
 
   app.post('/:sessionId/git/pr/ready', async (c) => {

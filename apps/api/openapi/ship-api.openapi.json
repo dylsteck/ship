@@ -580,6 +580,29 @@
           }
         }
       },
+      "DesktopState": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "ready",
+              "unavailable",
+              "error"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "PermissionReplyBody": {
         "type": "object",
         "properties": {
@@ -1830,6 +1853,43 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GitState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/{sessionId}/desktop/state": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "retry",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Desktop state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopState"
                 }
               }
             }

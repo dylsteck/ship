@@ -27,6 +27,7 @@ import {
   defaultRepoBodySchema,
   defaultRepoResponseSchema,
   deleteAllSessionsResponseSchema,
+  desktopStateSchema,
   errorSchema,
   gitStateSchema,
   gitMergeBodySchema,
@@ -257,6 +258,18 @@ function registerPaths(): void {
     security: [{ [bearerAuth.name]: [] }],
     request: { params: z.object({ sessionId: sessionIdParam }) },
     responses: { 200: jsonResponse(gitStateSchema, 'Git state') },
+  })
+
+  registry.registerPath({
+    method: 'get',
+    path: '/chat/{sessionId}/desktop/state',
+    tags: ['Chat'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      query: z.object({ retry: z.string().optional() }),
+    },
+    responses: { 200: jsonResponse(desktopStateSchema, 'Desktop state') },
   })
 
   registry.registerPath({
