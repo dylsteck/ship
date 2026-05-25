@@ -14,6 +14,7 @@ import { useCreateSession, useDeleteSession, useSessions } from '@/lib/api/hooks
 import { replyPermission, replyQuestion, rejectQuestion } from '@/lib/api/hooks/use-chat'
 import type { AgentInfo } from '@/lib/api/types'
 import type { SessionPanelData } from '../types'
+import { getSessionDisplayTitle } from '@/lib/session-display'
 import type { useDashboardChat } from './use-dashboard-chat'
 import type { useDashboardState } from './use-dashboard-state'
 import { buildTerminalConnectionHint, type useActiveSessionSync } from './use-dashboard-client-effects'
@@ -177,6 +178,7 @@ export function buildRightSidebarData(
 
   return {
     sessionId: chat.activeSessionId,
+    sessionTitle: getSessionDisplayTitle(activeSession, { preferredTitle: chat.sessionTitle }),
     selectedRepo: activeSession
       ? {
           id: -1,

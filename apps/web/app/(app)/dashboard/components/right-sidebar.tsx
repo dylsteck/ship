@@ -175,10 +175,24 @@ export function RightSidebar({
   const { sidebarWidth, isResizing, handleResizePointerDown, handleResizeKeyDown } =
     useResizableSidebarWidth()
   const [mobileExpanded, setMobileExpanded] = useState(false)
+  const [mountedTabs, setMountedTabs] = useState<Set<RightSidebarTab>>(() => new Set([activeTab]))
 
   useEffect(() => {
     if (!mobileOpen) setMobileExpanded(false)
   }, [mobileOpen])
+
+  useEffect(() => {
+    setMountedTabs(new Set(['git']))
+  }, [data.sessionId])
+
+  useEffect(() => {
+    setMountedTabs((prev) => {
+      if (prev.has(activeTab)) return prev
+      const next = new Set(prev)
+      next.add(activeTab)
+      return next
+    })
+  }, [activeTab])
 
   const desktopSandboxStatus =
     (data.sandboxStatus && data.sandboxStatus !== 'unknown')
@@ -193,18 +207,31 @@ export function RightSidebar({
         onToggleExpanded={onToggleExpanded}
         onTogglePanel={onTogglePanel}
         expanded={expanded}
-        sessionTitle={data.sessionInfo?.title}
+        sessionTitle={data.sessionTitle ?? data.sessionInfo?.title}
         onDeleteSession={() => {
           void onDeleteSession(data.sessionId)
         }}
       />
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-[#141414] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <TabContent
-          activeTab={activeTab}
-          data={data}
-          desktopSandboxStatus={desktopSandboxStatus}
-          sandbox={sandbox}
-        />
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-[#141414] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        {TABS.map((tab) =>
+          mountedTabs.has(tab.id) ? (
+            <div
+              key={tab.id}
+              aria-hidden={activeTab !== tab.id}
+              className={cn(
+                'absolute inset-0',
+                activeTab === tab.id ? 'visible z-10' : 'invisible z-0 pointer-events-none',
+              )}
+            >
+              <TabContent
+                activeTab={tab.id}
+                data={data}
+                desktopSandboxStatus={desktopSandboxStatus}
+                sandbox={sandbox}
+              />
+            </div>
+          ) : null,
+        )}
       </div>
     </div>
   )
@@ -247,19 +274,32 @@ export function RightSidebar({
                 onToggleExpanded={() => setMobileExpanded(prev => !prev)}
                 onTogglePanel={() => onMobileOpenChange(false)}
                 expanded={mobileExpanded}
-                sessionTitle={data.sessionInfo?.title}
+                sessionTitle={data.sessionTitle ?? data.sessionInfo?.title}
                 onDeleteSession={() => {
                   void onDeleteSession(data.sessionId)
                 }}
                 isMobile
               />
-              <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-[#141414] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <TabContent
-                  activeTab={activeTab}
-                  data={data}
-                  desktopSandboxStatus={desktopSandboxStatus}
-                  sandbox={sandbox}
-                />
+              <div className="relative min-h-0 flex-1 overflow-hidden rounded-[18px] border border-white/10 bg-[#141414] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                {TABS.map((tab) =>
+                  mountedTabs.has(tab.id) ? (
+                    <div
+                      key={tab.id}
+                      aria-hidden={activeTab !== tab.id}
+                      className={cn(
+                        'absolute inset-0',
+                        activeTab === tab.id ? 'visible z-10' : 'invisible z-0 pointer-events-none',
+                      )}
+                    >
+                      <TabContent
+                        activeTab={tab.id}
+                        data={data}
+                        desktopSandboxStatus={desktopSandboxStatus}
+                        sandbox={sandbox}
+                      />
+                    </div>
+                  ) : null,
+                )}
               </div>
             </div>
           </DrawerContent>

@@ -5,7 +5,6 @@ import { useIsMobile } from '@ship/ui'
 import type { RightSidebarTab } from '../types'
 
 const STORAGE_KEY = 'ship-right-sidebar'
-const TAB_STORAGE_KEY = 'ship-right-sidebar-tab'
 const EXPANDED_STORAGE_KEY = 'ship-right-sidebar-expanded'
 
 function readStorage(key: string, fallback: string): string {
@@ -17,7 +16,7 @@ function readStorage(key: string, fallback: string): string {
   }
 }
 
-export function useRightSidebar() {
+export function useRightSidebar(activeSessionId?: string | null) {
   const isMobile = useIsMobile()
 
   const [desktopOpen, setDesktopOpen] = useState(false)
@@ -30,11 +29,11 @@ export function useRightSidebar() {
   useEffect(() => {
     setDesktopOpen(readStorage(STORAGE_KEY, 'false') !== 'false')
     setExpanded(readStorage(EXPANDED_STORAGE_KEY, 'false') === 'true')
-
-    const savedTab = readStorage(TAB_STORAGE_KEY, 'git')
-    const valid: RightSidebarTab[] = ['git', 'desktop', 'terminal']
-    setActiveTabState(valid.includes(savedTab as RightSidebarTab) ? (savedTab as RightSidebarTab) : 'git')
   }, [])
+
+  useEffect(() => {
+    if (activeSessionId) setActiveTabState('git')
+  }, [activeSessionId])
 
   const toggle = useCallback(() => {
     if (isMobile) {
@@ -52,9 +51,6 @@ export function useRightSidebar() {
 
   const setActiveTab = useCallback((tab: RightSidebarTab) => {
     setActiveTabState(tab)
-    try {
-      localStorage.setItem(TAB_STORAGE_KEY, tab)
-    } catch {}
   }, [])
 
   const toggleExpanded = useCallback(() => {

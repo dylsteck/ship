@@ -13,23 +13,29 @@ describe('collectSessionDesktopState', () => {
     expect(state.message).toContain('no sandbox')
   })
 
-  it('reuses a persisted ready desktop url', async () => {
-    const connectSandbox = vi.fn()
+  it('verifies a persisted ready desktop before returning a fresh url', async () => {
+    const connectSandbox = vi.fn(async () => ({
+      getUrl: async () => 'https://fresh-desktop.example',
+      runCommand: async () => ({ exitCode: 0, stdout: 'ready' }),
+    }))
     const state = await collectSessionDesktopState({
       env: {} as Env,
       connectSandbox,
       stub: fakeStub({
         meta: {
           desktop_status: 'ready',
-          desktop_bridge_version: '4',
+          desktop_bridge_version: '5',
           desktop_url: 'https://desktop.example/vnc.html',
         },
         sandbox: { sandboxId: 'sandbox-1' },
       }),
     })
 
-    expect(state).toEqual({ status: 'ready', url: 'https://desktop.example/vnc.html' })
-    expect(connectSandbox).not.toHaveBeenCalled()
+    expect(state).toEqual({
+      status: 'ready',
+      url: 'https://fresh-desktop.example/vnc.html?autoconnect=1&resize=scale&reconnect=1&path=websockify',
+    })
+    expect(connectSandbox).toHaveBeenCalledWith('sandbox-1', {})
   })
 
   it('returns structured errors from the background startup status file', async () => {
@@ -62,7 +68,7 @@ describe('collectSessionDesktopState', () => {
     })
 
     expect(state).toEqual({ status: 'starting' })
-    expect(postedMeta.at(-1)).toMatchObject({ desktop_status: 'starting', desktop_bridge_version: '4' })
+    expect(postedMeta.at(-1)).toMatchObject({ desktop_status: 'starting', desktop_bridge_version: '5' })
   })
 })
 

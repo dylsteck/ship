@@ -7,7 +7,14 @@ import { runSandboxCommand, type ComputeCommandSandbox } from './sandbox-command
 const DO_URL = 'https://do'
 const NOVNC_PORT = 6080
 const VNC_PORT = 5900
-const DESKTOP_BRIDGE_VERSION = '4'
+const DESKTOP_BRIDGE_VERSION = '5'
+const DESKTOP_READY_CHECK = [
+  'curl -fsS http://127.0.0.1:6080/vnc.html >/dev/null 2>&1',
+  'pgrep -f "Xvfb :99" >/dev/null 2>&1',
+  'pgrep -f "x11vnc.*-rfbport 5900" >/dev/null 2>&1',
+  'pgrep -f "websockify.*6080" >/dev/null 2>&1',
+  'pgrep -f "xterm|google-chrome|chromium" >/dev/null 2>&1',
+].join(' && ')
 
 /** Desktop state exposed to the web right sidebar. */
 export interface SessionDesktopState {
@@ -44,15 +51,20 @@ interface SandboxStatus {
 /** Collect or lazily start the browser-accessible desktop for a session. */
 export async function collectSessionDesktopState(input: CollectSessionDesktopStateInput): Promise<SessionDesktopState> {
   const [meta, sandboxStatus] = await Promise.all([fetchMeta(input.stub), fetchSandboxStatus(input.stub)])
-  if (!input.force && meta['desktop_status'] === 'ready' && meta['desktop_bridge_version'] === DESKTOP_BRIDGE_VERSION && meta['desktop_url']) {
-    return { status: 'ready', url: meta['desktop_url'] }
-  }
   if (!sandboxStatus.sandboxId) {
     return { status: 'unavailable', message: 'Session has no sandbox yet. Send a message to start the session.' }
   }
 
   const token = !input.force && meta['desktop_token'] ? meta['desktop_token'] : input.createToken?.() || createDesktopToken()
-  await setMeta(input.stub, { desktop_status: 'starting', desktop_token: token, desktop_updated_at: Date.now().toString() })
+  const cachedReady =
+    !input.force &&
+    meta['desktop_status'] === 'ready' &&
+    meta['desktop_bridge_version'] === DESKTOP_BRIDGE_VERSION &&
+    meta['desktop_url']
+
+  if (!cachedReady) {
+    await setMeta(input.stub, { desktop_status: 'starting', desktop_token: token, desktop_updated_at: Date.now().toString() })
+  }
 
   try {
     const connect = input.connectSandbox ?? connectE2BSandbox
@@ -102,8 +114,8 @@ async function inspectDesktopBridge(sandbox: DesktopSandbox): Promise<string> {
   const result = await runSandboxCommand(
     sandbox,
     [
-      'if curl -fsS http://127.0.0.1:6080/vnc.html >/dev/null 2>&1 && pgrep -f "websockify.*6080" >/dev/null 2>&1; then echo ready; exit 0; fi',
-      'if [ -f /tmp/ship-desktop/status ]; then cat /tmp/ship-desktop/status; exit 0; fi',
+      `if ${DESKTOP_READY_CHECK}; then echo ready; exit 0; fi`,
+      'if [ -f /tmp/ship-desktop/status ]; then status="$(cat /tmp/ship-desktop/status)"; if [ "$status" != "ready" ]; then echo "$status"; exit 0; fi; fi',
       'echo missing',
     ].join('\n'),
     { timeoutMs: 8_000 },
@@ -242,7 +254,7 @@ cd "$NOVNC_WEB/utils"
 nohup ./novnc_proxy --vnc localhost:"$VNC_PORT" --listen "$NOVNC_PORT" --web "$NOVNC_WEB" --heartbeat 30 >/tmp/ship-desktop/novnc.log 2>&1 &
 
 for _ in $(seq 1 90); do
-  if curl -fsS "http://127.0.0.1:$NOVNC_PORT/vnc.html" >/dev/null 2>&1 && pgrep -f "websockify.*$NOVNC_PORT" >/dev/null 2>&1; then
+  if curl -fsS "http://127.0.0.1:$NOVNC_PORT/vnc.html" >/dev/null 2>&1 && pgrep -f "Xvfb :99" >/dev/null 2>&1 && pgrep -f "websockify.*$NOVNC_PORT" >/dev/null 2>&1 && pgrep -f "x11vnc.*-rfbport $VNC_PORT" >/dev/null 2>&1 && pgrep -f "xterm|google-chrome|chromium" >/dev/null 2>&1; then
     printf ready > "$status_file"
     exit 0
   fi

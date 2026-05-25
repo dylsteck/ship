@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { stopChatStream } from '@/lib/api/chat-client'
+import { postSessionSync } from '@/lib/session-sync-channel'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { createAssistantPlaceholder } from '@/lib/ai-elements-adapter'
 import type { ChatSession } from '@/lib/api/server'
@@ -107,6 +108,7 @@ export function useDashboardChat(
     setInternalIsStreaming(false)
     if (activeSessionId) {
       useChatStore.getState().setIsStreaming(activeSessionId, false)
+      postSessionSync({ type: 'session-stopped', sessionId: activeSessionId })
     }
     sessionStatusStore.update(activeSessionId, { isRunning: false, status: 'Stopped' })
     streamingMessageRef.current = null
