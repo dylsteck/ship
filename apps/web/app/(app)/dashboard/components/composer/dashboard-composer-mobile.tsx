@@ -9,7 +9,7 @@ import { ModeToggle } from './mode-toggle'
 /** Single-row follow-up composer for mobile session chat (matches session EnhancedPromptInput). */
 export function DashboardComposerMobileFollowUp() {
   return (
-    <div className="shrink-0 border-t border-border/30 bg-background px-3 pb-3 pt-2">
+    <div className="shrink-0 border-t border-border/30 bg-background px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
       <div
         className={cn(
           'flex items-center gap-2 rounded-2xl border border-border/50 bg-card overflow-hidden',
