@@ -43,6 +43,24 @@ export function MaximizeIcon({ className }: { className?: string }) {
   )
 }
 
+export function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  )
+}
+
 export function PanelToggleIcon({ className }: { className?: string }) {
   return (
     <svg

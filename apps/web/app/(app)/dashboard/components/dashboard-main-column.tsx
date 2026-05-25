@@ -120,12 +120,6 @@ export function DashboardMainColumn({
               sessions={sessions}
               serverTimestamp={serverTimestamp}
               isMobile={isMobile ?? false}
-              fileDiffs={rightSidebarData?.fileDiffs}
-              onOpenContextPanel={
-                rightSidebarData
-                  ? () => rightSidebar.openMobilePanel('git')
-                  : undefined
-              }
             />
           </div>
 

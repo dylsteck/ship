@@ -7,9 +7,7 @@ import type { TodoItem } from '../types'
 import { DashboardMessages } from './dashboard-messages'
 import { DashboardComposer } from './composer'
 import { DashboardComposerMobileFollowUp } from './composer/dashboard-composer-mobile'
-import { DashboardMobileContextBar } from './dashboard-mobile-context-bar'
 import { MobileSessionList } from './mobile-session-list'
-import type { FileDiff } from '../types'
 import { HomepageSessionList } from './homepage-session-list'
 import type { ModelInfo } from '@/lib/api/types'
 
@@ -33,21 +31,14 @@ function ActiveSessionLayout({
   composerContext,
   compactComposer,
   mobileChatLayout,
-  fileDiffs,
-  onOpenContextPanel,
 }: {
   messagesProps: DashboardMessagesPropsBundle
   composerContext: ComposerContextValue
   compactComposer?: boolean
   mobileChatLayout?: boolean
-  fileDiffs?: FileDiff[]
-  onOpenContextPanel?: () => void
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {mobileChatLayout && onOpenContextPanel && (
-        <DashboardMobileContextBar fileDiffs={fileDiffs ?? []} onOpenPanel={onOpenContextPanel} />
-      )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <DashboardMessages {...messagesProps} mobileChatLayout={mobileChatLayout} />
       </div>
@@ -67,8 +58,6 @@ export function DashboardMobileContent({
   sessions,
   serverTimestamp,
   isMobile,
-  fileDiffs,
-  onOpenContextPanel,
 }: {
   activeSessionId: string | null
   messagesProps: DashboardMessagesPropsBundle
@@ -80,8 +69,6 @@ export function DashboardMobileContent({
   }
   serverTimestamp: number
   isMobile: boolean
-  fileDiffs?: FileDiff[]
-  onOpenContextPanel?: () => void
 }) {
   if (!activeSessionId) {
     return (
@@ -108,8 +95,6 @@ export function DashboardMobileContent({
         messagesProps={messagesProps}
         composerContext={composerContext}
         mobileChatLayout
-        fileDiffs={fileDiffs}
-        onOpenContextPanel={onOpenContextPanel}
       />
     </ComposerProvider>
   )

@@ -2,8 +2,7 @@
 
 import * as React from 'react'
 import { cn } from '../utils'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../sheet'
-import { SIDEBAR_WIDTH_MOBILE } from './constants'
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '../drawer'
 import { useSidebar } from './context'
 
 function Sidebar({
@@ -35,27 +34,20 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          dir={dir}
+      <Drawer open={openMobile} onOpenChange={setOpenMobile} noBodyStyles>
+        <DrawerContent
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
-          side={side}
+          className="bg-sidebar text-sidebar-foreground h-[80dvh] p-0"
         >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Sidebar</DrawerTitle>
+            <DrawerDescription>Displays the mobile sidebar.</DrawerDescription>
+          </DrawerHeader>
+          <div className="flex h-full w-full flex-col overflow-hidden">{children}</div>
+        </DrawerContent>
+      </Drawer>
     )
   }
 
