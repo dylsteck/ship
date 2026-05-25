@@ -7,17 +7,19 @@
   "types": "./src/index.ts",
   "scripts": {
     "lint": "echo '@ship/sandbox: no eslint (handled by api workspace)'",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "exports": {
     ".": "./src/index.ts",
     "./interface": "./src/interface.ts",
     "./e2b": "./src/e2b.ts"
   },
-  "dependencies": {
-    "@e2b/code-interpreter": "^2.3.3"
-  },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@computesdk/e2b": "^1.7.49"
   }
 }

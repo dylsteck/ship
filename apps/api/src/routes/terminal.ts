@@ -7,8 +7,9 @@
  */
 
 import { Hono } from 'hono'
-import { Sandbox } from '@e2b/code-interpreter'
+import type { E2BSandbox } from '@computesdk/e2b'
 import type { Env } from '../env.d'
+import { getNativeE2BSandbox, requireComputeSandbox } from '../lib/compute-provider'
 import { requireSessionOwner } from '../lib/session-authorization'
 
 const terminal = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
@@ -70,15 +71,13 @@ terminal.get('/:sessionId', async (c) => {
   const apiKey = c.env.E2B_API_KEY
 
   ;(async () => {
-    let sandbox: InstanceType<typeof Sandbox> | null = null
+    let sandbox: E2BSandbox | null = null
     let ptyPid: number | null = null
 
     try {
       console.log('[terminal] Connecting to sandbox', { sessionId, sandboxId })
-      sandbox = await Sandbox.connect(sandboxId!, {
-        apiKey,
-        timeoutMs: 5 * 60 * 1000,
-      })
+      const computeSandbox = await requireComputeSandbox(apiKey, sandboxId!)
+      sandbox = getNativeE2BSandbox(computeSandbox)
 
       console.log('[terminal] Creating PTY', { sandboxId })
       const pty = await sandbox.pty.create({

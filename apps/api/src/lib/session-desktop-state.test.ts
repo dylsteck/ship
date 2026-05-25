@@ -38,10 +38,8 @@ describe('collectSessionDesktopState', () => {
       env: {} as Env,
       createToken: () => 'token-1',
       connectSandbox: async () => ({
-        getHost: () => 'desktop.example',
-        commands: {
-          run: async () => ({ exitCode: 0, stdout: 'error:missing desktop dependencies' }),
-        },
+        getUrl: async () => 'https://desktop.example',
+        runCommand: async () => ({ exitCode: 0, stdout: 'error:missing desktop dependencies' }),
       }),
       stub: fakeStub({ meta: {}, sandbox: { sandboxId: 'sandbox-1' }, postedMeta }),
     })
@@ -57,10 +55,8 @@ describe('collectSessionDesktopState', () => {
       env: {} as Env,
       createToken: () => 'token-1',
       connectSandbox: async () => ({
-        getHost: () => 'desktop.example',
-        commands: {
-          run: async () => ({ exitCode: 0, stdout: calls++ === 0 ? 'missing' : 'starting' }),
-        },
+        getUrl: async () => 'https://desktop.example',
+        runCommand: async () => ({ exitCode: 0, stdout: calls++ === 0 ? 'missing' : 'starting' }),
       }),
       stub: fakeStub({ meta: {}, sandbox: { sandboxId: 'sandbox-1' }, postedMeta }),
     })

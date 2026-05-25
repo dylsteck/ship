@@ -225,8 +225,12 @@ export async function handleSessionAgentRoutes(
       if (!(await host.getRepoUrl())) {
         return Response.json({ error: 'Repository URL not set' }, { status: 400 })
       }
-      const { Sandbox } = await import('../lib/e2b')
-      const sandbox = await Sandbox.connect(sandboxInfo.sandboxId, { apiKey: host.getE2bApiKey() })
+      const { requireComputeSandbox } = await import('../lib/compute-provider')
+      const apiKey = host.getE2bApiKey()
+      if (!apiKey) {
+        return Response.json({ error: 'E2B_API_KEY not configured' }, { status: 500 })
+      }
+      const sandbox = await requireComputeSandbox(apiKey, sandboxInfo.sandboxId)
       await host.initializeAgentExecutor(sandbox, body.githubToken, body.gitUser)
       return Response.json({ success: true })
     } catch (error) {

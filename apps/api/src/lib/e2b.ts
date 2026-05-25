@@ -2,14 +2,21 @@
  * E2B Sandbox Wrapper
  *
  * Provides lifecycle management for E2B sandboxes:
- * - Create: Provision new sandbox with auto-pause enabled
+ * - Create: Provision new sandbox with pause-on-timeout enabled
  * - Resume: Reconnect to existing sandbox
  * - Pause: Manually pause sandbox to control costs
  *
- * Pattern from RESEARCH.md: Use Sandbox.create() with autoPause for cost control
+ * Pattern: Use Compute SDK's E2B provider with pause-on-timeout lifecycle for cost control.
  */
 
-import { Sandbox } from '@e2b/code-interpreter'
+import {
+  connectComputeSandbox,
+  createComputeSandbox,
+  destroyComputeSandbox,
+  getNativeE2BSandbox,
+  requireComputeSandbox,
+  type ShipComputeCreateOptions,
+} from './compute-provider'
 
 /**
  * Custom E2B template id pre-baked with common dev tooling
@@ -53,13 +60,29 @@ function isE2BRateLimitError(error: unknown): boolean {
   return msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests')
 }
 
+/** Convert Ship's lifecycle config to Compute SDK create options. */
+export function buildComputeCreateOptions(config: SandboxConfig): ShipComputeCreateOptions {
+  const timeoutMs = config.timeoutMs ?? 5 * 60 * 1000
+  const hasEnvs = config.envs && Object.keys(config.envs).length > 0
+  return {
+    ...(E2B_TEMPLATE_ID ? { templateId: E2B_TEMPLATE_ID } : {}),
+    lifecycle: { onTimeout: config.autoPause === false ? 'kill' : 'pause' },
+    timeout: timeoutMs,
+    metadata: {
+      sessionId: config.sessionId,
+      ...config.metadata,
+    },
+    ...(hasEnvs ? { envs: config.envs } : {}),
+  }
+}
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
 /**
  * Create a new sandbox for a session
- * Uses Sandbox.betaCreate() with autoPause enabled per RESEARCH.md Pattern 1
+ * Uses Compute SDK create with pause-on-timeout lifecycle enabled.
  * Retries with backoff on E2B 429 (sandbox creation rate: 1/sec on Hobby plan)
  *
  * @param apiKey - E2B API key
@@ -67,24 +90,12 @@ async function sleep(ms: number): Promise<void> {
  * @returns SandboxInfo with id and status
  */
 export async function createSessionSandbox(apiKey: string, config: SandboxConfig): Promise<SandboxInfo> {
-  const timeoutMs = config.timeoutMs ?? 5 * 60 * 1000 // 5-minute default timeout
   const maxRetries = 3
   const baseDelayMs = 2000
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const hasEnvs = config.envs && Object.keys(config.envs).length > 0
-      const sandbox = await Sandbox.betaCreate({
-        apiKey,
-        ...(E2B_TEMPLATE_ID ? { template: E2B_TEMPLATE_ID } : {}),
-        autoPause: true, // Enable auto-pause for cost control
-        timeoutMs,
-        metadata: {
-          sessionId: config.sessionId,
-          ...config.metadata,
-        },
-        ...(hasEnvs && { envs: config.envs }),
-      })
+      const sandbox = await createComputeSandbox(apiKey, buildComputeCreateOptions(config))
 
       return {
         id: sandbox.sandboxId,
@@ -113,8 +124,7 @@ export async function createSessionSandbox(apiKey: string, config: SandboxConfig
  * Resume an existing sandbox
  * Used when SessionDO wakes from hibernation and reconnects to sandbox
  *
- * E2B Pattern: Use Sandbox.connect() to reconnect to existing sandbox
- * The connect() method automatically resumes paused sandboxes
+ * Compute SDK's getById() reconnects to the existing sandbox.
  * Retries with backoff on E2B 429
  *
  * @param apiKey - E2B API key
@@ -127,11 +137,9 @@ export async function resumeSandbox(apiKey: string, sandboxId: string): Promise<
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // Connect to the existing sandbox (auto-resumes if paused)
-      const sandbox = await Sandbox.connect(sandboxId, {
-        apiKey,
-        timeoutMs: 5 * 60 * 1000,
-      })
+      const sandbox = await connectComputeSandbox(apiKey, sandboxId)
+      if (!sandbox) throw new Error('Sandbox not found')
+      await getNativeE2BSandbox(sandbox).setTimeout(5 * 60 * 1000)
 
       return {
         id: sandbox.sandboxId,
@@ -156,22 +164,15 @@ export async function resumeSandbox(apiKey: string, sandboxId: string): Promise<
  * Manually pause a sandbox to control costs
  * Called during idle periods or session cleanup
  *
- * E2B Pattern: Use betaPause() method on sandbox instance
+ * E2B pause remains provider-specific and is accessed via getInstance().
  *
  * @param apiKey - E2B API key
  * @param sandboxId - The sandbox ID to pause
  */
 export async function pauseSandbox(apiKey: string, sandboxId: string): Promise<void> {
   try {
-    // Connect to the specific sandbox
-    const sandbox = await Sandbox.connect(sandboxId, {
-      apiKey,
-      timeoutMs: 5 * 60 * 1000,
-    })
-
-    // Use betaPause() to pause the sandbox
-    // This is the recommended method for explicit cost control
-    await sandbox.betaPause()
+    const sandbox = await requireComputeSandbox(apiKey, sandboxId)
+    await getNativeE2BSandbox(sandbox).pause()
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown E2B error'
     throw new E2BError(`Failed to pause sandbox: ${message}`, 'PAUSE_FAILED', sandboxId)
@@ -187,7 +188,7 @@ export async function pauseSandbox(apiKey: string, sandboxId: string): Promise<v
  */
 export async function terminateSandbox(apiKey: string, sandboxId: string): Promise<void> {
   try {
-    await Sandbox.kill(sandboxId, { apiKey })
+    await destroyComputeSandbox(apiKey, sandboxId)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown E2B error'
     throw new E2BError(`Failed to terminate sandbox: ${message}`, 'TERMINATE_FAILED', sandboxId)
@@ -204,10 +205,8 @@ export async function terminateSandbox(apiKey: string, sandboxId: string): Promi
  */
 export async function getSandboxStatus(apiKey: string, sandboxId: string): Promise<SandboxInfo> {
   try {
-    const sandbox = await Sandbox.connect(sandboxId, {
-      apiKey,
-      timeoutMs: 5 * 60 * 1000,
-    })
+    const sandbox = await connectComputeSandbox(apiKey, sandboxId)
+    if (!sandbox) throw new Error('Sandbox not found')
 
     return {
       id: sandbox.sandboxId,
@@ -255,7 +254,7 @@ export class SandboxManager {
   async provision(envs?: Record<string, string>): Promise<SandboxInfo> {
     const info = await createSessionSandbox(this.apiKey, {
       sessionId: this.sessionId,
-      autoPause: true, // Always enable auto-pause for cost control
+      autoPause: true, // Preserve API-level default: pause on timeout for cost control
       ...(envs && Object.keys(envs).length > 0 && { envs }),
     })
 
@@ -326,9 +325,8 @@ export class SandboxManager {
  * @returns Public URL string
  */
 export async function getSandboxPortUrl(apiKey: string, sandboxId: string, port: number): Promise<string> {
-  const sandbox = await Sandbox.connect(sandboxId, { apiKey })
-  const host = sandbox.getHost(port)
-  return `https://${host}`
+  const sandbox = await requireComputeSandbox(apiKey, sandboxId)
+  return sandbox.getUrl({ port })
 }
 
 /**
@@ -340,9 +338,6 @@ export async function getSandboxPortUrl(apiKey: string, sandboxId: string, port:
  * @param timeoutMs - New timeout in ms (default: 5 minutes)
  */
 export async function refreshSandboxTimeout(apiKey: string, sandboxId: string, timeoutMs?: number): Promise<void> {
-  const sandbox = await Sandbox.connect(sandboxId, { apiKey })
-  await sandbox.setTimeout(timeoutMs ?? 5 * 60 * 1000)
+  const sandbox = await requireComputeSandbox(apiKey, sandboxId)
+  await getNativeE2BSandbox(sandbox).setTimeout(timeoutMs ?? 5 * 60 * 1000)
 }
-
-// Re-export types from E2B SDK for convenience
-export { Sandbox } from '@e2b/code-interpreter'

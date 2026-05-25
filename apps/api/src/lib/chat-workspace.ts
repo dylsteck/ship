@@ -11,9 +11,10 @@
 
 import { connectSandbox, type Sandbox, type SandboxState } from '@ship/sandbox'
 import type { Env } from '../env.d'
-import { Sandbox as E2BSandbox } from './e2b'
+import { getNativeE2BSandbox, requireComputeSandbox, type ComputeSandbox } from './compute-provider'
 import { cloneGitHubRepoWithStrategies, generateBranchName } from './git-workflow'
 import { writeStatus, type SSEWriter } from './chat-stream-helpers'
+import { runSandboxCommand } from './sandbox-command'
 
 /** Maximum wait while the provisioner spins up a fresh sandbox. */
 const SANDBOX_PROVISION_WAIT_MS = 30_000
@@ -69,8 +70,8 @@ export async function prepareWorkspace(input: PrepareWorkspaceInput): Promise<Pr
   const sandboxId = sandboxResult.sandboxId
 
   const repoMeta = pickRepoMeta(input.meta)
-  const e2b = await E2BSandbox.connect(sandboxId, { apiKey: input.env.E2B_API_KEY })
-  await e2b.setTimeout(10 * 60 * 1000)
+  const computeSandbox = await requireComputeSandbox(input.env.E2B_API_KEY, sandboxId)
+  await getNativeE2BSandbox(computeSandbox).setTimeout(10 * 60 * 1000)
 
   if (repoMeta && input.meta['repo_url']) {
     const branch = input.meta['current_branch'] || repoMeta.branchName || repoMeta.baseBranch
@@ -78,7 +79,7 @@ export async function prepareWorkspace(input: PrepareWorkspaceInput): Promise<Pr
   }
 
   if (repoMeta && !input.meta['repo_url']) {
-    const cloneResult = await cloneRepoOrError(input, e2b, repoMeta, sandboxId)
+    const cloneResult = await cloneRepoOrError(input, computeSandbox, repoMeta, sandboxId)
     if (!cloneResult.ok) return cloneResult
   }
 
@@ -174,7 +175,7 @@ function pickRepoMeta(meta: Record<string, string>): RepoMeta | undefined {
 
 async function cloneRepoOrError(
   input: PrepareWorkspaceInput,
-  e2b: E2BSandbox,
+  computeSandbox: ComputeSandbox,
   repo: RepoMeta,
   sandboxId: string,
 ): Promise<PrepareWorkspaceResult> {
@@ -196,7 +197,7 @@ async function cloneRepoOrError(
   const repoUrl = `https://github.com/${repo.owner}/${repo.name}.git`
 
   try {
-    await cloneGitHubRepoWithStrategies(e2b, repo.owner, repo.name, repoPath, input.githubToken, {
+    await cloneGitHubRepoWithStrategies(computeSandbox, repo.owner, repo.name, repoPath, input.githubToken, {
       timeoutMs: 120_000,
       depth: 1,
       singleBranch: true,
@@ -212,10 +213,10 @@ async function cloneRepoOrError(
     }
   }
 
-  await runQuiet(e2b, `cd ${repoPath} && git config user.name "${escape(input.gitUser.name)}"`)
-  await runQuiet(e2b, `cd ${repoPath} && git config user.email "${escape(input.gitUser.email)}"`)
-  await runQuiet(e2b, `cd ${repoPath} && git checkout ${repo.baseBranch} || true`)
-  await runQuiet(e2b, `cd ${repoPath} && git checkout -b ${branchName}`)
+  await runQuiet(computeSandbox, `cd ${repoPath} && git config user.name "${escape(input.gitUser.name)}"`)
+  await runQuiet(computeSandbox, `cd ${repoPath} && git config user.email "${escape(input.gitUser.email)}"`)
+  await runQuiet(computeSandbox, `cd ${repoPath} && git checkout ${repo.baseBranch} || true`)
+  await runQuiet(computeSandbox, `cd ${repoPath} && git checkout -b ${branchName}`)
 
   await input.stub.fetch(
     new Request('https://do/meta', {
@@ -250,9 +251,9 @@ async function cloneRepoOrError(
   }
 }
 
-async function runQuiet(e2b: E2BSandbox, command: string): Promise<void> {
+async function runQuiet(computeSandbox: ComputeSandbox, command: string): Promise<void> {
   try {
-    await e2b.commands.run(command)
+    await runSandboxCommand(computeSandbox, command)
   } catch {
     // Best-effort — ignore non-zero exits in setup steps.
   }

@@ -1,7 +1,8 @@
 /** Desktop bridge startup for session sandboxes. */
 
-import { Sandbox } from '@e2b/code-interpreter'
 import type { Env } from '../env.d'
+import { requireComputeSandbox } from './compute-provider'
+import { runSandboxCommand, type ComputeCommandSandbox } from './sandbox-command'
 
 const DO_URL = 'https://do'
 const NOVNC_PORT = 6080
@@ -24,10 +25,9 @@ interface CollectSessionDesktopStateInput {
 }
 
 interface DesktopSandbox {
-  getHost(port: number): string
-  commands: {
-    run(command: string, options?: { timeoutMs?: number }): Promise<CommandOutput>
-  }
+  getUrl(options: { port: number }): Promise<string>
+  runCommand: ComputeCommandSandbox['runCommand']
+  getInstance?: ComputeCommandSandbox['getInstance']
 }
 
 interface CommandOutput {
@@ -59,7 +59,7 @@ export async function collectSessionDesktopState(input: CollectSessionDesktopSta
     const sandbox = await connect(sandboxStatus.sandboxId, input.env)
     const status = await inspectDesktopBridge(sandbox)
     if (status === 'ready') {
-      const url = buildDesktopUrl(sandbox)
+      const url = await buildDesktopUrl(sandbox)
       await setReadyMeta(input.stub, url, token)
       return { status: 'ready', url }
     }
@@ -99,7 +99,8 @@ async function setReadyMeta(stub: { fetch: typeof fetch }, url: string, token: s
 }
 
 async function inspectDesktopBridge(sandbox: DesktopSandbox): Promise<string> {
-  const result = await sandbox.commands.run(
+  const result = await runSandboxCommand(
+    sandbox,
     [
       'if curl -fsS http://127.0.0.1:6080/vnc.html >/dev/null 2>&1 && pgrep -f "websockify.*6080" >/dev/null 2>&1; then echo ready; exit 0; fi',
       'if [ -f /tmp/ship-desktop/status ]; then cat /tmp/ship-desktop/status; exit 0; fi',
@@ -123,25 +124,28 @@ printf starting > /tmp/ship-desktop/status
 nohup /bin/bash /tmp/ship-desktop/start.sh >/tmp/ship-desktop/start.log 2>&1 &
 echo starting
 `.trim()
-  const result = await sandbox.commands.run(launcher, { timeoutMs: 8_000 })
+  const result = await runSandboxCommand(sandbox, launcher, { timeoutMs: 8_000 })
   if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
     throw new Error(trimCommandOutput(result) || `Desktop startup launch failed with exit code ${result.exitCode}`)
   }
 }
 
 async function connectE2BSandbox(sandboxId: string, env: Env): Promise<DesktopSandbox> {
-  return Sandbox.connect(sandboxId, { apiKey: env.E2B_API_KEY, timeoutMs: 5 * 60 * 1000 }) as Promise<DesktopSandbox>
+  return requireComputeSandbox(env.E2B_API_KEY, sandboxId)
 }
 
-function buildDesktopUrl(sandbox: DesktopSandbox): string {
-  const host = sandbox.getHost(NOVNC_PORT)
+async function buildDesktopUrl(sandbox: DesktopSandbox): Promise<string> {
+  const baseUrl = await sandbox.getUrl({ port: NOVNC_PORT })
   const params = new URLSearchParams({
     autoconnect: '1',
     resize: 'scale',
     reconnect: '1',
     path: 'websockify',
   })
-  return `https://${host}/vnc.html?${params.toString()}`
+  const url = new URL(baseUrl)
+  url.pathname = '/vnc.html'
+  url.search = params.toString()
+  return url.toString()
 }
 
 function buildDesktopStartupScript(): string {

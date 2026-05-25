@@ -1,10 +1,11 @@
 /** Live git-state collection for the session right sidebar. */
 
 import { Octokit } from '@octokit/rest'
-import { Sandbox } from '@e2b/code-interpreter'
 import type { Env } from '../env.d'
+import { requireComputeSandbox } from './compute-provider'
 import { getGitHubAccessTokenForUser } from './github-token'
 import { parseRepoUrl } from './github'
+import { runSandboxCommand, type ComputeCommandSandbox } from './sandbox-command'
 import {
   buildDiffFiles,
   mergeStatusFiles,
@@ -140,7 +141,7 @@ async function collectSandboxGitState(
   sandboxId: string,
   meta: Record<string, string>,
 ): Promise<Partial<SessionGitState>> {
-  const sandbox = await Sandbox.connect(sandboxId, { apiKey: env.E2B_API_KEY, timeoutMs: 5 * 60 * 1000 })
+  const sandbox = await requireComputeSandbox(env.E2B_API_KEY, sandboxId)
   const repoPath = meta['repo_path'] || DEFAULT_REPO_PATH
   const inside = await runGit(sandbox, repoPath, 'git rev-parse --is-inside-work-tree')
   if (commandStdout(inside).trim() !== 'true') return {}
@@ -409,9 +410,9 @@ function commandStdout(output: CommandOutput | undefined): string {
   return ''
 }
 
-async function runGit(sandbox: InstanceType<typeof Sandbox>, cwd: string, command: string): Promise<CommandOutput> {
+async function runGit(sandbox: ComputeCommandSandbox, cwd: string, command: string): Promise<CommandOutput> {
   try {
-    return (await sandbox.commands.run(`cd ${shellQuote(cwd)} && ${command}`)) as CommandOutput
+    return (await runSandboxCommand(sandbox, `cd ${shellQuote(cwd)} && ${command}`)) as CommandOutput
   } catch (error) {
     const commandError = error as CommandOutput
     return {

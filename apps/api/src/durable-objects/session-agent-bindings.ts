@@ -1,12 +1,12 @@
-import type { Sandbox } from '@e2b/code-interpreter'
 import { createAgentExecutor, type AgentExecutor, type ErrorEvent } from '../lib/agent-executor'
+import type { ComputeCommandSandbox } from '../lib/sandbox-command'
 import { getRepoUrl } from './session-git-meta-store'
 import type { SessionDO } from './session'
 
 /** Initialize the legacy in-VM agent executor bound to a Session DO instance. */
 export async function initializeAgentExecutor(
   host: SessionDO,
-  sandbox: Sandbox,
+  sandbox: ComputeCommandSandbox,
   githubToken: string,
   gitUser: { name: string; email: string },
 ): Promise<AgentExecutor> {
