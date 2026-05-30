@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  connectComputeSandbox,
   createComputeSandbox,
   getNativeE2BSandbox,
   requireComputeSandbox,
@@ -63,7 +62,7 @@ describe('E2B Compute SDK lifecycle helpers', () => {
   })
 
   it('wraps missing reconnects in resume errors', async () => {
-    vi.mocked(connectComputeSandbox).mockResolvedValue(null)
+    vi.mocked(requireComputeSandbox).mockRejectedValue(new Error('Sandbox not found: missing-sbx'))
 
     await expect(resumeSandbox('e2b_key', 'missing-sbx')).rejects.toMatchObject({
       code: 'RESUME_FAILED',
@@ -72,12 +71,33 @@ describe('E2B Compute SDK lifecycle helpers', () => {
   })
 
   it('wraps missing status checks in status errors', async () => {
-    vi.mocked(connectComputeSandbox).mockResolvedValue(null)
+    vi.mocked(requireComputeSandbox).mockRejectedValue(new Error('Sandbox not found: missing-sbx'))
 
     await expect(getSandboxStatus('e2b_key', 'missing-sbx')).rejects.toMatchObject({
       code: 'STATUS_FAILED',
       sandboxId: 'missing-sbx',
     })
+  })
+
+  it('retries resume when native timeout refresh is rate limited', async () => {
+    vi.useFakeTimers()
+    try {
+      const native = {
+        setTimeout: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('429 too many requests'))
+          .mockResolvedValueOnce(undefined),
+      }
+      vi.mocked(requireComputeSandbox).mockResolvedValue({ sandboxId: 'sbx-1', native } as never)
+
+      const result = resumeSandbox('e2b_key', 'sbx-1')
+      await vi.advanceTimersByTimeAsync(1500)
+
+      await expect(result).resolves.toMatchObject({ id: 'sbx-1', status: 'active' })
+      expect(native.setTimeout).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('refreshes timeouts through the native E2B instance', async () => {

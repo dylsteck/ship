@@ -4,6 +4,10 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "b6c3bd7b1a1c219a306faf2c3f0a903a"
 
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.05
+
 [[workflows]]
 binding = "SHIP_ACP_WORKFLOW"
 name = "ship-acp-bootstrap"
@@ -58,6 +62,10 @@ class_name = "ShipAcpBootstrapWorkflow"
 [env.production.vars]
 ENVIRONMENT = "production"
 
+[env.production.observability.traces]
+enabled = true
+head_sampling_rate = 0.05
+
 [env.production.durable_objects]
 bindings = [
   { name = "SESSION_DO", class_name = "SessionDO" }
@@ -72,6 +80,10 @@ database_id = "86472e95-9841-4cec-85e9-655e3c7706b8"
 [env.staging]
 name = "ship-api-staging"
 vars = { ENVIRONMENT = "staging" }
+
+[env.staging.observability.traces]
+enabled = true
+head_sampling_rate = 0.05
 
 [[env.staging.d1_databases]]
 binding = "DB"

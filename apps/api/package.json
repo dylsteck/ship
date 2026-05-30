@@ -21,11 +21,13 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@computesdk/e2b": "^1.7.49",
+    "@effect/platform": "^0.96.1",
     "@octokit/rest": "^22.0.1",
     "@ship/contracts": "workspace:*",
     "@ship/sandbox": "workspace:*",
     "@ship/types": "workspace:*",
     "e2b": "^2.24.0",
+    "effect": "^3.21.2",
     "hono": "^4.12.18",
     "jose": "^6.1.3",
     "octokit-plugin-create-pull-request": "^6.0.1",

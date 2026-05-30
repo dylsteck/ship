@@ -9,21 +9,21 @@
  * Pattern: Use Compute SDK's E2B provider with pause-on-timeout lifecycle for cost control.
  */
 
+import { Effect } from 'effect'
 import {
-  connectComputeSandbox,
-  createComputeSandbox,
-  destroyComputeSandbox,
-  getNativeE2BSandbox,
-  requireComputeSandbox,
-  type ShipComputeCreateOptions,
-} from './compute-provider'
+  buildComputeCreateOptions,
+  E2B_TEMPLATE_ID,
+  SandboxLifecycle,
+  SandboxLifecycleLive,
+  type SandboxConfig,
+  type SandboxInfo,
+  type SandboxLifecycleService,
+} from '../effect/sandbox-lifecycle'
+import { ComputeSandboxesLive, type ComputeSandboxes } from '../effect/compute'
+import type { AppError } from '../effect/errors'
+import { runPromise } from '../effect/runtime'
 
-/**
- * Custom E2B template id pre-baked with common dev tooling
- * (node, bun, jq, ripgrep, build-essential). Falls back to E2B's default
- * image if empty. Build with `e2b template build` from `e2b/Dockerfile`.
- */
-export const E2B_TEMPLATE_ID = 'n1exdf9kj7gpwk6810c9'
+export { buildComputeCreateOptions, E2B_TEMPLATE_ID }
 
 // E2B API error types
 export class E2BError extends Error {
@@ -37,47 +37,30 @@ export class E2BError extends Error {
   }
 }
 
-// Sandbox configuration options
-export interface SandboxConfig {
-  sessionId: string
-  timeoutMs?: number
-  autoPause?: boolean
-  metadata?: Record<string, string>
-  /** Env vars for sandbox (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY). Available to all processes. */
-  envs?: Record<string, string>
-}
+export type { SandboxConfig, SandboxInfo }
 
-// Sandbox info returned after creation/resume
-export interface SandboxInfo {
-  id: string
-  status: 'active' | 'paused' | 'error'
-  createdAt: number
-  metadata?: Record<string, string>
-}
-
-function isE2BRateLimitError(error: unknown): boolean {
-  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase()
-  return msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests')
-}
-
-/** Convert Ship's lifecycle config to Compute SDK create options. */
-export function buildComputeCreateOptions(config: SandboxConfig): ShipComputeCreateOptions {
-  const timeoutMs = config.timeoutMs ?? 5 * 60 * 1000
-  const hasEnvs = config.envs && Object.keys(config.envs).length > 0
-  return {
-    ...(E2B_TEMPLATE_ID ? { templateId: E2B_TEMPLATE_ID } : {}),
-    lifecycle: { onTimeout: config.autoPause === false ? 'kill' : 'pause' },
-    timeout: timeoutMs,
-    metadata: {
-      sessionId: config.sessionId,
-      ...config.metadata,
-    },
-    ...(hasEnvs ? { envs: config.envs } : {}),
+function causeMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'cause' in error) {
+    const cause = (error as { cause?: unknown }).cause
+    if (cause instanceof Error) return cause.message
+    if (cause != null) return String(cause)
   }
+  return error instanceof Error ? error.message : String(error)
 }
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
+function toE2BError(error: AppError, action: string, code: string, sandboxId?: string): E2BError {
+  return new E2BError(`Failed to ${action}: ${causeMessage(error)}`, code, sandboxId)
+}
+
+function runLifecycle<A>(
+  use: (lifecycle: SandboxLifecycleService) => Effect.Effect<A, AppError, ComputeSandboxes>,
+): Promise<A> {
+  return runPromise(
+    Effect.gen(function* () {
+      const lifecycle = yield* SandboxLifecycle
+      return yield* use(lifecycle)
+    }).pipe(Effect.provide(SandboxLifecycleLive), Effect.provide(ComputeSandboxesLive)),
+  )
 }
 
 /**
@@ -90,34 +73,11 @@ async function sleep(ms: number): Promise<void> {
  * @returns SandboxInfo with id and status
  */
 export async function createSessionSandbox(apiKey: string, config: SandboxConfig): Promise<SandboxInfo> {
-  const maxRetries = 3
-  const baseDelayMs = 2000
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const sandbox = await createComputeSandbox(apiKey, buildComputeCreateOptions(config))
-
-      return {
-        id: sandbox.sandboxId,
-        status: 'active',
-        createdAt: Date.now(),
-        metadata: {
-          sessionId: config.sessionId,
-          ...config.metadata,
-        },
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown E2B error'
-      if (attempt < maxRetries && isE2BRateLimitError(error)) {
-        const delay = baseDelayMs * Math.pow(2, attempt)
-        await sleep(delay)
-        continue
-      }
-      throw new E2BError(`Failed to create sandbox: ${message}`, 'CREATE_FAILED')
-    }
+  try {
+    return await runLifecycle((lifecycle) => lifecycle.createSession(apiKey, config))
+  } catch (error) {
+    throw toE2BError(error as AppError, 'create sandbox', 'CREATE_FAILED')
   }
-
-  throw new E2BError('Failed to create sandbox after retries', 'CREATE_FAILED')
 }
 
 /**
@@ -132,32 +92,11 @@ export async function createSessionSandbox(apiKey: string, config: SandboxConfig
  * @returns SandboxInfo with current status
  */
 export async function resumeSandbox(apiKey: string, sandboxId: string): Promise<SandboxInfo> {
-  const maxRetries = 2
-  const baseDelayMs = 1500
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const sandbox = await connectComputeSandbox(apiKey, sandboxId)
-      if (!sandbox) throw new Error('Sandbox not found')
-      await getNativeE2BSandbox(sandbox).setTimeout(5 * 60 * 1000)
-
-      return {
-        id: sandbox.sandboxId,
-        status: 'active',
-        createdAt: Date.now(), // We don't track original creation time
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown E2B error'
-      if (attempt < maxRetries && isE2BRateLimitError(error)) {
-        const delay = baseDelayMs * Math.pow(2, attempt)
-        await sleep(delay)
-        continue
-      }
-      throw new E2BError(`Failed to resume sandbox: ${message}`, 'RESUME_FAILED', sandboxId)
-    }
+  try {
+    return await runLifecycle((lifecycle) => lifecycle.resume(apiKey, sandboxId))
+  } catch (error) {
+    throw toE2BError(error as AppError, 'resume sandbox', 'RESUME_FAILED', sandboxId)
   }
-
-  throw new E2BError('Failed to resume sandbox after retries', 'RESUME_FAILED', sandboxId)
 }
 
 /**
@@ -171,11 +110,9 @@ export async function resumeSandbox(apiKey: string, sandboxId: string): Promise<
  */
 export async function pauseSandbox(apiKey: string, sandboxId: string): Promise<void> {
   try {
-    const sandbox = await requireComputeSandbox(apiKey, sandboxId)
-    await getNativeE2BSandbox(sandbox).pause()
+    await runLifecycle((lifecycle) => lifecycle.pause(apiKey, sandboxId))
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown E2B error'
-    throw new E2BError(`Failed to pause sandbox: ${message}`, 'PAUSE_FAILED', sandboxId)
+    throw toE2BError(error as AppError, 'pause sandbox', 'PAUSE_FAILED', sandboxId)
   }
 }
 
@@ -188,10 +125,9 @@ export async function pauseSandbox(apiKey: string, sandboxId: string): Promise<v
  */
 export async function terminateSandbox(apiKey: string, sandboxId: string): Promise<void> {
   try {
-    await destroyComputeSandbox(apiKey, sandboxId)
+    await runLifecycle((lifecycle) => lifecycle.terminate(apiKey, sandboxId))
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown E2B error'
-    throw new E2BError(`Failed to terminate sandbox: ${message}`, 'TERMINATE_FAILED', sandboxId)
+    throw toE2BError(error as AppError, 'terminate sandbox', 'TERMINATE_FAILED', sandboxId)
   }
 }
 
@@ -205,17 +141,9 @@ export async function terminateSandbox(apiKey: string, sandboxId: string): Promi
  */
 export async function getSandboxStatus(apiKey: string, sandboxId: string): Promise<SandboxInfo> {
   try {
-    const sandbox = await connectComputeSandbox(apiKey, sandboxId)
-    if (!sandbox) throw new Error('Sandbox not found')
-
-    return {
-      id: sandbox.sandboxId,
-      status: 'active',
-      createdAt: Date.now(),
-    }
+    return await runLifecycle((lifecycle) => lifecycle.getStatus(apiKey, sandboxId))
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown E2B error'
-    throw new E2BError(`Failed to get sandbox status: ${message}`, 'STATUS_FAILED', sandboxId)
+    throw toE2BError(error as AppError, 'get sandbox status', 'STATUS_FAILED', sandboxId)
   }
 }
 
@@ -325,8 +253,11 @@ export class SandboxManager {
  * @returns Public URL string
  */
 export async function getSandboxPortUrl(apiKey: string, sandboxId: string, port: number): Promise<string> {
-  const sandbox = await requireComputeSandbox(apiKey, sandboxId)
-  return sandbox.getUrl({ port })
+  try {
+    return await runLifecycle((lifecycle) => lifecycle.getPortUrl(apiKey, sandboxId, port))
+  } catch (error) {
+    throw toE2BError(error as AppError, 'get sandbox port URL', 'PORT_URL_FAILED', sandboxId)
+  }
 }
 
 /**
@@ -338,6 +269,9 @@ export async function getSandboxPortUrl(apiKey: string, sandboxId: string, port:
  * @param timeoutMs - New timeout in ms (default: 5 minutes)
  */
 export async function refreshSandboxTimeout(apiKey: string, sandboxId: string, timeoutMs?: number): Promise<void> {
-  const sandbox = await requireComputeSandbox(apiKey, sandboxId)
-  await getNativeE2BSandbox(sandbox).setTimeout(timeoutMs ?? 5 * 60 * 1000)
+  try {
+    await runLifecycle((lifecycle) => lifecycle.refreshTimeout(apiKey, sandboxId, timeoutMs))
+  } catch (error) {
+    throw toE2BError(error as AppError, 'refresh sandbox timeout', 'REFRESH_TIMEOUT_FAILED', sandboxId)
+  }
 }

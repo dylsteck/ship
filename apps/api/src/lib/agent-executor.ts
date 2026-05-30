@@ -263,11 +263,7 @@ export class AgentExecutor {
   private async pushWithRetry(branchName: string): Promise<void> {
     return executeWithRetry(
       async () => {
-        // Get token from github client
-        const token = await this.githubClient['octokit'].auth()
-        const tokenString = typeof token === 'string' ? token : (token as { token: string }).token
-
-        await pushBranch(this.sandbox, branchName, tokenString, this.repoPath)
+        await pushBranch(this.sandbox, branchName, this.githubClient.getToken(), this.repoPath)
       },
       {
         operationName: 'Push to remote',

@@ -10,11 +10,15 @@
  * Security: Tokens passed per-operation, never stored
  */
 
-import { Octokit } from '@octokit/rest'
-import { createPullRequest } from 'octokit-plugin-create-pull-request'
-
-// Extend Octokit with createPullRequest plugin
-const OctokitWithPlugin = Octokit.plugin(createPullRequest)
+import { Cause, Effect, Exit } from 'effect'
+import {
+  GitHubRepos,
+  makeGitHubReposLive,
+  type CreatePullRequestParams,
+  type GitHubReposService,
+  type PullRequestResponse,
+} from '../effect/github-repos'
+import { runPromiseExit } from '../effect/runtime'
 
 /**
  * GitHub API error types
@@ -53,31 +57,7 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } {
   throw new GitHubError('Invalid GitHub URL format', 'INVALID_URL')
 }
 
-/**
- * Parameters for creating a pull request
- */
-export interface CreatePullRequestParams {
-  owner: string
-  repo: string
-  title: string
-  body?: string
-  head: string // Branch name containing changes
-  base?: string // Base branch (defaults to 'main')
-  draft?: boolean // Create as draft PR (defaults to true per CONTEXT.md)
-}
-
-/**
- * Pull request response
- */
-export interface PullRequestResponse {
-  number: number
-  url: string
-  htmlUrl: string
-  draft: boolean
-  state: string
-  head: string
-  base: string
-}
+export type { CreatePullRequestParams, PullRequestResponse }
 
 /**
  * GitHubClient class
@@ -88,12 +68,36 @@ export interface PullRequestResponse {
  *   await client.createPullRequest({ ... })
  */
 export class GitHubClient {
-  private octokit: InstanceType<typeof OctokitWithPlugin>
+  private token: string
 
   constructor(token: string) {
-    this.octokit = new OctokitWithPlugin({
-      auth: token,
-    })
+    this.token = token
+  }
+
+  /** Return the user token backing this compatibility client. */
+  getToken(): string {
+    return this.token
+  }
+
+  private async run<A>(
+    use: (repos: GitHubReposService) => Effect.Effect<A, import('../effect/errors').GitHubRepoError>,
+  ): Promise<A> {
+    const exit = await runPromiseExit(
+      Effect.gen(function* () {
+        const repos = yield* GitHubRepos
+        return yield* use(repos)
+      }).pipe(Effect.provide(makeGitHubReposLive(this.token))),
+    )
+
+    if (Exit.isSuccess(exit)) return exit.value
+
+    const failure = Cause.failureOption(exit.cause)
+    if (failure._tag === 'Some' && failure.value._tag === 'GitHubRepoError') {
+      throw new GitHubError(failure.value.message, failure.value.code, failure.value.status)
+    }
+
+    const defect = Cause.squash(exit.cause)
+    throw new GitHubError(defect instanceof Error ? defect.message : String(defect), 'UNKNOWN')
   }
 
   /**
@@ -104,16 +108,7 @@ export class GitHubClient {
    * @returns Repository data
    */
   async getRepository(owner: string, repo: string) {
-    try {
-      const { data } = await this.octokit.rest.repos.get({
-        owner,
-        repo,
-      })
-      return data
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      throw new GitHubError(`Failed to get repository: ${message}`, 'REPO_NOT_FOUND')
-    }
+    return this.run((repos) => repos.getRepository(owner, repo))
   }
 
   /**
@@ -125,19 +120,7 @@ export class GitHubClient {
    * @returns PR number if exists, null otherwise
    */
   async findExistingPR(owner: string, repo: string, head: string): Promise<number | null> {
-    try {
-      const { data: pulls } = await this.octokit.rest.pulls.list({
-        owner,
-        repo,
-        head: `${owner}:${head}`,
-        state: 'open',
-      })
-
-      return pulls.length > 0 ? pulls[0].number : null
-    } catch {
-      // If we can't check, return null (will attempt to create)
-      return null
-    }
+    return this.run((repos) => repos.findExistingPR(owner, repo, head))
   }
 
   /**
@@ -148,56 +131,7 @@ export class GitHubClient {
    * @returns Pull request response
    */
   async createPullRequest(params: CreatePullRequestParams): Promise<PullRequestResponse> {
-    const { owner, repo, title, body, head, base = 'main', draft = true } = params
-
-    try {
-      // Check for existing PR on this branch
-      const existingPR = await this.findExistingPR(owner, repo, head)
-      if (existingPR) {
-        // Return existing PR instead of creating duplicate
-        const { data: pr } = await this.octokit.rest.pulls.get({
-          owner,
-          repo,
-          pull_number: existingPR,
-        })
-
-        return {
-          number: pr.number,
-          url: pr.url,
-          htmlUrl: pr.html_url,
-          draft: pr.draft ?? false,
-          state: pr.state,
-          head: pr.head.ref,
-          base: pr.base.ref,
-        }
-      }
-
-      // Create new pull request
-      const { data: pr } = await this.octokit.rest.pulls.create({
-        owner,
-        repo,
-        title,
-        body: body || '',
-        head,
-        base,
-        draft, // Draft by default per CONTEXT.md
-      })
-
-      return {
-        number: pr.number,
-        url: pr.url,
-        htmlUrl: pr.html_url,
-        draft: pr.draft ?? false,
-        state: pr.state,
-        head: pr.head.ref,
-        base: pr.base.ref,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      const statusCode = (error as { status?: number }).status
-
-      throw new GitHubError(`Failed to create pull request: ${message}`, 'PR_CREATE_FAILED', statusCode)
-    }
+    return this.run((repos) => repos.createPullRequest(params))
   }
 
   /**
@@ -220,27 +154,7 @@ export class GitHubClient {
       state?: 'open' | 'closed'
     },
   ): Promise<PullRequestResponse> {
-    try {
-      const { data: pr } = await this.octokit.rest.pulls.update({
-        owner,
-        repo,
-        pull_number: prNumber,
-        ...updates,
-      })
-
-      return {
-        number: pr.number,
-        url: pr.url,
-        htmlUrl: pr.html_url,
-        draft: pr.draft ?? false,
-        state: pr.state,
-        head: pr.head.ref,
-        base: pr.base.ref,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      throw new GitHubError(`Failed to update pull request: ${message}`, 'PR_UPDATE_FAILED')
-    }
+    return this.run((repos) => repos.updatePullRequest(prNumber, owner, repo, updates))
   }
 
   /**
