@@ -66,7 +66,9 @@ const service: ComputeSandboxesService = {
     Effect.tryPromise({
       try: () => requireComputeSandbox(apiKey, sandboxId),
       catch: (cause) =>
-        cause instanceof Error && /not found/i.test(cause.message)
+        // Strict parity with the original `requireComputeSandbox`, which throws
+        // exactly `Sandbox not found: <id>` when the provider has no record.
+        cause instanceof Error && /^Sandbox not found:/.test(cause.message)
           ? new SandboxNotFoundError({ sandboxId })
           : new SandboxConnectError({ sandboxId, cause }),
     }),

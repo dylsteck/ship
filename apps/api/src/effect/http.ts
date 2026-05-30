@@ -12,7 +12,7 @@
 
 import { Cause, Exit, type Effect } from 'effect'
 
-import { toHttpErrorResponse, type AppError } from './errors'
+import { APP_ERROR_TAGS, toHttpErrorResponse, type AppError } from './errors'
 import { runPromiseExit } from './runtime'
 
 /** Narrow an unknown failure to one of our tagged {@link AppError}s. */
@@ -21,8 +21,8 @@ function isAppError(value: unknown): value is AppError {
     typeof value === 'object' &&
     value !== null &&
     '_tag' in value &&
-    'httpStatus' in value &&
-    'retryable' in value
+    typeof (value as { _tag: unknown })._tag === 'string' &&
+    APP_ERROR_TAGS.has((value as { _tag: string })._tag)
   )
 }
 

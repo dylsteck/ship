@@ -39,4 +39,18 @@ describe('tagged errors', () => {
       toHttpErrorResponse(new SandboxConnectError({ sandboxId: 'sbx-2', cause: 'x' })).status,
     ).toBe(502)
   })
+
+  it('computes exact message strings (guards against Error.message shadowing)', () => {
+    expect(new SandboxCreateError({ cause: 'x' }).message).toBe('Failed to create compute sandbox')
+    expect(new SandboxConnectError({ sandboxId: 'sbx-2', cause: 'x' }).message).toBe(
+      'Failed to connect to sandbox sbx-2',
+    )
+    expect(new DatabaseError({ operation: 'accounts.update', cause: 'x' }).message).toBe(
+      'Database operation failed: accounts.update',
+    )
+    // toHttpErrorResponse must surface the computed message, not a default Error message.
+    expect(toHttpErrorResponse(new SandboxNotFoundError({ sandboxId: 'z' })).body.message).toBe(
+      'Sandbox not found: z',
+    )
+  })
 })

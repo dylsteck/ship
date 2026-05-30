@@ -98,6 +98,18 @@ export type AppError =
   | SandboxConnectError
   | SandboxNotFoundError
 
+/**
+ * The set of `_tag`s that identify an {@link AppError}. Used at the HTTP boundary
+ * to robustly recognise our domain errors without a loose structural check.
+ */
+export const APP_ERROR_TAGS: ReadonlySet<string> = new Set([
+  'DatabaseError',
+  'GitHubApiError',
+  'SandboxCreateError',
+  'SandboxConnectError',
+  'SandboxNotFoundError',
+])
+
 /** Shape of an HTTP error body returned to clients. */
 export interface HttpErrorResponse {
   readonly status: number

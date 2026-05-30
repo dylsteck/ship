@@ -37,7 +37,10 @@ function fakeDb(opts: {
 
 const creds = { clientId: 'cid', clientSecret: 'secret' }
 
-function run(db: D1Database, oauth = creds): Promise<GitHubTokenResult> {
+function run(
+  db: D1Database,
+  oauth: { clientId?: string; clientSecret?: string } = creds,
+): Promise<GitHubTokenResult> {
   return Effect.runPromise(resolveGitHubTokenEffect(db, oauth, 'user-1'))
 }
 

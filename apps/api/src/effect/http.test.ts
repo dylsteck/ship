@@ -32,7 +32,7 @@ describe('runToResponse', () => {
       () => new Response(null),
     )
     expect(res.status).toBe(500)
-    expect((await res.json()).retryable).toBe(true)
+    expect(((await res.json()) as { retryable: boolean }).retryable).toBe(true)
   })
 
   it('collapses unexpected defects to a generic 500', async () => {
