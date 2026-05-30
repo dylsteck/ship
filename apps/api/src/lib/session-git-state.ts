@@ -1,18 +1,15 @@
 /** Live git-state collection for the session right sidebar. */
 
-import { Octokit } from '@octokit/rest'
 import type { Env } from '../env.d'
 import { requireComputeSandbox } from './compute-provider'
-import { getGitHubAccessTokenForUser } from './github-token'
-import { parseRepoUrl } from './github'
+import { safeErrorForLog } from './error-handler'
+import { collectChecks, collectPullRequest, collectPullRequestGitData, type SessionGitPullRequest } from './session-git-pr-data'
 import { runSandboxCommand, type ComputeCommandSandbox } from './sandbox-command'
 import {
   buildDiffFiles,
   mergeStatusFiles,
-  normalizeGitCheckState,
   parseGitCommitLog,
   parseGitStatusFiles,
-  summarizeChecks,
   type SessionGitCheckSummary,
   type SessionGitCommit,
   type SessionGitDiffFile,
@@ -21,20 +18,6 @@ import {
 const DO_URL = 'https://do'
 const DEFAULT_REPO_PATH = '/home/user/repo'
 const MAX_PATCH_BYTES = 250_000
-
-/** Pull request metadata shown in the right sidebar. */
-export interface SessionGitPullRequest {
-  number: number
-  url: string
-  draft: boolean
-  title?: string
-  body?: string
-  merged?: boolean
-  state?: string
-  headSha?: string
-  headBranch?: string
-  baseBranch?: string
-}
 
 /** Response for `GET /chat/:sessionId/git/state`. */
 export interface SessionGitState {
@@ -97,7 +80,7 @@ export async function collectSessionGitState(input: CollectSessionGitStateInput)
   const pr = await collectPullRequest(input.env, input.userId, withLive).catch(() => withLive.pr)
   const prGit: Pick<SessionGitState, 'diff' | 'commits'> = pr?.number
     ? await collectPullRequestGitData(input.env, input.userId, withLive.repoUrl, pr.number).catch((error) => {
-        console.warn('[session-git-state] pull request git data failed:', error instanceof Error ? error.message : String(error))
+        console.warn('[session-git-state] pull request git data failed:', safeErrorForLog(error))
         return {}
       })
     : {}
@@ -190,197 +173,6 @@ async function collectSandboxGitState(
   }
 }
 
-async function collectPullRequest(
-  env: Env,
-  userId: string,
-  state: SessionGitState,
-): Promise<SessionGitPullRequest | undefined> {
-  if (!state.repoUrl) return state.pr
-  const token = await getToken(env, userId)
-  if (!token) return state.pr
-  const { owner, repo } = parseRepoUrl(state.repoUrl)
-  const octokit = new Octokit({ auth: token })
-
-  const prNumber = state.pr?.number
-  const branchName = normalizeBranchName(state.branchName || state.branch)
-  if (!prNumber) return collectPullRequestByBranch(octokit, owner, repo, branchName)
-
-  const { data } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber })
-  if (branchName && data.head.ref !== branchName && !data.head.label.endsWith(`:${branchName}`)) {
-    return collectPullRequestByBranch(octokit, owner, repo, branchName)
-  }
-  return buildPullRequest(data)
-}
-
-async function collectPullRequestByBranch(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  branchName?: string,
-): Promise<SessionGitPullRequest | undefined> {
-  if (!branchName) return undefined
-  const { data } = await octokit.rest.pulls.list({
-    owner,
-    repo,
-    head: `${owner}:${branchName}`,
-    state: 'all',
-    sort: 'updated',
-    direction: 'desc',
-    per_page: 10,
-  })
-  const pr =
-    data.find((pull) => pull.head.ref === branchName || pull.head.label.endsWith(`:${branchName}`)) ??
-    (await collectPullRequestByBranchName(octokit, owner, repo, branchName))
-  return pr ? buildPullRequest(pr) : undefined
-}
-
-async function collectPullRequestByBranchName(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  branchName: string,
-) {
-  const { data } = await octokit.rest.pulls.list({
-    owner,
-    repo,
-    state: 'all',
-    sort: 'updated',
-    direction: 'desc',
-    per_page: 30,
-  })
-  return data.find((pr) => pr.head.ref === branchName || pr.head.label.endsWith(`:${branchName}`))
-}
-
-function normalizeBranchName(branchName: string | undefined): string | undefined {
-  if (!branchName || branchName === 'HEAD') return undefined
-  return branchName
-}
-
-function buildPullRequest(data: {
-  number: number
-  html_url: string
-  draft?: boolean | null
-  title?: string | null
-  state?: string
-  body?: string | null
-  merged?: boolean | null
-  merged_at?: string | null
-  head: { sha: string; ref?: string | null }
-  base: { ref: string }
-}): SessionGitPullRequest {
-  return {
-    number: data.number,
-    url: data.html_url,
-    draft: data.draft ?? false,
-    ...(data.title ? { title: data.title } : {}),
-    ...(data.body ? { body: data.body } : {}),
-    merged: Boolean(data.merged || data.merged_at),
-    state: data.state,
-    headSha: data.head.sha,
-    ...(data.head.ref ? { headBranch: data.head.ref } : {}),
-    baseBranch: data.base.ref,
-  }
-}
-
-async function collectChecks(
-  env: Env,
-  userId: string,
-  repoUrl: string | undefined,
-  ref: string,
-): Promise<SessionGitCheckSummary | undefined> {
-  if (!repoUrl) return undefined
-  const token = await getToken(env, userId)
-  if (!token) return undefined
-  const { owner, repo } = parseRepoUrl(repoUrl)
-  const octokit = new Octokit({ auth: token })
-  const [checks, statuses] = await Promise.all([
-    octokit.rest.checks.listForRef({ owner, repo, ref, per_page: 100 }).catch(() => ({ data: { check_runs: [] } })),
-    octokit.rest.repos.getCombinedStatusForRef({ owner, repo, ref }).catch(() => ({ data: { statuses: [] } })),
-  ])
-  const checkJobs = checks.data.check_runs.map((run) => ({
-    name: run.name,
-    state: normalizeGitCheckState(run.conclusion || run.status),
-    ...(run.status ? { status: run.status } : {}),
-    ...(run.conclusion ? { conclusion: run.conclusion } : {}),
-    ...(run.html_url || run.details_url ? { url: run.html_url || run.details_url || undefined } : {}),
-    ...(run.started_at ? { startedAt: run.started_at } : {}),
-    ...(run.completed_at ? { completedAt: run.completed_at } : {}),
-  }))
-  const statusJobs = statuses.data.statuses.map((status) => ({
-    name: status.context,
-    state: normalizeGitCheckState(status.state),
-    status: status.state,
-    ...(status.target_url ? { url: status.target_url } : {}),
-  }))
-  return {
-    ...summarizeChecks([...checkJobs.map((job) => job.conclusion || job.status || job.state), ...statusJobs.map((job) => job.status)]),
-    jobs: [...checkJobs, ...statusJobs],
-  }
-}
-
-async function collectPullRequestGitData(
-  env: Env,
-  userId: string,
-  repoUrl: string | undefined,
-  prNumber: number,
-): Promise<Pick<SessionGitState, 'diff' | 'commits'>> {
-  if (!repoUrl || !env.DB) return {}
-  const token = await getToken(env, userId)
-  if (!token) return {}
-  const { owner, repo } = parseRepoUrl(repoUrl)
-  const octokit = new Octokit({ auth: token })
-  const [files, commits, diffResponse] = await Promise.all([
-    octokit.paginate(octokit.rest.pulls.listFiles, { owner, repo, pull_number: prNumber, per_page: 100 }),
-    octokit.paginate(octokit.rest.pulls.listCommits, { owner, repo, pull_number: prNumber, per_page: 100 }),
-    octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', {
-      owner,
-      repo,
-      pull_number: prNumber,
-      headers: { accept: 'application/vnd.github.v3.diff' },
-    }),
-  ])
-
-  const diffFiles = files.map((file) => ({
-    filename: file.filename,
-    ...(file.previous_filename ? { oldFilename: file.previous_filename } : {}),
-    status: mapPullRequestFileStatus(file.status),
-    additions: file.additions,
-    deletions: file.deletions,
-  }))
-  const patch = typeof diffResponse.data === 'string' ? diffResponse.data : ''
-  const totals = diffFiles.reduce((acc, file) => ({ additions: acc.additions + file.additions, deletions: acc.deletions + file.deletions }), {
-    additions: 0,
-    deletions: 0,
-  })
-
-  return {
-    diff: {
-      patch: buildPatch([patch]),
-      truncated: patch.length > MAX_PATCH_BYTES,
-      files: diffFiles,
-      additions: totals.additions,
-      deletions: totals.deletions,
-    },
-    commits: commits.map((commit) => ({
-      hash: commit.sha,
-      shortHash: commit.sha.slice(0, 7),
-      subject: commit.commit.message.split('\n')[0] || commit.sha.slice(0, 7),
-      authorName: commit.commit.author?.name || commit.author?.login || 'Unknown',
-      authorEmail: commit.commit.author?.email || '',
-      authoredAt: commit.commit.author?.date || '',
-    })),
-  }
-}
-
-function mapPullRequestFileStatus(status: string): SessionGitDiffFile['status'] {
-  if (status === 'added') return 'added'
-  if (status === 'removed') return 'deleted'
-  if (status === 'renamed') return 'renamed'
-  if (status === 'copied') return 'copied'
-  if (status === 'modified' || status === 'changed') return 'modified'
-  return 'changed'
-}
-
 function buildCommitCommand(baseBranch: string): string {
   const format = '%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s'
   const baseRef = shellQuote(`origin/${baseBranch}`)
@@ -435,9 +227,9 @@ async function fetchSandboxStatus(stub: { fetch: typeof fetch }): Promise<Sandbo
   return (await response.json()) as SandboxStatus
 }
 
-async function getToken(env: Env, userId: string): Promise<string | null> {
-  const result = await getGitHubAccessTokenForUser(env.DB, env, userId)
-  return result.token
+function normalizeBranchName(branchName: string | undefined): string | undefined {
+  if (!branchName || branchName === 'HEAD') return undefined
+  return branchName
 }
 
 function shellQuote(value: string): string {
