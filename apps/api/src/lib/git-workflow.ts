@@ -11,12 +11,11 @@
  * Security: User tokens passed per-operation, never persisted in sandbox
  */
 
-import {
-  didSandboxCommandFail,
-  runSandboxCommand,
-  sandboxCommandErrorText,
-  type ComputeCommandSandbox,
-} from './sandbox-command'
+import { Cause, Effect, Exit } from 'effect'
+import { GitWorkflow, GitWorkflowLive, type GitWorkflowService } from '../effect/git-workflow'
+import { SandboxCommandsLive } from '../effect/sandbox-commands'
+import { runPromiseExit } from '../effect/runtime'
+import type { ComputeCommandSandbox } from './sandbox-command'
 
 /** Parse https://github.com/owner/repo(.git) into owner + repo name */
 export function parseGitHubHttpsRepo(repoUrl: string): { owner: string; repo: string } | null {
@@ -52,52 +51,9 @@ export async function cloneGitHubRepoWithStrategies(
   token: string,
   options?: CloneGitHubRepoOptions,
 ): Promise<void> {
-  const depth = options?.depth ?? 1
-  const singleBranch = options?.singleBranch !== false
-  const timeoutMs = options?.timeoutMs ?? 120_000
-  const singleFlag = singleBranch ? '--single-branch ' : ''
-  const dest = destPath
-  const o = owner.trim()
-  const r = repo.replace(/\.git$/i, '').trim()
-
-  const attempts: { name: string; cmd: string }[] = [
-    {
-      name: 'x-access-token-in-url',
-      cmd: `GIT_TERMINAL_PROMPT=0 git clone --depth ${depth} ${singleFlag}"https://x-access-token:\${GITHUB_CLONE_TOKEN}@github.com/${o}/${r}.git" "${dest}"`,
-    },
-    {
-      name: 'oauth2-in-url',
-      cmd: `GIT_TERMINAL_PROMPT=0 git clone --depth ${depth} ${singleFlag}"https://oauth2:\${GITHUB_CLONE_TOKEN}@github.com/${o}/${r}.git" "${dest}"`,
-    },
-    {
-      name: 'token-userinfo-github',
-      cmd: `GIT_TERMINAL_PROMPT=0 git clone --depth ${depth} ${singleFlag}"https://\${GITHUB_CLONE_TOKEN}@github.com/${o}/${r}.git" "${dest}"`,
-    },
-    {
-      name: 'bearer-extraHeader',
-      cmd: `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer \${GITHUB_CLONE_TOKEN}" clone --depth ${depth} ${singleFlag}"https://github.com/${o}/${r}.git" "${dest}"`,
-    },
-  ]
-
-  let lastErr: unknown
-  for (const a of attempts) {
-    try {
-      const result = await runSandboxCommand(sandbox, a.cmd, {
-        timeoutMs,
-        envs: { GITHUB_CLONE_TOKEN: token },
-      })
-      if (didSandboxCommandFail(result)) {
-        throw new Error(sandboxCommandErrorText(result))
-      }
-      console.log(`[git-workflow] GitHub clone succeeded (${a.name}) ${o}/${r}`)
-      return
-    } catch (e) {
-      lastErr = e
-      console.warn(`[git-workflow] GitHub clone attempt ${a.name} failed:`, e instanceof Error ? e.message : String(e))
-      await runSandboxCommand(sandbox, `rm -rf "${dest}"`).catch(() => {})
-    }
-  }
-  throw lastErr
+  return runGitWorkflow((workflow) =>
+    workflow.cloneGitHubRepoWithStrategies(sandbox, owner, repo, destPath, token, options),
+  )
 }
 
 /**
@@ -112,6 +68,27 @@ export class GitWorkflowError extends Error {
     super(message)
     this.name = 'GitWorkflowError'
   }
+}
+
+async function runGitWorkflow<A>(
+  use: (workflow: GitWorkflowService) => Effect.Effect<A, import('../effect/errors').GitWorkflowEffectError, import('../effect/sandbox-commands').SandboxCommands>,
+): Promise<A> {
+  const exit = await runPromiseExit(
+    Effect.gen(function* () {
+      const workflow = yield* GitWorkflow
+      return yield* use(workflow)
+    }).pipe(Effect.provide(GitWorkflowLive), Effect.provide(SandboxCommandsLive)),
+  )
+
+  if (Exit.isSuccess(exit)) return exit.value
+
+  const failure = Cause.failureOption(exit.cause)
+  if (failure._tag === 'Some' && failure.value._tag === 'GitWorkflowEffectError') {
+    throw new GitWorkflowError(failure.value.message, failure.value.code, failure.value.command)
+  }
+
+  const defect = Cause.squash(exit.cause)
+  throw new GitWorkflowError(defect instanceof Error ? defect.message : String(defect), 'UNKNOWN')
 }
 
 /**
@@ -167,35 +144,7 @@ export function generateBranchName(taskDescription: string, sessionId: string): 
  * @returns Path to cloned repository
  */
 export async function cloneRepo(sandbox: ComputeCommandSandbox, repoUrl: string, token: string): Promise<string> {
-  const repoPath = '/home/user/repo'
-
-  try {
-    const gh = parseGitHubHttpsRepo(repoUrl)
-    if (gh) {
-      await cloneGitHubRepoWithStrategies(sandbox, gh.owner, gh.repo, repoPath, token)
-      return repoPath
-    }
-
-    const url = repoUrl.endsWith('.git') ? repoUrl : `${repoUrl}.git`
-    const result = await runSandboxCommand(
-      sandbox,
-      `GIT_TERMINAL_PROMPT=0 git -c http.extraHeader="Authorization: Bearer \${GITHUB_CLONE_TOKEN}" clone ${url} ${repoPath}`,
-      { envs: { GITHUB_CLONE_TOKEN: token } },
-    )
-
-    if (didSandboxCommandFail(result)) {
-      throw new GitWorkflowError(
-        `Git clone failed: ${sandboxCommandErrorText(result)}`,
-        'CLONE_FAILED',
-        `git clone`,
-      )
-    }
-
-    return repoPath
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    throw new GitWorkflowError(`Failed to clone repository: ${message}`, 'CLONE_FAILED')
-  }
+  return runGitWorkflow((workflow) => workflow.cloneRepo(sandbox, repoUrl, token))
 }
 
 /**
@@ -211,38 +160,7 @@ export async function createBranch(
   branchName: string,
   repoPath: string = '/home/user/repo',
 ): Promise<void> {
-  try {
-    // Check if branch exists
-    const checkResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git rev-parse --verify ${branchName} 2>/dev/null`)
-
-    if (!didSandboxCommandFail(checkResult)) {
-      // Branch exists, check it out
-      const checkoutResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git checkout ${branchName}`)
-      if (didSandboxCommandFail(checkoutResult)) {
-        throw new GitWorkflowError(
-          `Failed to checkout existing branch: ${sandboxCommandErrorText(checkoutResult)}`,
-          'CHECKOUT_FAILED',
-          `git checkout ${branchName}`,
-        )
-      }
-    } else {
-      // Branch doesn't exist, create it
-      const createResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git checkout -b ${branchName}`)
-      if (didSandboxCommandFail(createResult)) {
-        throw new GitWorkflowError(
-          `Failed to create branch: ${sandboxCommandErrorText(createResult)}`,
-          'BRANCH_CREATE_FAILED',
-          `git checkout -b ${branchName}`,
-        )
-      }
-    }
-  } catch (error) {
-    if (error instanceof GitWorkflowError) {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    throw new GitWorkflowError(`Failed to create branch: ${message}`, 'BRANCH_CREATE_FAILED')
-  }
+  return runGitWorkflow((workflow) => workflow.createBranch(sandbox, branchName, repoPath))
 }
 
 /**
@@ -258,33 +176,7 @@ export async function configureGitUser(
   user: GitUser,
   repoPath: string = '/home/user/repo',
 ): Promise<void> {
-  try {
-    // Set user.name
-    const nameResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git config user.name "${user.name}"`)
-    if (didSandboxCommandFail(nameResult)) {
-      throw new GitWorkflowError(
-        `Failed to set git user.name: ${sandboxCommandErrorText(nameResult)}`,
-        'CONFIG_FAILED',
-        'git config user.name',
-      )
-    }
-
-    // Set user.email
-    const emailResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git config user.email "${user.email}"`)
-    if (didSandboxCommandFail(emailResult)) {
-      throw new GitWorkflowError(
-        `Failed to set git user.email: ${sandboxCommandErrorText(emailResult)}`,
-        'CONFIG_FAILED',
-        'git config user.email',
-      )
-    }
-  } catch (error) {
-    if (error instanceof GitWorkflowError) {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    throw new GitWorkflowError(`Failed to configure git user: ${message}`, 'CONFIG_FAILED')
-  }
+  return runGitWorkflow((workflow) => workflow.configureGitUser(sandbox, user, repoPath))
 }
 
 /**
@@ -303,55 +195,7 @@ export async function commitChanges(
   user: GitUser,
   repoPath: string = '/home/user/repo',
 ): Promise<string> {
-  try {
-    // Configure git user first
-    await configureGitUser(sandbox, user, repoPath)
-
-    // Check for changes
-    const statusResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git status --porcelain`)
-    if (!statusResult.stdout || statusResult.stdout.trim() === '') {
-      throw new GitWorkflowError('No changes to commit', 'NO_CHANGES')
-    }
-
-    // Add all changes
-    const addResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git add -A`)
-    if (didSandboxCommandFail(addResult)) {
-      throw new GitWorkflowError(
-        `Failed to stage changes: ${sandboxCommandErrorText(addResult)}`,
-        'ADD_FAILED',
-        'git add -A',
-      )
-    }
-
-    // Commit with message + Ship co-author trailer
-    // Using two -m flags: first is commit message, second is the co-author trailer paragraph
-    const escapedMessage = message.replace(/"/g, '\\"')
-    const commitResult = await runSandboxCommand(
-      sandbox,
-      `cd ${repoPath} && git commit -m "${escapedMessage}" -m "Co-Authored-By: Ship <shipagent@dylansteck.com>"`,
-    )
-    if (didSandboxCommandFail(commitResult)) {
-      throw new GitWorkflowError(
-        `Failed to commit: ${sandboxCommandErrorText(commitResult)}`,
-        'COMMIT_FAILED',
-        'git commit',
-      )
-    }
-
-    // Get commit hash
-    const hashResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git rev-parse --short HEAD`)
-    if (didSandboxCommandFail(hashResult) || !hashResult.stdout) {
-      throw new GitWorkflowError('Failed to get commit hash', 'HASH_FAILED', 'git rev-parse')
-    }
-
-    return hashResult.stdout.trim()
-  } catch (error) {
-    if (error instanceof GitWorkflowError) {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    throw new GitWorkflowError(`Failed to commit changes: ${message}`, 'COMMIT_FAILED')
-  }
+  return runGitWorkflow((workflow) => workflow.commitChanges(sandbox, message, user, repoPath))
 }
 
 /**
@@ -369,45 +213,5 @@ export async function pushBranch(
   token: string,
   repoPath: string = '/home/user/repo',
 ): Promise<void> {
-  try {
-    // Get current remote URL
-    const remoteResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git remote get-url origin`)
-    if (didSandboxCommandFail(remoteResult) || !remoteResult.stdout) {
-      throw new GitWorkflowError('Failed to get remote URL', 'REMOTE_FAILED', 'git remote get-url')
-    }
-
-    const remoteUrl = remoteResult.stdout.trim()
-
-    // Update remote URL with token for authentication
-    let authUrl = remoteUrl
-    if (remoteUrl.startsWith('https://github.com/')) {
-      const enc = encodeURIComponent(token)
-      authUrl = remoteUrl.replace('https://github.com/', `https://x-access-token:${enc}@github.com/`)
-    } else if (remoteUrl.startsWith('https://') && !remoteUrl.includes('@')) {
-      const enc = encodeURIComponent(token)
-      authUrl = remoteUrl.replace('https://', `https://x-access-token:${enc}@`)
-    }
-
-    // Set remote URL temporarily for this push
-    await runSandboxCommand(sandbox, `cd ${repoPath} && git remote set-url origin "${authUrl}"`)
-
-    // Push branch
-    const pushResult = await runSandboxCommand(sandbox, `cd ${repoPath} && git push -u origin ${branchName}`)
-    if (didSandboxCommandFail(pushResult)) {
-      throw new GitWorkflowError(
-        `Failed to push branch: ${sandboxCommandErrorText(pushResult)}`,
-        'PUSH_FAILED',
-        `git push origin ${branchName}`,
-      )
-    }
-
-    // Reset remote URL (remove token)
-    await runSandboxCommand(sandbox, `cd ${repoPath} && git remote set-url origin "${remoteUrl}"`)
-  } catch (error) {
-    if (error instanceof GitWorkflowError) {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    throw new GitWorkflowError(`Failed to push branch: ${message}`, 'PUSH_FAILED')
-  }
+  return runGitWorkflow((workflow) => workflow.pushBranch(sandbox, branchName, token, repoPath))
 }

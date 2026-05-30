@@ -47,4 +47,17 @@ describe('runToResponse', () => {
       retryable: false,
     })
   })
+
+  it('collapses non-AppError typed failures to a generic 500', async () => {
+    const res = await runToResponse(
+      Effect.fail({ _tag: 'ForeignError', message: 'do not leak me' }) as never,
+      () => new Response(null),
+    )
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({
+      error: 'InternalError',
+      message: 'Internal server error',
+      retryable: false,
+    })
+  })
 })
