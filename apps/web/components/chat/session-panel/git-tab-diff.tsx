@@ -1,30 +1,30 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { PatchDiff } from '@pierre/diffs/react'
+import { useMemo } from 'react'
+import {
+  CodeView,
+  WorkerPoolContextProvider,
+  type WorkerInitializationRenderOptions,
+  type WorkerPoolOptions,
+} from '@pierre/diffs/react'
 import { cn } from '@ship/ui'
+import {
+  buildDiffViewModel,
+  DIFF_CODE_VIEW_OPTIONS,
+  findFileStats,
+  statusClass,
+  statusLabel,
+  type GitDiffFile,
+  type GitDiffState,
+} from './git-tab-diff-model'
 import type { DiffSummary } from './types'
 
-type GitDiffFile = {
-  filename: string
-  oldFilename?: string
-  status: string
-  additions: number
-  deletions: number
+const DIFF_WORKER_POOL_OPTIONS: WorkerPoolOptions = {
+  poolSize: 2,
+  workerFactory: () => new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), { type: 'module' }),
 }
 
-type GitDiffState = {
-  diff?: {
-    patch?: string
-    truncated?: boolean
-    files?: GitDiffFile[]
-    additions?: number
-    deletions?: number
-  }
-}
-
-const PATCH_FILE_HEADER = /^diff --git a\/.+ b\/(.+)$/gm
-const INITIAL_OPEN_FILE_COUNT = 3
+const DIFF_WORKER_HIGHLIGHTER_OPTIONS: WorkerInitializationRenderOptions = {}
 
 export function DiffContent({ state, legacyDiffs }: { state?: GitDiffState; legacyDiffs?: DiffSummary[] }) {
   const files = useMemo(() => state?.diff?.files ?? [], [state?.diff?.files])
@@ -45,7 +45,7 @@ export function DiffContent({ state, legacyDiffs }: { state?: GitDiffState; lega
       />
       <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto overflow-x-hidden">
         {patch.trim() && files.length > 0 ? (
-          <AllFilesDiff files={files} patch={patch} />
+          <AllFilesDiff files={files} patch={patch} truncated={state?.diff?.truncated} />
         ) : (
           <LegacyDiffList
             diffs={legacyDiffs ?? []}
@@ -68,81 +68,62 @@ function NoPushedChangesState() {
   )
 }
 
-function AllFilesDiff({ files, patch }: { files: GitDiffFile[]; patch: string }) {
-  const patchByFile = useMemo(() => buildPatchByFile(patch), [patch])
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(
-    () => new Set(files.slice(INITIAL_OPEN_FILE_COUNT).map((file) => file.filename)),
-  )
-
-  function toggleFile(filename: string) {
-    setCollapsedFiles((current) => {
-      const next = new Set(current)
-      if (next.has(filename)) next.delete(filename)
-      else next.add(filename)
-      return next
-    })
-  }
+function AllFilesDiff({ files, patch, truncated }: { files: GitDiffFile[]; patch: string; truncated?: boolean }) {
+  const model = useMemo(() => buildDiffViewModel(files, patch), [files, patch])
 
   return (
-    <div className="divide-y divide-white/[0.06]">
-      {files.map((file) => (
-        <FileDiffSection
-          key={file.filename}
-          file={file}
-          isOpen={!collapsedFiles.has(file.filename)}
-          onToggle={() => toggleFile(file.filename)}
-          patch={patchByFile.get(file.filename) ?? ''}
-        />
-      ))}
+    <div className="min-h-full">
+      {truncated && (
+        <div className="px-3 py-2 text-xs text-amber-300">Patch preview was truncated to keep this panel responsive.</div>
+      )}
+      {model.items.length > 0 ? (
+        <WorkerPoolContextProvider highlighterOptions={DIFF_WORKER_HIGHLIGHTER_OPTIONS} poolOptions={DIFF_WORKER_POOL_OPTIONS}>
+          <CodeView
+            items={model.items}
+            className="ship-pierre-diff h-full min-h-[320px] text-[12px]"
+            options={DIFF_CODE_VIEW_OPTIONS}
+            renderHeaderPrefix={(item) => {
+              const stats = findFileStats(model.fileStatsByName, item)
+              if (!stats) return null
+              return (
+                <span className={cn('mr-2 inline-block w-4 shrink-0 font-mono text-[11px]', statusClass(stats.status))}>
+                  {statusLabel(stats.status)}
+                </span>
+              )
+            }}
+            renderHeaderMetadata={(item) => {
+              const stats = findFileStats(model.fileStatsByName, item)
+              if (!stats) return null
+              return (
+                <span className="ml-auto flex shrink-0 items-center gap-2 pl-3 font-mono text-xs">
+                  <span className="text-emerald-400">+{stats.additions}</span>
+                  <span className="text-red-400">-{stats.deletions}</span>
+                </span>
+              )
+            }}
+          />
+        </WorkerPoolContextProvider>
+      ) : (
+        <div className="px-3 py-2 text-xs text-zinc-500">Select a tracked file with text changes to preview its patch.</div>
+      )}
+      {model.filesWithoutPatch.length > 0 && <NoTextPatchList files={model.filesWithoutPatch} />}
     </div>
   )
 }
 
-function FileDiffSection({
-  file,
-  isOpen,
-  onToggle,
-  patch,
-}: {
-  file: GitDiffFile
-  isOpen: boolean
-  onToggle: () => void
-  patch: string
-}) {
+function NoTextPatchList({ files }: { files: GitDiffFile[] }) {
   return (
-    <section>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-white/[0.04]"
-      >
-        <span className={cn('text-zinc-500 transition-transform', isOpen && 'rotate-90')}>›</span>
-        <span className={cn('w-4 shrink-0 font-mono text-[11px]', statusClass(file.status))}>
-          {statusLabel(file.status)}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{file.filename}</span>
-        <span className="font-mono text-xs text-emerald-400">+{file.additions}</span>
-        <span className="font-mono text-xs text-red-400">-{file.deletions}</span>
-      </button>
-      {isOpen && patch.trim() ? (
-        <PatchDiff
-          patch={patch}
-          className="ship-pierre-diff text-[12px]"
-          options={{
-            themeType: 'dark',
-            diffStyle: 'unified',
-            diffIndicators: 'bars',
-            disableFileHeader: true,
-            overflow: 'wrap',
-            hunkSeparators: 'metadata',
-            tokenizeMaxLineLength: 400,
-          }}
-        />
-      ) : null}
-      {isOpen && !patch.trim() ? (
-        <div className="px-3 py-3 text-xs text-zinc-500">No text patch available for this file.</div>
-      ) : null}
-    </section>
+    <div className="border-t border-white/[0.06] py-1">
+      {files.map((file) => (
+        <div key={file.filename} className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500">
+          <span className={cn('w-4 shrink-0 font-mono text-[11px]', statusClass(file.status))}>
+            {statusLabel(file.status)}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{file.filename}</span>
+          <span>No text patch available for this file.</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -188,35 +169,4 @@ function LegacyDiffList({
 
 function sumLegacy(diffs: DiffSummary[] | undefined, key: 'additions' | 'deletions'): number {
   return (diffs ?? []).reduce((total, diff) => total + diff[key], 0)
-}
-
-function statusLabel(status: string): string {
-  if (status === 'added') return 'A'
-  if (status === 'deleted') return 'D'
-  if (status === 'renamed') return 'R'
-  if (status === 'copied') return 'C'
-  if (status === 'modified') return 'M'
-  return '·'
-}
-
-function statusClass(status: string): string {
-  if (status === 'added') return 'text-emerald-400'
-  if (status === 'deleted') return 'text-red-400'
-  if (status === 'renamed' || status === 'copied') return 'text-sky-300'
-  return 'text-amber-300'
-}
-
-function buildPatchByFile(patch: string): Map<string, string> {
-  const chunks = splitPatchFiles(patch)
-  return new Map(chunks.map((chunk) => [chunk.filename, chunk.patch]))
-}
-
-function splitPatchFiles(patch: string): Array<{ filename: string; patch: string }> {
-  const matches = [...patch.matchAll(PATCH_FILE_HEADER)]
-  if (matches.length === 0) return []
-  return matches.map((match, index) => {
-    const start = match.index ?? 0
-    const end = matches[index + 1]?.index ?? patch.length
-    return { filename: match[1] ?? '', patch: patch.slice(start, end).trimEnd() }
-  })
 }
