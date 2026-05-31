@@ -1,9 +1,6 @@
 import { postSessionSync } from '@/lib/session-sync-channel'
 import { sessionStatusStore } from './use-session-status-store'
-import {
-  createUserMessage,
-  createAssistantPlaceholder,
-} from '@/lib/ai-elements-adapter'
+import { createUserMessage, createAssistantPlaceholder } from '@/lib/ai-elements-adapter'
 import { getStreamingRefs } from '@/lib/chat-store/store'
 import { createSSEHandlerContext } from './sse-handler-context'
 import type { useDashboardChat } from './use-dashboard-chat'
@@ -23,6 +20,7 @@ export function prepareChatSend(
   const streamingRefs = getStreamingRefs(targetSessionId)
   streamingRefs.assistantTextRef.current = ''
   streamingRefs.reasoningRef.current = ''
+  streamingRefs.orderedPartsRef.current = []
   chat.setLastStepCost(null)
   const now = Date.now()
   streamStartTimeRef.current = now
@@ -53,10 +51,7 @@ export function prepareChatSend(
   return { ctx, accumulateSetupStepsRef }
 }
 
-export function queueChatSend(
-  content: string,
-  params: UseSseHandleSendParams,
-): boolean {
+export function queueChatSend(content: string, params: UseSseHandleSendParams): boolean {
   const { chat, isStreamingRef } = params
   if (isStreamingRef.current) {
     chat.setMessageQueue((q) => [...q, content])

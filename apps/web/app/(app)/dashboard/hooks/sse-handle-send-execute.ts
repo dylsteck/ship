@@ -29,8 +29,7 @@ async function handleSendError(
 ): Promise<void> {
   const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
   const mainError = errorData.error || errorData.details || 'Failed to start agent'
-  const errorContent =
-    errorData.details && isGenericError(errorData.error || '') ? errorData.details : mainError
+  const errorContent = errorData.details && isGenericError(errorData.error || '') ? errorData.details : mainError
   const { category, retryable } = classifyError(errorContent)
   const action = actionForChatErrorPayload(errorData as { category?: string })
 
@@ -46,6 +45,9 @@ async function handleSendError(
   clearSessionStreamingState(chat, targetSessionId)
   chat.setStreamingStatus('')
   streamingRefs.streamingMessageRef.current = null
+  streamingRefs.assistantTextRef.current = ''
+  streamingRefs.reasoningRef.current = ''
+  streamingRefs.orderedPartsRef.current = []
   terminalStreamSessionsRef.current.add(targetSessionId)
 }
 
@@ -73,6 +75,9 @@ function handleSendCatch(
   clearSessionStreamingState(chat, targetSessionId)
   chat.setStreamingStatus('')
   streamingRefs.streamingMessageRef.current = null
+  streamingRefs.assistantTextRef.current = ''
+  streamingRefs.reasoningRef.current = ''
+  streamingRefs.orderedPartsRef.current = []
   terminalStreamSessionsRef.current.add(targetSessionId)
 }
 

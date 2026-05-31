@@ -9,16 +9,9 @@
  * @packageDocumentation
  */
 
-import {
-  buildToolPartsFromState,
-  translateToolCall,
-  tryExtractToolCall,
-} from './acp-tool-notifications'
+import { buildToolPartFromTrace, translateToolCall, tryExtractToolCall } from './acp-tool-notifications'
 import { makeMessagePartUpdated, type ShipSSEEvent } from './events'
-import { createTranslatorState, nextPartId, type TranslatorState } from './state'
-
-const STREAM_KEY = 'acp-text-stream'
-const REASONING_STREAM_KEY = 'acp-reasoning-stream'
+import { createTranslatorState, getWritableTextBuffer, type TranslatorState } from './state'
 
 function extractContentText(content: unknown): string | null {
   if (typeof content === 'string') return content
@@ -72,13 +65,18 @@ export function createAcpNotificationTranslator(sessionId: string): AcpNotificat
       const parts: Record<string, unknown>[] = []
       const base = { sessionID: state.sessionId, messageID: state.messageId }
 
-      for (const buf of state.textBuffers.values()) {
-        if (buf.text) parts.push({ ...base, id: buf.partId, type: 'text', text: buf.text })
+      for (const ref of state.orderedParts) {
+        if (ref.kind === 'tool') {
+          const trace = state.toolCalls.get(ref.key)
+          if (trace) parts.push(buildToolPartFromTrace(state, trace))
+          continue
+        }
+
+        const buffer = ref.kind === 'text' ? state.textBuffers.get(ref.key) : state.reasoningBuffers.get(ref.key)
+        if (buffer?.text) {
+          parts.push({ ...base, id: buffer.partId, type: ref.kind, text: buffer.text })
+        }
       }
-      for (const buf of state.reasoningBuffers.values()) {
-        if (buf.text) parts.push({ ...base, id: buf.partId, type: 'reasoning', text: buf.text })
-      }
-      parts.push(...buildToolPartsFromState(state))
 
       return parts
     },
@@ -89,17 +87,9 @@ function translate(state: TranslatorState, note: Record<string, unknown>): ShipS
   if (note.result !== undefined && note.result !== null && typeof note.result === 'object') {
     const r = note.result as Record<string, unknown>
     const blob =
-      typeof r.assistant === 'string'
-        ? r.assistant
-        : typeof r.content === 'string'
-          ? r.content
-          : extractDelta(r)
+      typeof r.assistant === 'string' ? r.assistant : typeof r.content === 'string' ? r.content : extractDelta(r)
     if (blob) {
-      let buf = state.textBuffers.get(STREAM_KEY)
-      if (!buf) {
-        buf = { partId: nextPartId(state), text: '' }
-        state.textBuffers.set(STREAM_KEY, buf)
-      }
+      const buf = getWritableTextBuffer(state, 'text')
       buf.text += blob
       return [makeMessagePartUpdated(state, { id: buf.partId, type: 'text', text: buf.text }, blob)]
     }
@@ -120,13 +110,7 @@ function translate(state: TranslatorState, note: Record<string, unknown>): ShipS
   const delta = extractDelta(params)
   if (!delta) return []
 
-  const key = partType === 'reasoning' ? REASONING_STREAM_KEY : STREAM_KEY
-  const buffers = partType === 'reasoning' ? state.reasoningBuffers : state.textBuffers
-  let buf = buffers.get(key)
-  if (!buf) {
-    buf = { partId: nextPartId(state), text: '' }
-    buffers.set(key, buf)
-  }
+  const buf = getWritableTextBuffer(state, partType)
   buf.text += delta
 
   return [makeMessagePartUpdated(state, { id: buf.partId, type: partType, text: buf.text }, delta)]

@@ -1,19 +1,10 @@
 'use client'
 
-import {
-  Message,
-  Tool,
-  Response,
-  Loader,
-  ThinkingBlock,
-  SessionSetup,
-  Conversation,
-  ConversationScrollButton,
-} from '@ship/ui'
+import { Message, Tool, Response, Loader, SessionSetup, Conversation, ConversationScrollButton } from '@ship/ui'
 import { Markdown } from '@/components/chat/markdown'
 import { useSubagentStream } from '../hooks/use-subagent-stream'
-import { MessageToolList } from './messages/tool-list'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
+import { AssistantOrderedParts } from './assistant-ordered-parts'
 
 interface SubagentViewState {
   toolCallId: string
@@ -53,12 +44,18 @@ function SubagentStreamMessages({
   status: string
   statusSteps: string[]
 }) {
-  const substantive = messages.filter((m) => m.content || m.toolInvocations?.length || m.reasoning?.length)
+  const todoRenderedRef = { current: false }
+  const substantive = messages.filter(
+    (m) =>
+      m.content || m.toolInvocations?.length || m.reasoning?.length || m.planItems?.length || m.orderedParts?.length,
+  )
   const showLoader =
     messages.length === 1 &&
     !messages[0].content &&
     !messages[0].toolInvocations?.length &&
     !messages[0].reasoning?.length &&
+    !messages[0].planItems?.length &&
+    !messages[0].orderedParts?.length &&
     isStreaming &&
     statusSteps.length === 0
 
@@ -73,34 +70,20 @@ function SubagentStreamMessages({
         </Message>
       )}
       {substantive.map((message) => {
-        const allTools = message.toolInvocations || []
-        const hasReasoning = (message.reasoning?.length ?? 0) > 0
-        const hasTools = allTools.length > 0
-
         return (
           <Message key={message.id} role={message.role}>
-            {(hasReasoning || hasTools) && (
-              <ThinkingBlock
-                reasoning={message.reasoning}
+            {message.role === 'assistant' ? (
+              <AssistantOrderedParts
+                messages={[message]}
                 isStreaming={isStreaming}
-                duration={message.elapsed != null ? Math.floor(message.elapsed / 1000) : undefined}
-              >
-                {hasTools && (
-                  <MessageToolList
-                    tools={allTools}
-                    sessionTodos={[]}
-                    todoRenderedRef={{ current: false }}
-                    onSubagentNavigate={() => {}}
-                  />
-                )}
-              </ThinkingBlock>
-            )}
-            {message.role === 'assistant' && message.content && (
-              <div className={hasTools ? 'mt-4' : undefined}>
-                <Response>
-                  <Markdown content={message.content} isAnimating={isStreaming} />
-                </Response>
-              </div>
+                sessionTodos={[]}
+                todoRenderedRef={todoRenderedRef}
+                onSubagentNavigate={() => {}}
+              />
+            ) : (
+              <Response>
+                <Markdown content={message.content} isAnimating={false} />
+              </Response>
             )}
           </Message>
         )
@@ -121,7 +104,13 @@ function SubagentFallbackContent({ subagent }: { subagent: SubagentViewState }) 
             <Tool
               key={i}
               name={tool.name}
-              status={tool.status === 'completed' ? 'completed' : tool.status === 'error' || tool.status === 'failed' ? 'failed' : 'completed'}
+              status={
+                tool.status === 'completed'
+                  ? 'completed'
+                  : tool.status === 'error' || tool.status === 'failed'
+                    ? 'failed'
+                    : 'completed'
+              }
               input={tool.title ? { description: tool.title } : undefined}
             />
           ))}

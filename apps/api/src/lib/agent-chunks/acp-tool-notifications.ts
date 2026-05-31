@@ -7,7 +7,7 @@
 import { deriveToolPresentation } from '@ship/contracts'
 import type { ToolState } from '@ship/contracts'
 import { makeMessagePartUpdated, type ShipSSEEvent } from './events'
-import { nextPartId, type TranslatorState } from './state'
+import { nextPartId, recordOrderedPart, type ToolCallTrace, type TranslatorState } from './state'
 
 export interface ToolCallData {
   toolCallId: string
@@ -138,6 +138,7 @@ export function translateToolCall(state: TranslatorState, data: ToolCallData): S
       startedAt: Date.now(),
     }
     state.toolCalls.set(data.toolCallId, trace)
+    recordOrderedPart(state, { kind: 'tool', key: data.toolCallId })
   } else {
     trace.status = status
     if (Object.keys(data.input).length > 0) trace.inputJson = JSON.stringify(data.input)
@@ -169,37 +170,42 @@ export function translateToolCall(state: TranslatorState, data: ToolCallData): S
   ]
 }
 
+/** Build one persisted tool part from an accumulated trace. */
+export function buildToolPartFromTrace(state: TranslatorState, trace: ToolCallTrace): Record<string, unknown> {
+  const base = { sessionID: state.sessionId, messageID: state.messageId }
+  const input = (() => {
+    try {
+      return JSON.parse(trace.inputJson) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  })()
+  const toolState: ToolState = {
+    status: trace.status,
+    input,
+    title: trace.toolName,
+    ...(trace.outputJson !== undefined ? { output: trace.outputJson } : {}),
+    time: { start: trace.startedAt, ...(trace.endedAt ? { end: trace.endedAt } : {}) },
+  }
+  const presentation = deriveToolPresentation(trace.toolName, toolState)
+  return {
+    ...base,
+    id: trace.partId,
+    type: 'tool',
+    callID: trace.callId,
+    tool: trace.toolName,
+    displayLabel: presentation.summary,
+    ...(presentation.detail ? { activityKind: presentation.detail } : {}),
+    state: toolState,
+  }
+}
+
 /** Build persisted tool parts from accumulated traces. */
 export function buildToolPartsFromState(state: TranslatorState): Record<string, unknown>[] {
-  const base = { sessionID: state.sessionId, messageID: state.messageId }
   const parts: Record<string, unknown>[] = []
 
   for (const trace of state.toolCalls.values()) {
-    const input = (() => {
-      try {
-        return JSON.parse(trace.inputJson) as Record<string, unknown>
-      } catch {
-        return {}
-      }
-    })()
-    const toolState: ToolState = {
-      status: trace.status,
-      input,
-      title: trace.toolName,
-      ...(trace.outputJson !== undefined ? { output: trace.outputJson } : {}),
-      time: { start: trace.startedAt, ...(trace.endedAt ? { end: trace.endedAt } : {}) },
-    }
-    const presentation = deriveToolPresentation(trace.toolName, toolState)
-    parts.push({
-      ...base,
-      id: trace.partId,
-      type: 'tool',
-      callID: trace.callId,
-      tool: trace.toolName,
-      displayLabel: presentation.summary,
-      ...(presentation.detail ? { activityKind: presentation.detail } : {}),
-      state: toolState,
-    })
+    parts.push(buildToolPartFromTrace(state, trace))
   }
 
   return parts

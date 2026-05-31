@@ -1,17 +1,20 @@
 import { create } from 'zustand'
 import type { MutableRefObject } from 'react'
+import type { OrderedMessagePart } from '@/lib/ai-elements-adapter'
 
 /** Ephemeral streaming text accumulated before flush into React state. */
 export interface StreamingBuffer {
   messageId: string | null
   text: string
   reasoning: string
+  orderedParts: OrderedMessagePart[]
 }
 
 const EMPTY_BUFFER: StreamingBuffer = {
   messageId: null,
   text: '',
   reasoning: '',
+  orderedParts: [],
 }
 
 /** Module-level refs avoid Zustand updates on every streaming token. */
@@ -20,7 +23,7 @@ const bufferRefs = new Map<string, StreamingBuffer>()
 function getOrCreateBufferRef(sessionId: string): StreamingBuffer {
   let buffer = bufferRefs.get(sessionId)
   if (!buffer) {
-    buffer = { ...EMPTY_BUFFER }
+    buffer = { ...EMPTY_BUFFER, orderedParts: [] }
     bufferRefs.set(sessionId, buffer)
   }
   return buffer
@@ -30,6 +33,7 @@ export interface SessionStreamingRefs {
   streamingMessageRef: MutableRefObject<string | null>
   assistantTextRef: MutableRefObject<string>
   reasoningRef: MutableRefObject<string>
+  orderedPartsRef: MutableRefObject<OrderedMessagePart[]>
 }
 
 /** Returns ref-compatible accessors backed by the module-level buffer for {@link sessionId}. */
@@ -60,6 +64,14 @@ export function getStreamingRefs(sessionId: string): SessionStreamingRefs {
         buffer.reasoning = value
       },
     },
+    orderedPartsRef: {
+      get current() {
+        return buffer.orderedParts
+      },
+      set current(value: OrderedMessagePart[]) {
+        buffer.orderedParts = value
+      },
+    },
   }
 }
 
@@ -68,9 +80,7 @@ export function getStreamingRefs(sessionId: string): SessionStreamingRefs {
  *
  * @param getActiveSessionId - Returns the active session id (may change between reads)
  */
-export function createActiveSessionStreamingRefs(
-  getActiveSessionId: () => string | null,
-): SessionStreamingRefs {
+export function createActiveSessionStreamingRefs(getActiveSessionId: () => string | null): SessionStreamingRefs {
   return {
     streamingMessageRef: {
       get current() {
@@ -105,6 +115,17 @@ export function createActiveSessionStreamingRefs(
         getOrCreateBufferRef(sessionId).reasoning = value
       },
     },
+    orderedPartsRef: {
+      get current() {
+        const sessionId = getActiveSessionId()
+        return sessionId ? getOrCreateBufferRef(sessionId).orderedParts : []
+      },
+      set current(value: OrderedMessagePart[]) {
+        const sessionId = getActiveSessionId()
+        if (!sessionId) return
+        getOrCreateBufferRef(sessionId).orderedParts = value
+      },
+    },
   }
 }
 
@@ -115,6 +136,7 @@ export function clearStreamingBuffer(sessionId: string): void {
   buffer.messageId = null
   buffer.text = ''
   buffer.reasoning = ''
+  buffer.orderedParts = []
 }
 
 export interface ChatStoreState {
@@ -146,6 +168,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
       messageId: buffer.messageId,
       text: buffer.text,
       reasoning: buffer.reasoning,
+      orderedParts: [...buffer.orderedParts],
     }
 
     set((state) => ({

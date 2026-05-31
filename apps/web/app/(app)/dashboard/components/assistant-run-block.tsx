@@ -1,14 +1,11 @@
 'use client'
 
 import * as React from 'react'
-import { Message, ThinkingBlock, Loader, SessionSetup, Response } from '@ship/ui'
+import { Message, Loader, SessionSetup } from '@ship/ui'
 import type { ToolInvocation } from '@/lib/ai-elements-adapter'
-import { MessageToolList } from './messages/tool-list'
-import { Markdown } from '@/components/chat/markdown'
 import type { TodoItem } from '../types'
-import { mergeAssistantText, useAssistantRunAggregates } from './assistant-run-block-utils'
-import { AssistantRunPlanItems } from './assistant-run-plan-items'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
+import { AssistantOrderedParts } from './assistant-ordered-parts'
 
 export interface AssistantRunBlockProps {
   messages: UIMessage[]
@@ -35,10 +32,19 @@ export const AssistantRunBlock = React.memo(function AssistantRunBlock({
 }: AssistantRunBlockProps) {
   const isGroupStreaming = messages.some((m) => m.id === streamingMessageId)
   const lastMsg = messages[messages.length - 1]
-  const isLastEmpty = !lastMsg.content && !lastMsg.toolInvocations?.length && !lastMsg.reasoning?.length
+  const isLastEmpty =
+    !lastMsg.content && !lastMsg.toolInvocations?.length && !lastMsg.reasoning?.length && !lastMsg.orderedParts?.length
 
-  const { substantiveMessages, allReasoning, allTools, allPlanItems, startupStepsMsg } =
-    useAssistantRunAggregates(messages, streamingMessageId)
+  const substantiveMessages = messages.filter(
+    (m) =>
+      m.content ||
+      m.toolInvocations?.length ||
+      m.reasoning?.length ||
+      m.planItems?.length ||
+      m.orderedParts?.length ||
+      m.id === streamingMessageId,
+  )
+  const startupStepsMsg = substantiveMessages.find((m) => m.startupSteps?.length)
 
   if (messages.length === 1 && isLastEmpty && isGroupStreaming) {
     return (
@@ -54,43 +60,19 @@ export const AssistantRunBlock = React.memo(function AssistantRunBlock({
 
   if (substantiveMessages.length === 0) return null
 
-  const textContent = mergeAssistantText(substantiveMessages.map((m) => m.content?.trim()).filter(Boolean))
-  const hasReasoning = allReasoning.length > 0
-  const hasTools = allTools.length > 0
-  const lastElapsed = substantiveMessages[substantiveMessages.length - 1]?.elapsed
-
   return (
     <Message role="assistant">
       {isFirstAssistantBlock && startupStepsMsg?.startupSteps && (
         <SessionSetup steps={startupStepsMsg.startupSteps} defaultOpen={false} className="my-1" />
       )}
 
-      {(hasReasoning || hasTools) && (
-        <ThinkingBlock
-          reasoning={allReasoning}
-          isStreaming={isGroupStreaming}
-          duration={lastElapsed != null ? Math.floor(lastElapsed / 1000) : undefined}
-        >
-          {hasTools && (
-            <MessageToolList
-              tools={allTools}
-              sessionTodos={sessionTodos}
-              todoRenderedRef={todoRenderedRef}
-              onSubagentNavigate={onSubagentNavigate}
-            />
-          )}
-        </ThinkingBlock>
-      )}
-
-      <AssistantRunPlanItems items={allPlanItems} />
-
-      {textContent && (
-        <div className={hasTools ? 'mt-4' : undefined}>
-          <Response>
-            <Markdown content={textContent} isAnimating={isGroupStreaming} />
-          </Response>
-        </div>
-      )}
+      <AssistantOrderedParts
+        messages={substantiveMessages}
+        isStreaming={isGroupStreaming}
+        sessionTodos={sessionTodos}
+        todoRenderedRef={todoRenderedRef}
+        onSubagentNavigate={onSubagentNavigate}
+      />
     </Message>
   )
 })

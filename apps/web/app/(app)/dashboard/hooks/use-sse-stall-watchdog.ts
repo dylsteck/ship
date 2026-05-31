@@ -25,14 +25,26 @@ export function useSseStallWatchdog({
   flushTimerRef,
   terminalStreamSessionsRef,
 }: UseSseStallWatchdogParams) {
-  const { activeSessionIdRef, assistantTextRef, streamingMessageRef, setMessages, setIsStreaming, setStreamingStatus } =
-    chat
+  const {
+    activeSessionIdRef,
+    assistantTextRef,
+    orderedPartsRef,
+    reasoningRef,
+    streamingMessageRef,
+    setMessages,
+    setIsStreaming,
+    setStreamingStatus,
+  } = chat
 
   return useCallback(
     (targetSessionId: string, ctx: SSEHandlerContext) => {
       const onStall = () => {
         if (streamingMessageRef.current && targetSessionId === activeSessionIdRef?.current) {
-          if (assistantTextRef.current.length > 0) {
+          if (
+            assistantTextRef.current.length > 0 ||
+            reasoningRef.current.length > 0 ||
+            orderedPartsRef.current.length > 0
+          ) {
             finalizeStream(ctx, streamStartTimeRef, flushTimerRef, targetSessionId)
             postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
             terminalStreamSessionsRef.current.add(targetSessionId)
@@ -49,6 +61,8 @@ export function useSseStallWatchdog({
           setIsStreaming(false)
           setStreamingStatus('')
           streamingMessageRef.current = null
+          assistantTextRef.current = ''
+          orderedPartsRef.current = []
           sessionStatusStore.update(targetSessionId, { isRunning: false, status: 'Error' })
           postSessionSync({ type: 'session-stopped', sessionId: targetSessionId })
           terminalStreamSessionsRef.current.add(targetSessionId)
@@ -74,6 +88,8 @@ export function useSseStallWatchdog({
     [
       activeSessionIdRef,
       assistantTextRef,
+      orderedPartsRef,
+      reasoningRef,
       flushTimerRef,
       setIsStreaming,
       setMessages,

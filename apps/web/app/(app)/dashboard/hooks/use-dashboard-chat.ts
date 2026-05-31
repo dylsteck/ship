@@ -44,21 +44,15 @@ export function useDashboardChat(
 
   const messagesRef = useRef<UIMessage[]>([])
   const activeSessionIdRef = useRef<string | null>(activeSessionId)
-  const streamingRefs = useMemo(
-    () => createActiveSessionStreamingRefs(() => activeSessionIdRef.current),
-    [],
-  )
-  const { streamingMessageRef, assistantTextRef, reasoningRef } = streamingRefs
+  const streamingRefs = useMemo(() => createActiveSessionStreamingRefs(() => activeSessionIdRef.current), [])
+  const { streamingMessageRef, assistantTextRef, reasoningRef, orderedPartsRef } = streamingRefs
 
-  const setIsStreaming = useCallback(
-    (value: boolean) => {
-      setInternalIsStreaming(value)
-      if (activeSessionIdRef.current) {
-        useChatStore.getState().setIsStreaming(activeSessionIdRef.current, value)
-      }
-    },
-    [],
-  )
+  const setIsStreaming = useCallback((value: boolean) => {
+    setInternalIsStreaming(value)
+    if (activeSessionIdRef.current) {
+      useChatStore.getState().setIsStreaming(activeSessionIdRef.current, value)
+    }
+  }, [])
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId
@@ -147,6 +141,7 @@ export function useDashboardChat(
     streamingMessageRef,
     assistantTextRef,
     reasoningRef,
+    orderedPartsRef,
     messagesRef,
     activeSessionIdRef,
     ...persistence,

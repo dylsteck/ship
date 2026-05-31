@@ -1,15 +1,10 @@
-import type {
-  ToolPart,
-  ReasoningPart,
-  TextPart,
-  MessagePart,
-  StepFinishPart,
-} from '@/lib/sse-types'
+import type { ToolPart, ReasoningPart, TextPart, MessagePart, StepFinishPart, PlanPart } from '@/lib/sse-types'
 import {
   createToolInvocation,
   processPartUpdated,
   type UIMessage,
   type ToolInvocation,
+  type OrderedMessagePart,
 } from './ai-elements-adapter'
 
 // ============ API Message → UIMessage Mapping ============
@@ -28,6 +23,17 @@ interface ApiMessage {
     duration?: number
   }>
   reasoningBlocks?: Array<{ text: string }>
+}
+
+function upsertOrderedTextPart(
+  orderedParts: OrderedMessagePart[],
+  kind: 'text' | 'reasoning',
+  id: string,
+  text: string,
+): void {
+  const index = orderedParts.findIndex((ordered) => ordered.kind === kind && ordered.id === id)
+  if (index === -1) orderedParts.push({ id, kind, text })
+  else orderedParts[index] = { id, kind, text }
 }
 
 /**
@@ -68,10 +74,9 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
       try {
         const parts = JSON.parse(msg.parts) as MessagePart[]
         const tools: ToolInvocation[] = []
-        let lastReasoningText = ''
-        let textContent = ''
         let elapsed: number | undefined
         let planItems: Array<{ id: string; title: string; status: string }> | undefined
+        const orderedParts: OrderedMessagePart[] = []
 
         for (const part of parts) {
           const partType = (part as { type: string }).type
@@ -91,28 +96,38 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
           switch (part.type) {
             case 'tool': {
               const tp = part as ToolPart
-              tools.push(createToolInvocation(tp))
+              const invocation = createToolInvocation(tp)
+              const toolIndex = tools.findIndex((tool) => tool.toolCallId === invocation.toolCallId)
+              if (toolIndex === -1) tools.push(invocation)
+              else tools[toolIndex] = invocation
+              const index = orderedParts.findIndex(
+                (ordered) => ordered.kind === 'tool' && ordered.id === invocation.toolCallId,
+              )
+              if (index === -1) {
+                orderedParts.push({ id: invocation.toolCallId, kind: 'tool', tool: invocation })
+              } else orderedParts[index] = { id: invocation.toolCallId, kind: 'tool', tool: invocation }
               break
             }
             case 'reasoning': {
               const rp = part as ReasoningPart
               if (rp.text) {
-                // Parts are cumulative (each has full text so far); keep only the last
-                lastReasoningText = rp.text
+                upsertOrderedTextPart(orderedParts, 'reasoning', rp.id, rp.text)
               }
               break
             }
             case 'text': {
               const txp = part as TextPart
               if (txp.text) {
-                // Parts are cumulative (each has full text so far); keep only the last
-                textContent = txp.text
+                upsertOrderedTextPart(orderedParts, 'text', txp.id, txp.text)
               }
               break
             }
             case 'plan': {
-              const pp = part as import('@/lib/sse-types').PlanPart
-              if (pp.items) planItems = pp.items
+              const pp = part as PlanPart
+              if (pp.items) {
+                planItems = pp.items
+                orderedParts.push({ id: pp.id, kind: 'plan', items: pp.items })
+              }
               break
             }
             case 'step-finish': {
@@ -129,10 +144,19 @@ export function mapApiMessagesToUI(apiMessages: ApiMessage[]): UIMessage[] {
           }
         }
 
+        const orderedReasoningText = orderedParts
+          .filter((part): part is Extract<OrderedMessagePart, { kind: 'reasoning' }> => part.kind === 'reasoning')
+          .map((part) => part.text)
+        const orderedText = orderedParts
+          .filter((part): part is Extract<OrderedMessagePart, { kind: 'text' }> => part.kind === 'text')
+          .map((part) => part.text)
+          .join('')
+
         if (tools.length > 0) uiMsg.toolInvocations = tools
-        if (lastReasoningText) uiMsg.reasoning = [lastReasoningText]
+        if (orderedReasoningText.length > 0) uiMsg.reasoning = orderedReasoningText
         if (planItems) uiMsg.planItems = planItems
-        if (!uiMsg.content && textContent) uiMsg.content = textContent
+        if (orderedParts.length > 0) uiMsg.orderedParts = orderedParts
+        if (!uiMsg.content && orderedText) uiMsg.content = orderedText
         if (elapsed) uiMsg.elapsed = elapsed
 
         return uiMsg
@@ -212,6 +236,7 @@ export function replayEventsToMessages(
 
   const mockTextRef = { current: '' }
   const mockReasoningRef = { current: '' }
+  const mockOrderedPartsRef = { current: [] as OrderedMessagePart[] }
   let lastMsgIdx = -1
   let result = [...base]
 
@@ -231,10 +256,11 @@ export function replayEventsToMessages(
     if (msgIdx !== lastMsgIdx) {
       mockTextRef.current = ''
       mockReasoningRef.current = ''
+      mockOrderedPartsRef.current = []
       lastMsgIdx = msgIdx
     }
     const streamingMsgId = result[msgIdx]!.id
-    result = processPartUpdated(part, delta, streamingMsgId, result, mockTextRef, mockReasoningRef)
+    result = processPartUpdated(part, delta, streamingMsgId, result, mockTextRef, mockReasoningRef, mockOrderedPartsRef)
   }
 
   return preserveFullPersistedAssistantText(base, result)

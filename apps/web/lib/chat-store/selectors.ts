@@ -4,6 +4,7 @@ const EMPTY_BUFFER: StreamingBuffer = {
   messageId: null,
   text: '',
   reasoning: '',
+  orderedParts: [],
 }
 
 /**

@@ -13,9 +13,11 @@ import type {
   MessagePart,
   Message as SSEMessage,
   StepFinishPart,
+  PlanPart,
   SessionInfo,
   SSEEvent,
 } from '@/lib/sse-types'
+import type { MutableRefObject } from 'react'
 
 // ============ UIMessage Types ============
 
@@ -33,6 +35,13 @@ export interface ToolInvocation {
   title?: string
   metadata?: Record<string, unknown>
 }
+
+/** Renderable assistant message part in first-seen stream order. */
+export type OrderedMessagePart =
+  | { id: string; kind: 'text'; text: string }
+  | { id: string; kind: 'reasoning'; text: string }
+  | { id: string; kind: 'tool'; tool: ToolInvocation }
+  | { id: string; kind: 'plan'; items: Array<{ id: string; title: string; status: string }> }
 
 export interface UIMessage {
   id: string
@@ -53,6 +62,8 @@ export interface UIMessage {
   elapsed?: number
   // Plan items from PlanPart events
   planItems?: Array<{ id: string; title: string; status: string }>
+  /** Render parts in their first-seen stream order. */
+  orderedParts?: OrderedMessagePart[]
   /** Startup steps (e.g. "Provisioning sandbox...", "Server ready") — persisted, shown collapsible */
   startupSteps?: string[]
   // Permission/question prompt data
@@ -64,6 +75,110 @@ export interface UIMessage {
     text?: string
     status?: 'pending' | 'granted' | 'denied' | 'replied' | 'rejected'
   }
+}
+
+function upsertOrderedPart(
+  parts: OrderedMessagePart[] | undefined,
+  nextPart: OrderedMessagePart,
+): OrderedMessagePart[] {
+  const existing = parts || []
+  const index = existing.findIndex((part) => part.id === nextPart.id && part.kind === nextPart.kind)
+  if (index === -1) return [...existing, nextPart]
+  return existing.map((part, i) => (i === index ? nextPart : part))
+}
+
+function getTextLikePartText(part: TextPart | ReasoningPart, delta: string | undefined, existing: string): string {
+  if (typeof delta === 'string') return existing + delta
+  if (part.text) return part.text
+  return existing
+}
+
+function getOrderedText(parts: OrderedMessagePart[] | undefined, partId: string, kind: 'text' | 'reasoning'): string {
+  const match = parts?.find((part) => part.id === partId && part.kind === kind)
+  return match?.kind === kind ? match.text : ''
+}
+
+function joinOrderedText(parts: OrderedMessagePart[], kind: 'text' | 'reasoning'): string {
+  return parts
+    .filter((part): part is Extract<OrderedMessagePart, { kind: typeof kind }> => part.kind === kind)
+    .map((part) => part.text)
+    .join(kind === 'reasoning' ? '\n\n' : '')
+}
+
+/**
+ * Updates the ordered render snapshot for a streamed text or reasoning part.
+ */
+export function applyOrderedTextLikePart(
+  part: TextPart | ReasoningPart,
+  delta: string | undefined,
+  textRef: MutableRefObject<string>,
+  reasoningRef: MutableRefObject<string>,
+  orderedPartsRef?: MutableRefObject<OrderedMessagePart[]>,
+): OrderedMessagePart[] | undefined {
+  if (!orderedPartsRef) {
+    if (part.type === 'text') {
+      if (typeof delta === 'string') textRef.current += delta
+      else if (part.text) textRef.current = part.text
+    } else if (typeof delta === 'string') {
+      reasoningRef.current += delta
+    } else if (part.text) {
+      reasoningRef.current = part.text
+    }
+    return undefined
+  }
+
+  const kind = part.type
+  const existing = getOrderedText(orderedPartsRef.current, part.id, kind)
+  const text = getTextLikePartText(part, delta, existing)
+  orderedPartsRef.current = upsertOrderedPart(orderedPartsRef.current, {
+    id: part.id,
+    kind,
+    text,
+  })
+  if (kind === 'text') textRef.current = joinOrderedText(orderedPartsRef.current, 'text')
+  else reasoningRef.current = joinOrderedText(orderedPartsRef.current, 'reasoning')
+  return orderedPartsRef.current
+}
+
+function upsertOrderedToolPart(
+  orderedParts: OrderedMessagePart[] | undefined,
+  invocation: ToolInvocation,
+): OrderedMessagePart[] {
+  return upsertOrderedPart(orderedParts, {
+    id: invocation.toolCallId,
+    kind: 'tool',
+    tool: invocation,
+  })
+}
+
+function upsertOrderedPlanPart(orderedParts: OrderedMessagePart[] | undefined, part: PlanPart): OrderedMessagePart[] {
+  return upsertOrderedPart(orderedParts, {
+    id: part.id,
+    kind: 'plan',
+    items: part.items || [],
+  })
+}
+
+/**
+ * Builds a best-effort ordered sequence for legacy messages that predate ordered parts.
+ */
+export function synthesizeOrderedParts(message: UIMessage): OrderedMessagePart[] {
+  if (message.orderedParts?.length) return message.orderedParts
+
+  const parts: OrderedMessagePart[] = []
+  for (const [index, text] of (message.reasoning || []).entries()) {
+    if (text) parts.push({ id: `${message.id}-reasoning-${index}`, kind: 'reasoning', text })
+  }
+  for (const tool of message.toolInvocations || []) {
+    parts.push({ id: tool.toolCallId, kind: 'tool', tool })
+  }
+  if (message.planItems?.length) {
+    parts.push({ id: `${message.id}-plan`, kind: 'plan', items: message.planItems })
+  }
+  if (message.content) {
+    parts.push({ id: `${message.id}-text`, kind: 'text', text: message.content })
+  }
+  return parts
 }
 
 // ============ Tool State Mapping ============
@@ -140,7 +255,7 @@ export function updateToolInvocation(toolPart: ToolPart, messageId: string, mess
     const existing = m.toolInvocations || []
     const idx = existing.findIndex((t) => t.toolCallId === invocation.toolCallId)
     const updated = idx >= 0 ? existing.map((t, i) => (i === idx ? invocation : t)) : [...existing, invocation]
-    return { ...m, toolInvocations: updated }
+    return { ...m, toolInvocations: updated, orderedParts: upsertOrderedToolPart(m.orderedParts, invocation) }
   })
 }
 
@@ -163,42 +278,75 @@ export function processPartUpdated(
   delta: string | undefined,
   streamingMessageId: string,
   messages: UIMessage[],
-  textRef: React.MutableRefObject<string>,
-  reasoningRef: React.MutableRefObject<string>,
+  textRef: MutableRefObject<string>,
+  reasoningRef: MutableRefObject<string>,
+  orderedPartsRef?: MutableRefObject<OrderedMessagePart[]>,
 ): UIMessage[] {
   switch (part.type) {
     case 'text': {
-      if (typeof delta === 'string') {
-        textRef.current += delta
-      } else if ((part as TextPart).text) {
-        textRef.current = (part as TextPart).text
-      }
-      return setMessageContent(textRef.current, streamingMessageId, messages)
+      const orderedParts = applyOrderedTextLikePart(part as TextPart, delta, textRef, reasoningRef, orderedPartsRef)
+      return messages.map((m) => {
+        if (m.id !== streamingMessageId) return m
+        return {
+          ...m,
+          content: textRef.current,
+          ...(orderedParts ? { orderedParts } : {}),
+        }
+      })
     }
 
     case 'tool': {
-      return updateToolInvocation(part as ToolPart, streamingMessageId, messages)
+      const invocation = createToolInvocation(part as ToolPart)
+      if (orderedPartsRef) {
+        orderedPartsRef.current = upsertOrderedToolPart(orderedPartsRef.current, invocation)
+      }
+      return messages.map((m) => {
+        if (m.id !== streamingMessageId) return m
+        const existing = m.toolInvocations || []
+        const idx = existing.findIndex((t) => t.toolCallId === invocation.toolCallId)
+        const updated = idx >= 0 ? existing.map((t, i) => (i === idx ? invocation : t)) : [...existing, invocation]
+        return {
+          ...m,
+          toolInvocations: updated,
+          orderedParts: upsertOrderedToolPart(orderedPartsRef?.current ?? m.orderedParts, invocation),
+        }
+      })
     }
 
     case 'reasoning': {
-      const reasoningPart = part as ReasoningPart
-      if (typeof delta === 'string') {
-        reasoningRef.current += delta
-      } else if (reasoningPart.text) {
-        reasoningRef.current = reasoningPart.text
-      }
+      const orderedParts = applyOrderedTextLikePart(
+        part as ReasoningPart,
+        delta,
+        textRef,
+        reasoningRef,
+        orderedPartsRef,
+      )
       if (reasoningRef.current) {
-        return setReasoning(reasoningRef.current, streamingMessageId, messages)
+        return messages.map((m) => {
+          if (m.id !== streamingMessageId) return m
+          return {
+            ...m,
+            reasoning: [reasoningRef.current],
+            ...(orderedParts ? { orderedParts } : {}),
+          }
+        })
       }
       return messages
     }
 
     case 'plan': {
-      const planPart = part as import('@/lib/sse-types').PlanPart
+      const planPart = part as PlanPart
       if (planPart.items) {
+        if (orderedPartsRef) {
+          orderedPartsRef.current = upsertOrderedPlanPart(orderedPartsRef.current, planPart)
+        }
         return messages.map((m) => {
           if (m.id !== streamingMessageId) return m
-          return { ...m, planItems: planPart.items }
+          return {
+            ...m,
+            planItems: planPart.items,
+            orderedParts: upsertOrderedPlanPart(orderedPartsRef?.current ?? m.orderedParts, planPart),
+          }
         })
       }
       return messages

@@ -1,13 +1,12 @@
 'use client'
 
-import { Message, Response, Loader, ThinkingBlock, SessionSetup } from '@ship/ui'
-import { Markdown } from '@/components/chat/markdown'
+import { Message, Loader, SessionSetup } from '@ship/ui'
 import { ErrorMessage } from '@/components/chat/error-message'
 import { PermissionPrompt } from '../permission-prompt'
 import { QuestionPrompt } from '../question-prompt'
 import type { UIMessage, ToolInvocation } from '@/lib/ai-elements-adapter'
 import type { TodoItem } from '../../types'
-import { MessageToolList } from './tool-list'
+import { AssistantOrderedParts } from '../assistant-ordered-parts'
 
 export interface MessageItemProps {
   message: UIMessage
@@ -47,14 +46,10 @@ function MessagePromptContent({
           patterns={message.promptData.patterns}
           status={message.promptData.status as 'pending' | 'granted' | 'denied'}
           onApprove={
-            onPermissionReply && activeSessionId
-              ? () => onPermissionReply(message.promptData!.id, true)
-              : undefined
+            onPermissionReply && activeSessionId ? () => onPermissionReply(message.promptData!.id, true) : undefined
           }
           onDeny={
-            onPermissionReply && activeSessionId
-              ? () => onPermissionReply(message.promptData!.id, false)
-              : undefined
+            onPermissionReply && activeSessionId ? () => onPermissionReply(message.promptData!.id, false) : undefined
           }
         />
       </div>
@@ -69,15 +64,9 @@ function MessagePromptContent({
           text={message.promptData.text || message.content}
           status={message.promptData.status as 'pending' | 'replied' | 'rejected'}
           onReply={
-            onQuestionReply && activeSessionId
-              ? (answer) => onQuestionReply(message.promptData!.id, answer)
-              : undefined
+            onQuestionReply && activeSessionId ? (answer) => onQuestionReply(message.promptData!.id, answer) : undefined
           }
-          onSkip={
-            onQuestionSkip && activeSessionId
-              ? () => onQuestionSkip(message.promptData!.id)
-              : undefined
-          }
+          onSkip={onQuestionSkip && activeSessionId ? () => onQuestionSkip(message.promptData!.id) : undefined}
         />
       </div>
     )
@@ -114,40 +103,6 @@ function MessagePromptContent({
   return null
 }
 
-function MessagePlanItems({ items }: { items: NonNullable<UIMessage['planItems']> }) {
-  return (
-    <div className="my-2 rounded-lg border border-border/50 bg-muted/20 p-3 space-y-1.5">
-      <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Plan</div>
-      {items.map((item) => (
-        <div key={item.id} className="flex items-center gap-2 text-sm">
-          <span className="shrink-0 w-4 text-center">
-            {item.status === 'completed'
-              ? '✓'
-              : item.status === 'in_progress'
-                ? '●'
-                : item.status === 'cancelled'
-                  ? '✗'
-                  : '○'}
-          </span>
-          <span
-            className={
-              item.status === 'completed'
-                ? 'text-muted-foreground line-through'
-                : item.status === 'in_progress'
-                  ? 'text-foreground font-medium'
-                  : item.status === 'cancelled'
-                    ? 'text-muted-foreground/50 line-through'
-                    : 'text-foreground'
-            }
-          >
-            {item.title}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function AssistantMessageBody({
   message,
   isCurrentlyStreaming,
@@ -172,6 +127,8 @@ function AssistantMessageBody({
     !message.content &&
     !message.toolInvocations?.length &&
     !message.reasoning?.length &&
+    !message.planItems?.length &&
+    !message.orderedParts?.length &&
     isCurrentlyStreaming
   ) {
     return (
@@ -185,41 +142,19 @@ function AssistantMessageBody({
     )
   }
 
-  const hasReasoning = !!message.reasoning && message.reasoning.length > 0
-  const hasSteps = !!(message.toolInvocations && message.toolInvocations.length > 0)
-
   return (
     <Message key={message.id} role={message.role}>
       {message.startupSteps && message.startupSteps.length > 0 && (
         <SessionSetup steps={message.startupSteps} defaultOpen={false} className="my-1" />
       )}
 
-      {(hasReasoning || hasSteps) && (
-        <ThinkingBlock
-          reasoning={message.reasoning}
-          isStreaming={isCurrentlyStreaming}
-          duration={message.elapsed != null ? Math.floor(message.elapsed / 1000) : undefined}
-        >
-          {hasSteps && message.toolInvocations && (
-            <MessageToolList
-              tools={message.toolInvocations}
-              sessionTodos={sessionTodos}
-              todoRenderedRef={todoRenderedRef}
-              onSubagentNavigate={onSubagentNavigate}
-            />
-          )}
-        </ThinkingBlock>
-      )}
-
-      {message.planItems && message.planItems.length > 0 && <MessagePlanItems items={message.planItems} />}
-
-      {message.content && (
-        <div className={hasSteps ? 'mt-4' : undefined}>
-          <Response>
-            <Markdown content={message.content} isAnimating={isCurrentlyStreaming} />
-          </Response>
-        </div>
-      )}
+      <AssistantOrderedParts
+        messages={[message]}
+        isStreaming={isCurrentlyStreaming}
+        sessionTodos={sessionTodos}
+        todoRenderedRef={todoRenderedRef}
+        onSubagentNavigate={onSubagentNavigate}
+      />
     </Message>
   )
 }
@@ -230,7 +165,13 @@ export function MessageItem(props: MessageItemProps) {
   const promptContent = MessagePromptContent(props)
   if (promptContent) return promptContent
 
-  if (!message.content && !message.toolInvocations?.length && !message.reasoning?.length) {
+  if (
+    !message.content &&
+    !message.toolInvocations?.length &&
+    !message.reasoning?.length &&
+    !message.planItems?.length &&
+    !message.orderedParts?.length
+  ) {
     return null
   }
 

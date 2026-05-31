@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
 import { mermaid as mermaidPlugin } from '@streamdown/mermaid'
@@ -8,7 +8,8 @@ import { cn } from '@ship/ui'
 import type { Components } from 'react-markdown'
 import type { ControlsConfig, MermaidErrorComponentProps } from 'streamdown'
 
-import { normalizeMermaidCodeBlocks } from '@/lib/markdown-mermaid'
+import { normalizeChatMarkdown } from '@/lib/markdown-normalize'
+import { STREAMING_TEXT_PACE_MS, getNextPacedText } from '@/lib/streaming-text-pacing'
 import { MermaidBlockRenderer } from './mermaid-block'
 
 interface MarkdownProps {
@@ -32,7 +33,11 @@ interface MarkdownProps {
 const STREAMING_ANIMATION = { animation: 'fadeIn', duration: 250, easing: 'ease-out' } as const
 
 // Stable references — hoisted outside component to avoid re-creating on every render
-const PLUGINS = { code, mermaid: mermaidPlugin, renderers: [{ language: 'mermaid', component: MermaidBlockRenderer }] } as never
+const PLUGINS = {
+  code,
+  mermaid: mermaidPlugin,
+  renderers: [{ language: 'mermaid', component: MermaidBlockRenderer }],
+} as never
 
 const MERMAID_OPTIONS = { errorComponent: MermaidErrorFallback }
 const STREAMDOWN_CONTROLS: ControlsConfig = {
@@ -44,117 +49,37 @@ const STREAMDOWN_CONTROLS: ControlsConfig = {
 const customComponents: Components = {
   a({ href, children, ...props }) {
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary underline decoration-primary/30 underline-offset-[3px] transition-colors hover:decoration-primary/60"
-        {...props}
-      >
+      <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
         {children}
       </a>
     )
   },
-  h1({ children }) {
-    return (
-      <h1 className="mb-4 mt-6 first:mt-0 text-[1.35em] font-semibold leading-tight text-foreground">
-        {children}
-      </h1>
-    )
-  },
-  h2({ children }) {
-    return (
-      <h2 className="mb-3 mt-5 first:mt-0 text-[1.15em] font-semibold leading-tight text-foreground">
-        {children}
-      </h2>
-    )
-  },
-  h3({ children }) {
-    return (
-      <h3 className="mb-2 mt-4 first:mt-0 text-[1.05em] font-semibold leading-tight text-foreground">
-        {children}
-      </h3>
-    )
-  },
-  h4({ children }) {
-    return (
-      <h4 className="mb-2 mt-3 first:mt-0 text-sm font-semibold text-foreground">{children}</h4>
-    )
-  },
-  p({ children }) {
-    return <p className="mb-3 last:mb-0 leading-[1.7] text-foreground">{children}</p>
-  },
-  ul({ children }) {
-    return (
-      <ul className="mb-3 ml-5 list-disc space-y-1.5 text-foreground [&>li]:pl-1">{children}</ul>
-    )
-  },
-  ol({ children }) {
-    return (
-      <ol className="mb-3 ml-5 list-decimal space-y-1.5 text-foreground [&>li]:pl-1">{children}</ol>
-    )
-  },
-  li({ children }) {
-    return (
-      <li className="leading-[1.65] text-foreground marker:text-muted-foreground/50">{children}</li>
-    )
-  },
-  blockquote({ children }) {
-    return (
-      <blockquote className="my-3 border-l-[3px] border-muted-foreground/20 pl-4 text-muted-foreground [&>p]:mb-1">
-        {children}
-      </blockquote>
-    )
-  },
-  hr() {
-    return <hr className="my-5 border-border/50" />
-  },
   table({ children }) {
     return (
-      <div className="my-3 overflow-x-auto rounded-lg border border-border/50">
-        <table className="min-w-full divide-y divide-border/50">{children}</table>
+      <div className="ship-markdown-table-scroll">
+        <table>{children}</table>
       </div>
     )
-  },
-  thead({ children }) {
-    return <thead className="bg-muted/40">{children}</thead>
-  },
-  tbody({ children }) {
-    return <tbody className="divide-y divide-border/30">{children}</tbody>
-  },
-  tr({ children }) {
-    return <tr className="hover:bg-muted/20 transition-colors">{children}</tr>
-  },
-  th({ children }) {
-    return (
-      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">{children}</th>
-    )
-  },
-  td({ children }) {
-    return <td className="px-3 py-2 text-sm text-foreground">{children}</td>
-  },
-  strong({ children }) {
-    return <strong className="font-semibold text-foreground">{children}</strong>
-  },
-  em({ children }) {
-    return <em className="italic">{children}</em>
-  },
-  del({ children }) {
-    return <del className="text-muted-foreground line-through">{children}</del>
   },
 }
 
 export const Markdown = memo(function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
-  const normalizedContent = useMemo(() => normalizeMermaidCodeBlocks(content), [content])
+  const pacedContent = usePacedStreamingText(content, isAnimating)
+  const normalizedContent = useMemo(() => normalizeChatMarkdown(pacedContent), [pacedContent])
 
   return (
-    <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed [contain:layout_style]', className)}>
+    <div
+      className={cn(
+        'ship-markdown max-w-none break-words text-[14px] leading-[1.62] text-foreground [contain:layout_style]',
+        className,
+      )}
+    >
       <Streamdown
         plugins={PLUGINS}
         components={customComponents}
         mermaid={MERMAID_OPTIONS}
         controls={STREAMDOWN_CONTROLS}
-        mode="static"
+        mode={isAnimating ? 'streaming' : 'static'}
         isAnimating={isAnimating}
         animated={isAnimating ? STREAMING_ANIMATION : undefined}
       >
@@ -163,6 +88,60 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
     </div>
   )
 })
+
+function usePacedStreamingText(text: string, isStreaming: boolean): string {
+  const initialText = isStreaming ? '' : text
+  const [visibleText, setVisibleText] = useState(initialText)
+  const visibleTextRef = useRef(initialText)
+  const latestTextRef = useRef(text)
+  const isStreamingRef = useRef(isStreaming)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearTimer = useCallback(() => {
+    if (timeoutRef.current == null) return
+    clearTimeout(timeoutRef.current)
+    timeoutRef.current = null
+  }, [])
+
+  const syncVisibleText = useCallback((nextText: string) => {
+    visibleTextRef.current = nextText
+    setVisibleText(nextText)
+  }, [])
+
+  const runPaceTick = useCallback(() => {
+    timeoutRef.current = null
+    const nextText = getNextPacedText(latestTextRef.current, visibleTextRef.current, isStreamingRef.current)
+    syncVisibleText(nextText)
+
+    if (isStreamingRef.current && nextText.length < latestTextRef.current.length) {
+      timeoutRef.current = setTimeout(runPaceTick, STREAMING_TEXT_PACE_MS)
+    }
+  }, [syncVisibleText])
+
+  useEffect(() => {
+    latestTextRef.current = text
+    isStreamingRef.current = isStreaming
+
+    if (!isStreaming) {
+      clearTimer()
+      syncVisibleText(text)
+      return
+    }
+
+    if (!text.startsWith(visibleTextRef.current) || text.length < visibleTextRef.current.length) {
+      clearTimer()
+      syncVisibleText(text)
+      return
+    }
+
+    if (text.length === visibleTextRef.current.length || timeoutRef.current != null) return
+    timeoutRef.current = setTimeout(runPaceTick, STREAMING_TEXT_PACE_MS)
+  }, [clearTimer, isStreaming, runPaceTick, syncVisibleText, text])
+
+  useEffect(() => clearTimer, [clearTimer])
+
+  return visibleText
+}
 
 function MermaidErrorFallback({ chart, error }: MermaidErrorComponentProps) {
   return (
