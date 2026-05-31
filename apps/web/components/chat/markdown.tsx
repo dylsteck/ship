@@ -49,95 +49,17 @@ const STREAMDOWN_CONTROLS: ControlsConfig = {
 const customComponents: Components = {
   a({ href, children, ...props }) {
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary underline decoration-primary/30 underline-offset-[3px] transition-colors hover:decoration-primary/60"
-        {...props}
-      >
+      <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
         {children}
       </a>
     )
   },
-  h1({ children }) {
-    return (
-      <h1 className="mb-4 mt-6 first:mt-0 text-[1.35em] font-semibold leading-tight text-foreground">{children}</h1>
-    )
-  },
-  h2({ children }) {
-    return (
-      <h2 className="mb-3 mt-5 first:mt-0 text-[1.15em] font-semibold leading-tight text-foreground">{children}</h2>
-    )
-  },
-  h3({ children }) {
-    return (
-      <h3 className="mb-2 mt-4 first:mt-0 text-[1.05em] font-semibold leading-tight text-foreground">{children}</h3>
-    )
-  },
-  h4({ children }) {
-    return <h4 className="mb-2 mt-3 first:mt-0 text-sm font-semibold text-foreground">{children}</h4>
-  },
-  p({ children }) {
-    return <p className="mb-3 last:mb-0 leading-[1.7] text-foreground">{children}</p>
-  },
-  ul({ children }) {
-    return <ul className="mb-3 ml-5 list-disc space-y-1.5 text-foreground [&>li]:pl-1">{children}</ul>
-  },
-  ol({ children }) {
-    return <ol className="mb-3 ml-5 list-decimal space-y-1.5 text-foreground [&>li]:pl-1">{children}</ol>
-  },
-  li({ children }) {
-    return <li className="leading-[1.65] text-foreground marker:text-muted-foreground/50">{children}</li>
-  },
-  blockquote({ children }) {
-    return (
-      <blockquote className="my-3 border-l-[3px] border-muted-foreground/20 pl-4 text-muted-foreground [&>p]:mb-1">
-        {children}
-      </blockquote>
-    )
-  },
-  hr() {
-    return <hr className="my-5 border-border/50" />
-  },
   table({ children }) {
     return (
-      <div className="my-3 max-w-full overflow-x-auto rounded-md border border-border/60 bg-background/40">
-        <table className="w-full min-w-max border-separate border-spacing-0 text-sm">{children}</table>
+      <div className="ship-markdown-table-scroll">
+        <table>{children}</table>
       </div>
     )
-  },
-  thead({ children }) {
-    return <thead className="bg-muted/35">{children}</thead>
-  },
-  tbody({ children }) {
-    return <tbody>{children}</tbody>
-  },
-  tr({ children }) {
-    return <tr className="transition-colors hover:bg-muted/15">{children}</tr>
-  },
-  th({ children }) {
-    return (
-      <th className="border-b border-border/60 px-3 py-2 text-left text-xs font-medium text-muted-foreground first:pl-3 last:pr-3">
-        {children}
-      </th>
-    )
-  },
-  td({ children }) {
-    return (
-      <td className="border-b border-border/35 px-3 py-2 align-top text-sm text-foreground last:pr-3 [&_code]:whitespace-normal">
-        {children}
-      </td>
-    )
-  },
-  strong({ children }) {
-    return <strong className="font-semibold text-foreground">{children}</strong>
-  },
-  em({ children }) {
-    return <em className="italic">{children}</em>
-  },
-  del({ children }) {
-    return <del className="text-muted-foreground line-through">{children}</del>
   },
 }
 
@@ -146,7 +68,12 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
   const normalizedContent = useMemo(() => normalizeChatMarkdown(pacedContent), [pacedContent])
 
   return (
-    <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed [contain:layout_style]', className)}>
+    <div
+      className={cn(
+        'ship-markdown max-w-none break-words text-[14px] leading-[1.62] text-foreground [contain:layout_style]',
+        className,
+      )}
+    >
       <Streamdown
         plugins={PLUGINS}
         components={customComponents}
