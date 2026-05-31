@@ -1,6 +1,6 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 
 export interface SessionLiveStatus {
   status: string
@@ -20,8 +20,10 @@ type SessionLiveStatusUpdate = Partial<SessionLiveStatus> & { step?: string }
 type Listener = () => void
 
 const EMPTY_STATUS: SessionLiveStatus = { status: '', steps: [], isRunning: false }
+const SERVER_SNAPSHOT = () => 0
 
-function createSessionStatusStore() {
+/** Creates the live session status store used by dashboard streaming UI. */
+export function createSessionStatusStore() {
   const statuses = new Map<string, SessionLiveStatus>()
   const listeners = new Set<Listener>()
   let notifyQueued = false
@@ -33,7 +35,10 @@ function createSessionStatusStore() {
 
   function notify() {
     notifyQueued = false
-    for (const l of listeners) l()
+    const currentListeners = Array.from(listeners)
+    for (const listener of currentListeners) {
+      if (listeners.has(listener)) listener()
+    }
   }
 
   function scheduleNotify() {
@@ -101,7 +106,9 @@ const store = createSessionStatusStore()
  * force a React update for every raw event.
  */
 export function useSessionStatus(sessionId: string): SessionLiveStatus | undefined {
-  useSyncExternalStore(store.subscribe, store.getSessionSnapshot(sessionId), () => 0)
+  const getSnapshot = useMemo(() => store.getSessionSnapshot(sessionId), [sessionId])
+
+  useSyncExternalStore(store.subscribe, getSnapshot, SERVER_SNAPSHOT)
 
   return store.get(sessionId)
 }
@@ -111,7 +118,7 @@ export function useSessionStatus(sessionId: string): SessionLiveStatus | undefin
  * Only use when you need to react to ANY session change (e.g. dashboard-client cross-tab sync).
  */
 export function useSessionStatusVersion(): number {
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, () => 0)
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, SERVER_SNAPSHOT)
 }
 
 export { store as sessionStatusStore }

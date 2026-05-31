@@ -131,7 +131,6 @@
   background: color-mix(in oklab, var(--background) 94%, var(--muted)) !important;
 }
 .ship-markdown [data-streamdown='code-block-header'] {
-  order: 1;
   min-height: 0 !important;
   padding: 0.45rem 0.75rem !important;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
@@ -147,7 +146,6 @@
   display: none !important;
 }
 .ship-markdown [data-streamdown='code-block-body'] {
-  order: 2;
   min-width: 0 !important;
   overflow-x: auto !important;
   border: 0 !important;
