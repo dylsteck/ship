@@ -19,16 +19,32 @@ describe('unwrapRenderableMarkdownFences', () => {
     )
   })
 
-  it('leaves non-markdown fences alone', () => {
+  it('unwraps explicit markdown fences even when the body is plain', () => {
     const markdown = ['```md', 'plain text without markdown shape', '```'].join('\n')
+
+    expect(unwrapRenderableMarkdownFences(markdown)).toBe('plain text without markdown shape')
+  })
+
+  it('unwraps unlabeled fences that contain a Markdown document', () => {
+    const markdown = ['```', '---', '## Auth model', '', '- **Session JWT** authenticates users', '---', '```'].join(
+      '\n',
+    )
+
+    expect(unwrapRenderableMarkdownFences(markdown)).toBe(
+      ['---', '## Auth model', '', '- **Session JWT** authenticates users', '---'].join('\n'),
+    )
+  })
+
+  it('leaves unlabeled code fences alone', () => {
+    const markdown = ['```', 'const value = 1', 'function run() {', '  return value', '}', '```'].join('\n')
 
     expect(unwrapRenderableMarkdownFences(markdown)).toBe(markdown)
   })
 })
 
 describe('normalizeChatMarkdown', () => {
-  it('still normalizes mermaid blocks after unwrapping markdown prose', () => {
-    const markdown = ['```markdown', '```mermaid', 'A -> B', '```', '```'].join('\n')
+  it('still normalizes mermaid blocks', () => {
+    const markdown = ['```mermaid', 'A -> B', '```'].join('\n')
 
     expect(normalizeChatMarkdown(markdown)).toContain('flowchart TD')
   })
