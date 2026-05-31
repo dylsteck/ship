@@ -123,7 +123,7 @@
   display: flex !important;
   flex-direction: column !important;
   gap: 0 !important;
-  margin-block: 0.95rem 1.35rem !important;
+  margin-block: 0.75rem 1rem !important;
   max-width: 100% !important;
   overflow: hidden !important;
   border: 1px solid color-mix(in oklab, var(--border) 78%, transparent) !important;
@@ -134,7 +134,7 @@
 .ship-markdown [data-streamdown='code-block-header'] {
   height: auto !important;
   min-height: 0 !important;
-  padding: 0.45rem 0.75rem !important;
+  padding: 0.34rem 0.7rem !important;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
   background: transparent !important;
   color: var(--muted-foreground) !important;
@@ -152,8 +152,8 @@
 }
 .ship-markdown [data-streamdown='code-block'] > div:has(> [data-streamdown='code-block-actions']) {
   position: absolute !important;
-  top: 0.35rem !important;
-  right: 0.35rem !important;
+  top: 0.25rem !important;
+  right: 0.25rem !important;
   z-index: 2 !important;
   display: flex !important;
   height: auto !important;
@@ -173,8 +173,8 @@
 .ship-markdown [data-streamdown='code-block-body'] pre {
   margin: 0 !important;
   min-width: max-content !important;
-  padding: 0.8rem 0.9rem !important;
-  line-height: 1.58 !important;
+  padding: 0.65rem 0.8rem !important;
+  line-height: 1.5 !important;
   white-space: pre !important;
 }
 .ship-markdown [data-streamdown='code-block-body'] pre code {
