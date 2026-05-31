@@ -33,7 +33,11 @@ interface MarkdownProps {
 const STREAMING_ANIMATION = { animation: 'fadeIn', duration: 250, easing: 'ease-out' } as const
 
 // Stable references — hoisted outside component to avoid re-creating on every render
-const PLUGINS = { code, mermaid: mermaidPlugin, renderers: [{ language: 'mermaid', component: MermaidBlockRenderer }] } as never
+const PLUGINS = {
+  code,
+  mermaid: mermaidPlugin,
+  renderers: [{ language: 'mermaid', component: MermaidBlockRenderer }],
+} as never
 
 const MERMAID_OPTIONS = { errorComponent: MermaidErrorFallback }
 const STREAMDOWN_CONTROLS: ControlsConfig = {
@@ -58,47 +62,33 @@ const customComponents: Components = {
   },
   h1({ children }) {
     return (
-      <h1 className="mb-4 mt-6 first:mt-0 text-[1.35em] font-semibold leading-tight text-foreground">
-        {children}
-      </h1>
+      <h1 className="mb-4 mt-6 first:mt-0 text-[1.35em] font-semibold leading-tight text-foreground">{children}</h1>
     )
   },
   h2({ children }) {
     return (
-      <h2 className="mb-3 mt-5 first:mt-0 text-[1.15em] font-semibold leading-tight text-foreground">
-        {children}
-      </h2>
+      <h2 className="mb-3 mt-5 first:mt-0 text-[1.15em] font-semibold leading-tight text-foreground">{children}</h2>
     )
   },
   h3({ children }) {
     return (
-      <h3 className="mb-2 mt-4 first:mt-0 text-[1.05em] font-semibold leading-tight text-foreground">
-        {children}
-      </h3>
+      <h3 className="mb-2 mt-4 first:mt-0 text-[1.05em] font-semibold leading-tight text-foreground">{children}</h3>
     )
   },
   h4({ children }) {
-    return (
-      <h4 className="mb-2 mt-3 first:mt-0 text-sm font-semibold text-foreground">{children}</h4>
-    )
+    return <h4 className="mb-2 mt-3 first:mt-0 text-sm font-semibold text-foreground">{children}</h4>
   },
   p({ children }) {
     return <p className="mb-3 last:mb-0 leading-[1.7] text-foreground">{children}</p>
   },
   ul({ children }) {
-    return (
-      <ul className="mb-3 ml-5 list-disc space-y-1.5 text-foreground [&>li]:pl-1">{children}</ul>
-    )
+    return <ul className="mb-3 ml-5 list-disc space-y-1.5 text-foreground [&>li]:pl-1">{children}</ul>
   },
   ol({ children }) {
-    return (
-      <ol className="mb-3 ml-5 list-decimal space-y-1.5 text-foreground [&>li]:pl-1">{children}</ol>
-    )
+    return <ol className="mb-3 ml-5 list-decimal space-y-1.5 text-foreground [&>li]:pl-1">{children}</ol>
   },
   li({ children }) {
-    return (
-      <li className="leading-[1.65] text-foreground marker:text-muted-foreground/50">{children}</li>
-    )
+    return <li className="leading-[1.65] text-foreground marker:text-muted-foreground/50">{children}</li>
   },
   blockquote({ children }) {
     return (
@@ -112,27 +102,33 @@ const customComponents: Components = {
   },
   table({ children }) {
     return (
-      <div className="my-3 overflow-x-auto rounded-lg border border-border/50">
-        <table className="min-w-full divide-y divide-border/50">{children}</table>
+      <div className="my-3 max-w-full overflow-x-auto rounded-md border border-border/60 bg-background/40">
+        <table className="w-full min-w-max border-separate border-spacing-0 text-sm">{children}</table>
       </div>
     )
   },
   thead({ children }) {
-    return <thead className="bg-muted/40">{children}</thead>
+    return <thead className="bg-muted/35">{children}</thead>
   },
   tbody({ children }) {
-    return <tbody className="divide-y divide-border/30">{children}</tbody>
+    return <tbody>{children}</tbody>
   },
   tr({ children }) {
-    return <tr className="hover:bg-muted/20 transition-colors">{children}</tr>
+    return <tr className="transition-colors hover:bg-muted/15">{children}</tr>
   },
   th({ children }) {
     return (
-      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">{children}</th>
+      <th className="border-b border-border/60 px-3 py-2 text-left text-xs font-medium text-muted-foreground first:pl-3 last:pr-3">
+        {children}
+      </th>
     )
   },
   td({ children }) {
-    return <td className="px-3 py-2 text-sm text-foreground">{children}</td>
+    return (
+      <td className="border-b border-border/35 px-3 py-2 align-top text-sm text-foreground last:pr-3 [&_code]:whitespace-normal">
+        {children}
+      </td>
+    )
   },
   strong({ children }) {
     return <strong className="font-semibold text-foreground">{children}</strong>

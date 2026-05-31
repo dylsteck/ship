@@ -1,7 +1,7 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "streamdown/styles.css";
-@import "@xterm/xterm/css/xterm.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'streamdown/styles.css';
+@import '@xterm/xterm/css/xterm.css';
 
 .ship-terminal-host .xterm,
 .ship-terminal-host .xterm-screen,
@@ -11,50 +11,66 @@
 }
 
 /* Code and diagram blocks: compact, work-focused chrome for chat messages. */
-:has(> [data-streamdown="code-block"]) {
+:has(> [data-streamdown='code-block']) {
   display: contents;
 }
-[data-streamdown="code-block"] {
+[data-streamdown='code-block'] {
   display: flex !important;
   flex-direction: column !important;
   gap: 0 !important;
   margin-block: 1rem !important;
+  max-width: 100% !important;
   overflow: hidden !important;
   border-color: color-mix(in oklab, var(--border) 82%, transparent) !important;
   border-radius: 8px !important;
-  background: color-mix(in oklab, var(--background) 92%, var(--muted)) !important;
+  background: color-mix(in oklab, var(--background) 88%, var(--muted)) !important;
   box-shadow: 0 1px 0 color-mix(in oklab, var(--foreground) 5%, transparent) inset;
 }
-[data-streamdown="code-block-header"] {
+[data-streamdown='code-block-header'] {
   order: 1;
-  height: 2.25rem !important;
-  padding-inline: 0.75rem !important;
+  min-height: 2.25rem !important;
+  padding-inline: 0.8rem !important;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
-  background: color-mix(in oklab, var(--muted) 44%, var(--background)) !important;
+  background: color-mix(in oklab, var(--muted) 52%, var(--background)) !important;
   letter-spacing: 0 !important;
 }
-[data-streamdown="code-block-body"] {
+[data-streamdown='code-block-body'] {
   order: 2;
+  min-width: 0 !important;
+  overflow-x: auto !important;
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
 }
-[data-streamdown="code-block-body"] pre {
+[data-streamdown='code-block-body'] pre {
   margin: 0 !important;
-  padding-block: 0.875rem !important;
+  min-width: max-content !important;
+  padding: 0.95rem 1rem !important;
+  line-height: 1.6 !important;
 }
-[data-streamdown="code-block-actions"],
-[data-streamdown="mermaid-block-actions"] {
+[data-streamdown='inline-code'] {
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent) !important;
+  border-radius: 4px !important;
+  background: color-mix(in oklab, var(--muted) 45%, transparent) !important;
+  padding: 0.1rem 0.3rem !important;
+  color: color-mix(in oklab, var(--foreground) 90%, var(--primary)) !important;
+  font-size: 0.92em !important;
+  white-space: break-spaces !important;
+  overflow-wrap: anywhere !important;
+}
+[data-streamdown='code-block-actions'],
+[data-streamdown='mermaid-block-actions'] {
   gap: 0.125rem !important;
   border-color: color-mix(in oklab, var(--border) 72%, transparent) !important;
   border-radius: 8px !important;
-  background: color-mix(in oklab, var(--background) 88%, transparent) !important;
+  background: color-mix(in oklab, var(--background) 92%, transparent) !important;
+  opacity: 0.82;
   box-shadow:
     0 8px 24px color-mix(in oklab, black 18%, transparent),
     0 1px 0 color-mix(in oklab, white 5%, transparent) inset;
 }
-[data-streamdown="code-block-actions"] button,
-[data-streamdown="mermaid-block-actions"] button {
+[data-streamdown='code-block-actions'] button,
+[data-streamdown='mermaid-block-actions'] button {
   display: inline-flex;
   width: 1.875rem;
   height: 1.875rem;
@@ -62,15 +78,19 @@
   justify-content: center;
   border-radius: 6px;
 }
-[data-streamdown="code-block-actions"] button:hover,
-[data-streamdown="mermaid-block-actions"] button:hover {
+[data-streamdown='code-block-actions'] button:hover,
+[data-streamdown='mermaid-block-actions'] button:hover {
   background: color-mix(in oklab, var(--muted) 70%, transparent);
 }
+[data-streamdown='code-block']:hover [data-streamdown='code-block-actions'],
+[data-streamdown='mermaid-block']:hover [data-streamdown='mermaid-block-actions'] {
+  opacity: 1;
+}
 
-:has(> [data-streamdown="mermaid-block"]) {
+:has(> [data-streamdown='mermaid-block']) {
   display: contents;
 }
-[data-streamdown="mermaid-block"] {
+[data-streamdown='mermaid-block'] {
   width: 100% !important;
   max-width: 100%;
   overflow: hidden !important;
@@ -79,63 +99,53 @@
   background: color-mix(in oklab, var(--background) 92%, var(--muted)) !important;
   padding: 0 !important;
 }
-[data-streamdown="mermaid-block"] > div:first-child {
+[data-streamdown='mermaid-block'] > div:first-child {
   height: 2.25rem !important;
   padding-inline: 0.75rem !important;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
   background: color-mix(in oklab, var(--muted) 44%, var(--background)) !important;
 }
-[data-streamdown="mermaid-block"] > div:last-child {
+[data-streamdown='mermaid-block'] > div:last-child {
   border: none !important;
   background: transparent !important;
   padding: 1rem !important;
 }
-[data-streamdown="mermaid"] {
+[data-streamdown='mermaid'] {
   width: 100% !important;
   min-width: 100% !important;
 }
-[data-streamdown="mermaid"] > div,
-[data-streamdown="mermaid"] [role="application"],
-[data-streamdown="mermaid"] [aria-label="Mermaid chart"] {
+[data-streamdown='mermaid'] > div,
+[data-streamdown='mermaid'] [role='application'],
+[data-streamdown='mermaid'] [aria-label='Mermaid chart'] {
   width: 100% !important;
 }
-[data-streamdown="mermaid"] svg {
+[data-streamdown='mermaid'] svg {
   width: 100% !important;
   max-width: 100% !important;
   height: auto !important;
 }
-body
-  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]:has(
-    [data-streamdown="mermaid"]
-  ) {
+body > div[class*='fixed'][class*='inset-0'][class*='backdrop-blur-sm']:has([data-streamdown='mermaid']) {
   z-index: 9999 !important;
   background: color-mix(in oklab, var(--background) 94%, black 6%) !important;
 }
 body
-  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]:has(
-    [data-streamdown="mermaid"]
-  )
+  > div[class*='fixed'][class*='inset-0'][class*='backdrop-blur-sm']:has([data-streamdown='mermaid'])
   > div:last-child {
   padding: clamp(1rem, 3vw, 2.5rem) !important;
 }
-body
-  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
-  [data-streamdown="mermaid"] {
+body > div[class*='fixed'][class*='inset-0'][class*='backdrop-blur-sm'] [data-streamdown='mermaid'] {
   width: min(96vw, 1600px) !important;
   height: min(88vh, 1000px) !important;
   min-width: 0 !important;
 }
 body
-  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
-  [data-streamdown="mermaid"]
-  [aria-label="Mermaid chart"] {
+  > div[class*='fixed'][class*='inset-0'][class*='backdrop-blur-sm']
+  [data-streamdown='mermaid']
+  [aria-label='Mermaid chart'] {
   align-items: center;
   height: 100% !important;
 }
-body
-  > div[class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"]
-  [data-streamdown="mermaid"]
-  svg {
+body > div[class*='fixed'][class*='inset-0'][class*='backdrop-blur-sm'] [data-streamdown='mermaid'] svg {
   width: min(100%, 1500px) !important;
   max-height: 82vh !important;
 }
@@ -258,7 +268,7 @@ body
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.87 0.00 0);
+  --primary: oklch(0.87 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -372,12 +382,15 @@ body
 /* Mobile touch improvements */
 @media (max-width: 767px) {
   /* Prevent text selection on interactive elements during tap */
-  button, [role="button"] {
+  button,
+  [role='button'] {
     -webkit-tap-highlight-color: transparent;
   }
 
   /* Better touch targets */
-  input, textarea, select {
+  input,
+  textarea,
+  select {
     font-size: 16px; /* Prevent iOS zoom on focus */
   }
 }

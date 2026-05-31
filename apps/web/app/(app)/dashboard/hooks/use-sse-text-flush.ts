@@ -29,6 +29,7 @@ export function useSseTextFlush({ sessionId, setMessages }: UseSseTextFlushParam
 
     const text = refs.assistantTextRef.current
     const reasoning = refs.reasoningRef.current
+    const orderedParts = refs.orderedPartsRef.current
     setMessages((prev) => {
       let changed = false
       const next = prev.map((m) => {
@@ -36,6 +37,9 @@ export function useSseTextFlush({ sessionId, setMessages }: UseSseTextFlushParam
         const updates: Partial<typeof m> = {}
         if (m.content !== text) updates.content = text
         if (reasoning && m.reasoning?.[0] !== reasoning) updates.reasoning = [reasoning]
+        if (orderedParts.length > 0 && m.orderedParts !== orderedParts) {
+          updates.orderedParts = [...orderedParts]
+        }
         if (Object.keys(updates).length === 0) return m
         changed = true
         return { ...m, ...updates }

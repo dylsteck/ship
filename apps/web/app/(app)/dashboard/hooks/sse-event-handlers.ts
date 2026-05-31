@@ -3,11 +3,12 @@
  * No hooks — just typed dispatchers for each event type.
  */
 
-import type { UIMessage } from '@/lib/ai-elements-adapter'
+import type { OrderedMessagePart, UIMessage } from '@/lib/ai-elements-adapter'
 import type { SessionInfo } from '@/lib/sse-types'
 import type { TodoItem, FileDiff, StepCostInfo } from '../types'
 import {
   processPartUpdated,
+  applyOrderedTextLikePart,
   createPermissionMessage,
   createQuestionMessage,
   createSystemMessage,
@@ -37,6 +38,7 @@ export interface SSEHandlerContext {
   streamingMessageRef: React.MutableRefObject<string | null>
   assistantTextRef: React.MutableRefObject<string>
   reasoningRef: React.MutableRefObject<string>
+  orderedPartsRef: React.MutableRefObject<OrderedMessagePart[]>
   targetSessionId: string
 }
 
@@ -49,19 +51,7 @@ export function handleMessagePartUpdated(
   const delta = event.properties.delta
 
   if (part.type === 'text' || part.type === 'reasoning') {
-    if (part.type === 'text') {
-      if (typeof delta === 'string') {
-        ctx.assistantTextRef.current += delta
-      } else if ((part as { text?: string }).text) {
-        ctx.assistantTextRef.current = (part as { text: string }).text
-      }
-    } else {
-      if (typeof delta === 'string') {
-        ctx.reasoningRef.current += delta
-      } else if ((part as { text?: string }).text) {
-        ctx.reasoningRef.current = (part as { text: string }).text
-      }
-    }
+    applyOrderedTextLikePart(part, delta, ctx.assistantTextRef, ctx.reasoningRef, ctx.orderedPartsRef)
     scheduleFlush()
   } else {
     // For non-text events (tools, step-finish, etc.), also sync pending text/reasoning
@@ -70,19 +60,30 @@ export function handleMessagePartUpdated(
     // hasn't fired yet), causing the Markdown component to unmount and remount.
     const pendingText = ctx.assistantTextRef.current
     const pendingReasoning = ctx.reasoningRef.current
+    const pendingOrderedParts = ctx.orderedPartsRef.current
     const msgId = ctx.streamingMessageRef.current!
     ctx.setMessages((prev) => {
-      const afterTool = processPartUpdated(part, delta, msgId, prev, ctx.assistantTextRef, ctx.reasoningRef)
-      if (!pendingText && !pendingReasoning) return afterTool
+      const afterTool = processPartUpdated(
+        part,
+        delta,
+        msgId,
+        prev,
+        ctx.assistantTextRef,
+        ctx.reasoningRef,
+        ctx.orderedPartsRef,
+      )
+      if (!pendingText && !pendingReasoning && pendingOrderedParts.length === 0) return afterTool
       return afterTool.map((m) => {
         if (m.id !== msgId) return m
         const needsText = pendingText && m.content !== pendingText
         const needsReasoning = pendingReasoning && m.reasoning?.[0] !== pendingReasoning
-        if (!needsText && !needsReasoning) return m
+        const needsOrderedParts = pendingOrderedParts.length > 0 && m.orderedParts !== pendingOrderedParts
+        if (!needsText && !needsReasoning && !needsOrderedParts) return m
         return {
           ...m,
           ...(needsText ? { content: pendingText } : {}),
           ...(needsReasoning ? { reasoning: [pendingReasoning] } : {}),
+          ...(needsOrderedParts ? { orderedParts: [...ctx.orderedPartsRef.current] } : {}),
         }
       })
     })
@@ -97,21 +98,16 @@ export function handleMessagePartUpdated(
   }
 }
 
-export function handleDoneOrIdle(
-  ctx: SSEHandlerContext,
-  streamStartTimeRef: React.MutableRefObject<number | null>,
-) {
+export function handleDoneOrIdle(ctx: SSEHandlerContext, streamStartTimeRef: React.MutableRefObject<number | null>) {
   const finalMsgId = ctx.streamingMessageRef.current
   if (finalMsgId) {
     const finalText = ctx.assistantTextRef.current
     const finalReasoning = ctx.reasoningRef.current
-    const elapsed = streamStartTimeRef.current
-      ? Date.now() - streamStartTimeRef.current
-      : 0
-    const startupSteps = ctx.streamingStatusStepsRef.current.length > 0
-      ? [...ctx.streamingStatusStepsRef.current]
-      : undefined
-    const hasFinalOutput = Boolean(finalText.trim() || finalReasoning.trim())
+    const finalOrderedParts = ctx.orderedPartsRef.current
+    const elapsed = streamStartTimeRef.current ? Date.now() - streamStartTimeRef.current : 0
+    const startupSteps =
+      ctx.streamingStatusStepsRef.current.length > 0 ? [...ctx.streamingStatusStepsRef.current] : undefined
+    const hasFinalOutput = Boolean(finalText.trim() || finalReasoning.trim() || finalOrderedParts.length > 0)
     ctx.setMessages((prev) => {
       if (!hasFinalOutput) return prev.filter((m) => m.id !== finalMsgId)
       return prev.map((m) => {
@@ -120,6 +116,7 @@ export function handleDoneOrIdle(
           ...m,
           content: finalText,
           ...(finalReasoning ? { reasoning: [finalReasoning] } : {}),
+          ...(finalOrderedParts.length > 0 ? { orderedParts: [...finalOrderedParts] } : {}),
           ...(startupSteps ? { startupSteps } : {}),
           elapsed,
         }
@@ -132,6 +129,7 @@ export function handleDoneOrIdle(
   ctx.clearStreamingStatusSteps()
   ctx.assistantTextRef.current = ''
   ctx.reasoningRef.current = ''
+  ctx.orderedPartsRef.current = []
   ctx.streamingMessageRef.current = null
 }
 
@@ -158,6 +156,7 @@ export function handleSessionError(
   ctx.clearStreamingStatusSteps()
   ctx.assistantTextRef.current = ''
   ctx.reasoningRef.current = ''
+  ctx.orderedPartsRef.current = []
   ctx.streamingMessageRef.current = null
 }
 
@@ -186,17 +185,12 @@ export function handleGenericError(
 ) {
   const errorMessage = parseErrorMessage(error)
   const messageToShow =
-    details && typeof errorMessage === 'string' && isGenericError(errorMessage)
-      ? details
-      : errorMessage
+    details && typeof errorMessage === 'string' && isGenericError(errorMessage) ? details : errorMessage
   const { category, retryable } = classifyError(messageToShow)
   const msgId = ctx.streamingMessageRef.current
   ctx.setMessages((prev) => {
     const withoutPlaceholder = msgId ? prev.filter((m) => m.id !== msgId) : prev
-    return [
-      ...withoutPlaceholder,
-      createErrorMessage(messageToShow, category, retryable, messageToShow, errorAction),
-    ]
+    return [...withoutPlaceholder, createErrorMessage(messageToShow, category, retryable, messageToShow, errorAction)]
   })
   ctx.setIsStreaming(false)
   ctx.setStreamStartTime(null)
@@ -204,6 +198,7 @@ export function handleGenericError(
   ctx.clearStreamingStatusSteps()
   ctx.assistantTextRef.current = ''
   ctx.reasoningRef.current = ''
+  ctx.orderedPartsRef.current = []
   ctx.streamingMessageRef.current = null
 }
 
@@ -217,54 +212,41 @@ export function handlePermissionAsked(
   ])
 }
 
-export function handlePermissionResolved(
-  id: string,
-  status: 'granted' | 'denied',
-  ctx: SSEHandlerContext,
-) {
+export function handlePermissionResolved(id: string, status: 'granted' | 'denied', ctx: SSEHandlerContext) {
   ctx.setMessages((prev) => updatePromptStatus(id, status, prev))
 }
 
-export function handleQuestionAsked(
-  props: { id: string; text: string },
-  ctx: SSEHandlerContext,
-) {
+export function handleQuestionAsked(props: { id: string; text: string }, ctx: SSEHandlerContext) {
   ctx.setMessages((prev) => [...prev, createQuestionMessage(props.id, props.text)])
 }
 
-export function handleQuestionResolved(
-  id: string,
-  status: 'replied' | 'rejected',
-  ctx: SSEHandlerContext,
-) {
+export function handleQuestionResolved(id: string, status: 'replied' | 'rejected', ctx: SSEHandlerContext) {
   ctx.setMessages((prev) => updatePromptStatus(id, status, prev))
 }
 
 export function handleAgentUrl(url: string, ctx: SSEHandlerContext) {
   ctx.setAgentUrl(url)
-  try { localStorage.setItem(`agent-url-${ctx.targetSessionId}`, url) } catch {}
+  try {
+    localStorage.setItem(`agent-url-${ctx.targetSessionId}`, url)
+  } catch {}
 }
 
 export function handleAgentSession(agentSessionId: string, ctx: SSEHandlerContext) {
   ctx.setAgentSessionId(agentSessionId)
-  try { localStorage.setItem(`agent-session-id-${ctx.targetSessionId}`, agentSessionId) } catch {}
+  try {
+    localStorage.setItem(`agent-session-id-${ctx.targetSessionId}`, agentSessionId)
+  } catch {}
 }
 
 /** @deprecated Use handleAgentUrl */
 export const handleOpenCodeUrl = handleAgentUrl
 
-export function handleRawDataFallbacks(
-  rawData: Record<string, unknown>,
-  ctx: SSEHandlerContext,
-) {
+export function handleRawDataFallbacks(rawData: Record<string, unknown>, ctx: SSEHandlerContext) {
   // Handle wrapped event fallbacks
   if (rawData.type === 'event' && rawData.properties) {
     const innerEvent = rawData.properties as { type?: string; error?: unknown }
     if (innerEvent.type === 'session.error') {
-      handleSessionError(
-        innerEvent.error as { name?: string; data?: { message?: string }; message?: string },
-        ctx,
-      )
+      handleSessionError(innerEvent.error as { name?: string; data?: { message?: string }; message?: string }, ctx)
     }
   }
 

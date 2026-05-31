@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { streamSubagentSession } from '@/lib/api'
-import { type UIMessage, createAssistantPlaceholder, processPartUpdated } from '@/lib/ai-elements-adapter'
+import {
+  type OrderedMessagePart,
+  type UIMessage,
+  createAssistantPlaceholder,
+  processPartUpdated,
+} from '@/lib/ai-elements-adapter'
 import { parseSSEEvent } from '@/lib/sse-parser'
 import type { MessagePartUpdatedEvent } from '@/lib/sse-types'
 
@@ -35,6 +40,7 @@ interface StreamRefs {
   messageIdRef: React.MutableRefObject<string | null>
   textRef: React.MutableRefObject<string>
   reasoningRef: React.MutableRefObject<string>
+  orderedPartsRef: React.MutableRefObject<OrderedMessagePart[]>
   streamStartRef: React.MutableRefObject<number | null>
 }
 
@@ -65,7 +71,15 @@ function handleSubagentStreamEvent(
     const msgId = refs.messageIdRef.current
     if (msgId) {
       setters.setMessages((prev) =>
-        processPartUpdated(part, mpu.properties?.delta, msgId, prev, refs.textRef, refs.reasoningRef),
+        processPartUpdated(
+          part,
+          mpu.properties?.delta,
+          msgId,
+          prev,
+          refs.textRef,
+          refs.reasoningRef,
+          refs.orderedPartsRef,
+        ),
       )
     }
     const partStatus = getStatusFromPart(part) || 'Thinking...'
@@ -90,6 +104,7 @@ function handleSubagentStreamEvent(
                 ...m,
                 content: refs.textRef.current,
                 reasoning: refs.reasoningRef.current ? [refs.reasoningRef.current] : undefined,
+                orderedParts: refs.orderedPartsRef.current,
                 elapsed,
               }
             : m,
@@ -162,6 +177,7 @@ export function useSubagentStream({
   const messageIdRef = useRef<string | null>(null)
   const textRef = useRef('')
   const reasoningRef = useRef('')
+  const orderedPartsRef = useRef<OrderedMessagePart[]>([])
   const streamStartRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -183,11 +199,12 @@ export function useSubagentStream({
     setStatusSteps(['Connecting...'])
     textRef.current = ''
     reasoningRef.current = ''
+    orderedPartsRef.current = []
 
     const controller = new AbortController()
     abortRef.current = controller
 
-    const refs = { messageIdRef, textRef, reasoningRef, streamStartRef }
+    const refs = { messageIdRef, textRef, reasoningRef, orderedPartsRef, streamStartRef }
     const setters = { setMessages, setIsStreaming, setStatus, setStatusSteps }
 
     streamSubagentSession(parentSessionId, subagentSessionId, controller.signal)

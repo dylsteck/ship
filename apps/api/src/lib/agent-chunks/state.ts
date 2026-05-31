@@ -19,6 +19,12 @@ export interface ToolCallTrace {
   endedAt?: number
 }
 
+/** Reference to a final persisted part in first-seen order. */
+export type OrderedPartRef =
+  | { kind: 'text'; key: string }
+  | { kind: 'reasoning'; key: string }
+  | { kind: 'tool'; key: string }
+
 /** Translator state for one chat turn. */
 export interface TranslatorState {
   readonly sessionId: string
@@ -30,6 +36,13 @@ export interface TranslatorState {
   reasoningBuffers: Map<string, { partId: string; text: string }>
   /** Tool call id → trace. */
   toolCalls: Map<string, ToolCallTrace>
+  /** First-seen part order for final persistence. */
+  orderedParts: OrderedPartRef[]
+  /** Active text/reasoning segment keys for adjacent deltas. */
+  activeTextKey?: string
+  activeReasoningKey?: string
+  /** Kind of the most recently inserted ordered part. */
+  lastOrderedKind?: OrderedPartRef['kind']
   /** Monotonic counter for synthesized part ids. */
   partCounter: number
 }
@@ -42,6 +55,7 @@ export function createTranslatorState(sessionId: string): TranslatorState {
     textBuffers: new Map(),
     reasoningBuffers: new Map(),
     toolCalls: new Map(),
+    orderedParts: [],
     partCounter: 0,
   }
 }
@@ -55,4 +69,34 @@ export function synthesizeId(prefix: string, sessionId: string): string {
 /** Mint a fresh part id and bump the counter. */
 export function nextPartId(state: TranslatorState): string {
   return synthesizeId(`part-${++state.partCounter}`, state.sessionId)
+}
+
+/** Record a part once while preserving the first position of updates. */
+export function recordOrderedPart(state: TranslatorState, part: OrderedPartRef): void {
+  const exists = state.orderedParts.some((existing) => existing.kind === part.kind && existing.key === part.key)
+  if (!exists) {
+    state.orderedParts.push(part)
+    state.lastOrderedKind = part.kind
+  }
+}
+
+/** Returns the active adjacent text/reasoning buffer, segmenting after other part kinds. */
+export function getWritableTextBuffer(
+  state: TranslatorState,
+  kind: 'text' | 'reasoning',
+): { partId: string; text: string } {
+  const activeKey = kind === 'text' ? state.activeTextKey : state.activeReasoningKey
+  const buffers = kind === 'text' ? state.textBuffers : state.reasoningBuffers
+  if (activeKey && state.lastOrderedKind === kind) {
+    const active = buffers.get(activeKey)
+    if (active) return active
+  }
+
+  const key = `${kind}-${state.partCounter + 1}`
+  const buffer = { partId: nextPartId(state), text: '' }
+  buffers.set(key, buffer)
+  if (kind === 'text') state.activeTextKey = key
+  else state.activeReasoningKey = key
+  recordOrderedPart(state, { kind, key })
+  return buffer
 }

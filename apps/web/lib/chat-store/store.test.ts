@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  clearStreamingBuffer,
-  createActiveSessionStreamingRefs,
-  getStreamingRefs,
-  useChatStore,
-} from './store'
+import { clearStreamingBuffer, createActiveSessionStreamingRefs, getStreamingRefs, useChatStore } from './store'
 
 describe('chat-store streaming buffers', () => {
   it('stores hot-path text per session via getStreamingRefs', () => {
@@ -33,6 +28,7 @@ describe('chat-store streaming buffers', () => {
       messageId: 'msg-flush',
       text: 'streamed',
       reasoning: '',
+      orderedParts: [],
     })
     expect(useChatStore.getState().streamingBuffers['session-flush']).toEqual(snapshot)
   })

@@ -46,6 +46,7 @@ export function createSSEHandlerContext(
     streamingMessageRef: refs.streamingMessageRef,
     assistantTextRef: refs.assistantTextRef,
     reasoningRef: refs.reasoningRef,
+    orderedPartsRef: refs.orderedPartsRef,
     targetSessionId,
   }
 }
