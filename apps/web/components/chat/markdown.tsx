@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
 import { mermaid as mermaidPlugin } from '@streamdown/mermaid'
@@ -9,6 +9,7 @@ import type { Components } from 'react-markdown'
 import type { ControlsConfig, MermaidErrorComponentProps } from 'streamdown'
 
 import { normalizeMermaidCodeBlocks } from '@/lib/markdown-mermaid'
+import { STREAMING_TEXT_PACE_MS, getNextPacedText } from '@/lib/streaming-text-pacing'
 import { MermaidBlockRenderer } from './mermaid-block'
 
 interface MarkdownProps {
@@ -145,7 +146,8 @@ const customComponents: Components = {
 }
 
 export const Markdown = memo(function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
-  const normalizedContent = useMemo(() => normalizeMermaidCodeBlocks(content), [content])
+  const pacedContent = usePacedStreamingText(content, isAnimating)
+  const normalizedContent = useMemo(() => normalizeMermaidCodeBlocks(pacedContent), [pacedContent])
 
   return (
     <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed [contain:layout_style]', className)}>
@@ -154,7 +156,7 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
         components={customComponents}
         mermaid={MERMAID_OPTIONS}
         controls={STREAMDOWN_CONTROLS}
-        mode="static"
+        mode={isAnimating ? 'streaming' : 'static'}
         isAnimating={isAnimating}
         animated={isAnimating ? STREAMING_ANIMATION : undefined}
       >
@@ -163,6 +165,60 @@ export const Markdown = memo(function Markdown({ content, className, isAnimating
     </div>
   )
 })
+
+function usePacedStreamingText(text: string, isStreaming: boolean): string {
+  const initialText = isStreaming ? '' : text
+  const [visibleText, setVisibleText] = useState(initialText)
+  const visibleTextRef = useRef(initialText)
+  const latestTextRef = useRef(text)
+  const isStreamingRef = useRef(isStreaming)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearTimer = useCallback(() => {
+    if (timeoutRef.current == null) return
+    clearTimeout(timeoutRef.current)
+    timeoutRef.current = null
+  }, [])
+
+  const syncVisibleText = useCallback((nextText: string) => {
+    visibleTextRef.current = nextText
+    setVisibleText(nextText)
+  }, [])
+
+  const runPaceTick = useCallback(() => {
+    timeoutRef.current = null
+    const nextText = getNextPacedText(latestTextRef.current, visibleTextRef.current, isStreamingRef.current)
+    syncVisibleText(nextText)
+
+    if (isStreamingRef.current && nextText.length < latestTextRef.current.length) {
+      timeoutRef.current = setTimeout(runPaceTick, STREAMING_TEXT_PACE_MS)
+    }
+  }, [syncVisibleText])
+
+  useEffect(() => {
+    latestTextRef.current = text
+    isStreamingRef.current = isStreaming
+
+    if (!isStreaming) {
+      clearTimer()
+      syncVisibleText(text)
+      return
+    }
+
+    if (!text.startsWith(visibleTextRef.current) || text.length < visibleTextRef.current.length) {
+      clearTimer()
+      syncVisibleText(text)
+      return
+    }
+
+    if (text.length === visibleTextRef.current.length || timeoutRef.current != null) return
+    timeoutRef.current = setTimeout(runPaceTick, STREAMING_TEXT_PACE_MS)
+  }, [clearTimer, isStreaming, runPaceTick, syncVisibleText, text])
+
+  useEffect(() => clearTimer, [clearTimer])
+
+  return visibleText
+}
 
 function MermaidErrorFallback({ chart, error }: MermaidErrorComponentProps) {
   return (
