@@ -8,7 +8,7 @@ import { cn } from '@ship/ui'
 import type { Components } from 'react-markdown'
 import type { ControlsConfig, MermaidErrorComponentProps } from 'streamdown'
 
-import { normalizeMermaidCodeBlocks } from '@/lib/markdown-mermaid'
+import { normalizeChatMarkdown } from '@/lib/markdown-normalize'
 import { STREAMING_TEXT_PACE_MS, getNextPacedText } from '@/lib/streaming-text-pacing'
 import { MermaidBlockRenderer } from './mermaid-block'
 
@@ -143,7 +143,7 @@ const customComponents: Components = {
 
 export const Markdown = memo(function Markdown({ content, className, isAnimating = false }: MarkdownProps) {
   const pacedContent = usePacedStreamingText(content, isAnimating)
-  const normalizedContent = useMemo(() => normalizeMermaidCodeBlocks(pacedContent), [pacedContent])
+  const normalizedContent = useMemo(() => normalizeChatMarkdown(pacedContent), [pacedContent])
 
   return (
     <div className={cn('text-[14.5px] max-w-none break-words leading-relaxed [contain:layout_style]', className)}>

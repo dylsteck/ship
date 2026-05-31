@@ -14,7 +14,7 @@ import { AssistantRunPlanItems } from './assistant-run-plan-items'
 import { MessageToolList } from './messages/tool-list'
 
 type RenderGroup =
-  | { kind: 'text'; part: Extract<OrderedMessagePart, { kind: 'text' }> }
+  | { kind: 'text'; parts: Array<Extract<OrderedMessagePart, { kind: 'text' }>> }
   | { kind: 'reasoning'; parts: Array<Extract<OrderedMessagePart, { kind: 'reasoning' }>> }
   | { kind: 'tools'; parts: Array<Extract<OrderedMessagePart, { kind: 'tool' }>> }
   | { kind: 'plan'; part: Extract<OrderedMessagePart, { kind: 'plan' }> }
@@ -38,6 +38,10 @@ function groupOrderedParts(parts: OrderedMessagePart[]): RenderGroup[] {
 
   for (const part of parts) {
     const previous = groups[groups.length - 1]
+    if (part.kind === 'text' && previous?.kind === 'text') {
+      previous.parts.push(part)
+      continue
+    }
     if (part.kind === 'tool' && previous?.kind === 'tools') {
       previous.parts.push(part)
       continue
@@ -46,7 +50,8 @@ function groupOrderedParts(parts: OrderedMessagePart[]): RenderGroup[] {
       previous.parts.push(part)
       continue
     }
-    if (part.kind === 'tool') groups.push({ kind: 'tools', parts: [part] })
+    if (part.kind === 'text') groups.push({ kind: 'text', parts: [part] })
+    else if (part.kind === 'tool') groups.push({ kind: 'tools', parts: [part] })
     else if (part.kind === 'reasoning') groups.push({ kind: 'reasoning', parts: [part] })
     else groups.push({ kind: part.kind, part } as RenderGroup)
   }
@@ -78,9 +83,13 @@ export const AssistantOrderedParts = React.memo(function AssistantOrderedParts({
     <div className="space-y-3">
       {groups.map((group, index) => {
         if (group.kind === 'text') {
+          const text = group.parts.map((part) => part.text).join('')
           return (
-            <Response key={`${group.part.id}-${index}`}>
-              <Markdown content={group.part.text} isAnimating={isStreaming && group.part.id === lastTextPartId} />
+            <Response key={`text-${group.parts.map((part) => part.id).join('-')}-${index}`}>
+              <Markdown
+                content={text}
+                isAnimating={isStreaming && group.parts.some((part) => part.id === lastTextPartId)}
+              />
             </Response>
           )
         }

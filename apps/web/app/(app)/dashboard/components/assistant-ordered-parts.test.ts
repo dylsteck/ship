@@ -88,4 +88,19 @@ describe('AssistantOrderedParts', () => {
     expect(html).toContain('data-count="2"')
     expect(html).toContain('data-count="1"')
   })
+
+  it('groups adjacent text parts into one Markdown render pass', () => {
+    const html = render({
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '**Bold**',
+      orderedParts: [
+        { id: 'text-1', kind: 'text', text: '**Bo' },
+        { id: 'text-2', kind: 'text', text: 'ld**' },
+      ],
+    })
+
+    expect(html.match(/data-kind="markdown"/g)).toHaveLength(1)
+    expect(html).toContain('**Bold**')
+  })
 })
