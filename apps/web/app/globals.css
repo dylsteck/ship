@@ -129,8 +129,10 @@
   border: 1px solid color-mix(in oklab, var(--border) 78%, transparent) !important;
   border-radius: 6px !important;
   background: color-mix(in oklab, var(--background) 94%, var(--muted)) !important;
+  padding: 0 !important;
 }
 .ship-markdown [data-streamdown='code-block-header'] {
+  height: auto !important;
   min-height: 0 !important;
   padding: 0.45rem 0.75rem !important;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
@@ -145,12 +147,28 @@
 .ship-markdown [data-streamdown='code-block-header']:has(> span:empty) {
   display: none !important;
 }
+.ship-markdown [data-streamdown='code-block-header'] > span {
+  margin-left: 0 !important;
+}
+.ship-markdown [data-streamdown='code-block'] > div:has(> [data-streamdown='code-block-actions']) {
+  position: absolute !important;
+  top: 0.35rem !important;
+  right: 0.35rem !important;
+  z-index: 2 !important;
+  display: flex !important;
+  height: auto !important;
+  margin: 0 !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  pointer-events: none !important;
+}
 .ship-markdown [data-streamdown='code-block-body'] {
   min-width: 0 !important;
   overflow-x: auto !important;
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
+  padding: 0 !important;
 }
 .ship-markdown [data-streamdown='code-block-body'] pre {
   margin: 0 !important;
