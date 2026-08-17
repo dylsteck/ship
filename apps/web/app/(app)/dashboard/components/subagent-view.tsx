@@ -1,10 +1,11 @@
 'use client'
 
-import { Message, Tool, Response, Loader, SessionSetup, Conversation, ConversationScrollButton } from '@ship/ui'
-import { Markdown } from '@/components/chat/markdown'
+import { Message, Response, Loader, SessionSetup, Conversation, ConversationScrollButton } from '@ship/ui'
+import { Markdown } from '@/components/chat/markdown-lazy'
 import { useSubagentStream } from '../hooks/use-subagent-stream'
 import type { UIMessage } from '@/lib/ai-elements-adapter'
 import { AssistantOrderedParts } from './assistant-ordered-parts'
+import { Tool } from './messages/tool-lazy'
 
 interface SubagentViewState {
   toolCallId: string

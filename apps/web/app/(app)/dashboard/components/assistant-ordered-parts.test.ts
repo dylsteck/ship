@@ -18,13 +18,13 @@ vi.mock('@ship/ui', () => ({
   },
 }))
 
-vi.mock('@/components/chat/markdown', () => ({
+vi.mock('@/components/chat/markdown-lazy', () => ({
   Markdown({ content }: { content: string }) {
     return React.createElement('span', { 'data-kind': 'markdown' }, content)
   },
 }))
 
-vi.mock('./messages/tool-list', () => ({
+vi.mock('./messages/tool-list-lazy', () => ({
   MessageToolList({ tools }: { tools: ToolInvocation[] }) {
     return React.createElement('div', { 'data-kind': 'tools', 'data-count': String(tools.length) })
   },
