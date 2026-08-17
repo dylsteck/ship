@@ -136,7 +136,7 @@ npx wrangler secret put API_SECRET
 
 `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` are inlined at **build** time. Locally they come from `apps/web/.env.local`; in CI set them as Actions env/secrets.
 
-The OpenNext Worker gzip is ~4.3 MiB, which exceeds the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Enable Workers Paid (10 MiB gzip) before `pnpm deploy:web`.
+The OpenNext Worker gzip is ~1.1 MiB, under the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Heavy client libraries (Shiki, Mermaid, xterm) are excluded from the Worker script.
 
 Pushes to `main` also deploy via `.github/workflows/ci.yml` (`deploy-web-worker`) when `CLOUDFLARE_API_TOKEN` is present.
 
