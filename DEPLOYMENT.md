@@ -18,7 +18,7 @@ Before deploying, ensure these are set. Session creation and API calls will fail
 |----------|----------|--------------|------------|
 | `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Worker **build** env, or Coolify build-time args |
 | `API_BASE_URL` | Alternative | Same as above; used if `NEXT_PUBLIC_API_URL` is unset. | Same |
-| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | Your public web URL (e.g. `https://ship-web.<account>.workers.dev`) |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | `https://ship.dylansteck.com` |
 | `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | `npx wrangler secret put GITHUB_CLIENT_ID` (from `apps/web`) |
 | `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | `npx wrangler secret put GITHUB_CLIENT_SECRET` |
 | `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `npx wrangler secret put SESSION_SECRET` |

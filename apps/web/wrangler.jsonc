@@ -8,6 +8,9 @@
   "workers_dev": true,
   "preview_urls": true,
   "minify": true,
+  "routes": [
+    { "pattern": "ship.dylansteck.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

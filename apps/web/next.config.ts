@@ -14,6 +14,18 @@ const config: NextConfig = {
   // so OpenNext can emit `.open-next/`.
   ...(process.env.DEPLOY_TARGET === 'node' ? { output: 'standalone' as const } : {}),
   transpilePackages: ['@ship/ui'],
+  experimental: {
+    optimizePackageImports: ['@ship/ui'],
+  },
+  serverExternalPackages: [
+    'shiki',
+    'mermaid',
+    '@streamdown/mermaid',
+    '@pierre/diffs',
+    '@xterm/xterm',
+    '@xterm/addon-fit',
+    '@xterm/addon-web-links',
+  ],
   images: {
     remotePatterns: [
       {
