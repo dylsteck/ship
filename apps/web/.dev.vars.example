@@ -1,0 +1,11 @@
+# Loaded by Wrangler / OpenNext preview (`wrangler dev` / `opennextjs-cloudflare preview`).
+# Copy from .env.local and add NEXTJS_ENV.
+
+NEXTJS_ENV=development
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+SESSION_SECRET=
+API_SECRET=
+API_BASE_URL=
+NEXT_PUBLIC_API_URL=
+NEXT_PUBLIC_APP_URL=http://localhost:3000

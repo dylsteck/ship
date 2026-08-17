@@ -25,7 +25,15 @@ Realtime paths:
 
 ## Build / deploy
 
-Docker image: `apps/web/Dockerfile` (build context = repo root). Standalone Next.js output on port 3000.
+Primary host is [Cloudflare Workers](https://developers.cloudflare.com/workers/) via [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare):
+
+```bash
+pnpm deploy          # from apps/web — OpenNext build + wrangler deploy
+pnpm preview         # build and run locally in workerd
+pnpm cf-typegen      # wrangler types
+```
+
+Optional Docker image: `apps/web/Dockerfile` (build context = repo root). Standalone Next.js output (`DEPLOY_TARGET=node`) on port 3000.
 
 ```bash
 pnpm build

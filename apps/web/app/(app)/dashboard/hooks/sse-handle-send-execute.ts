@@ -27,11 +27,15 @@ async function handleSendError(
   targetSessionId: string,
   terminalStreamSessionsRef: React.MutableRefObject<Set<string>>,
 ): Promise<void> {
-  const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+  const errorData = (await response.json().catch(() => ({ error: 'Unknown error' }))) as {
+    error?: string
+    details?: string
+    category?: string
+  }
   const mainError = errorData.error || errorData.details || 'Failed to start agent'
   const errorContent = errorData.details && isGenericError(errorData.error || '') ? errorData.details : mainError
   const { category, retryable } = classifyError(errorContent)
-  const action = actionForChatErrorPayload(errorData as { category?: string })
+  const action = actionForChatErrorPayload(errorData)
 
   const streamingRefs = getStreamingRefs(targetSessionId)
 

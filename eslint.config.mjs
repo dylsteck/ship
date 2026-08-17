@@ -10,6 +10,7 @@ const eslintConfig = [
       '**/node_modules/**',
       '**/.next/**',
       '**/.open-next/**',
+      '**/cloudflare-env.d.ts',
       '**/dist/**',
       '**/coverage/**',
       '.agents/skills/**',

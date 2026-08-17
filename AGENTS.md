@@ -32,9 +32,24 @@ pnpm lint         # Lint all packages
 
 ### Deployment
 
-The **API** runs on **Cloudflare Workers** (Wrangler). The **Next.js web app** (`apps/web`) is deployed as a **Docker** image (Next [standalone](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) output), e.g. on [Coolify](https://coolify.io/docs/applications/nextjs).
+The **API** runs on **Cloudflare Workers** (Wrangler). The **Next.js web app** (`apps/web`) is primarily a **Cloudflare Worker** via [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) + Wrangler. A **Docker** image (`apps/web/Dockerfile`, Next [standalone](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) output) remains for optional self-hosting (e.g. Coolify).
 
-#### Web App (Next.js) — Docker / Coolify
+#### Web App (Next.js) — Cloudflare Workers
+
+Deploy from `apps/web`:
+
+```bash
+cd apps/web
+pnpm deploy   # opennextjs-cloudflare build && opennextjs-cloudflare deploy
+```
+
+- **Config:** `apps/web/wrangler.jsonc` (Worker name `ship-web`).
+- **Secrets:** `npx wrangler secret put GITHUB_CLIENT_ID` (and `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `API_SECRET`).
+- **Build-time env:** `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_APP_URL` (same as `apps/web/.env.example`).
+- **Worker size:** OpenNext gzip is ~4.3 MiB (over the 3 MiB Workers Free limit). Enable [Workers Paid](https://developers.cloudflare.com/workers/platform/limits/#worker-size) (10 MiB) before `pnpm deploy:web`.
+- **Optional Docker:** `DEPLOY_TARGET=node` in `apps/web/Dockerfile` (port **3000**, build context = **repository root**).
+
+#### Web App (Next.js) — Docker / Coolify (optional)
 
 - **Dockerfile:** `apps/web/Dockerfile` (build context: **repository root**).
 - **Port:** `3000` (set **Ports Exposes** to `3000` in Coolify).

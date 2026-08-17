@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next'
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare'
 
 /**
  * Default API URL when neither `NEXT_PUBLIC_API_URL` nor `API_BASE_URL`
@@ -9,7 +10,9 @@ import type { NextConfig } from 'next'
 const LOCAL_API_URL = 'http://localhost:8787'
 
 const config: NextConfig = {
-  output: 'standalone',
+  // Docker / Coolify uses Next standalone. Cloudflare Workers builds omit this
+  // so OpenNext can emit `.open-next/`.
+  ...(process.env.DEPLOY_TARGET === 'node' ? { output: 'standalone' as const } : {}),
   transpilePackages: ['@ship/ui'],
   images: {
     remotePatterns: [
@@ -29,3 +32,7 @@ const config: NextConfig = {
 }
 
 export default config
+
+if (process.env.NODE_ENV !== 'production') {
+  initOpenNextCloudflareForDev()
+}

@@ -12,6 +12,7 @@
     "test": "turbo test",
     "deploy": "cd apps/api && pnpm deploy",
     "deploy:prod": "cd apps/api && pnpm deploy:prod",
+    "deploy:web": "pnpm --filter web deploy",
     "openapi:export": "pnpm --filter api openapi:export",
     "openapi:check": "pnpm --filter api openapi:check",
     "sdk:generate": "pnpm --filter @ship/sdk generate",

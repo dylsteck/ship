@@ -25,7 +25,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN pnpm install --frozen-lockfile
 ENV NODE_ENV=production
-RUN pnpm --filter web build
+ENV DEPLOY_TARGET=node
+RUN pnpm --filter web build:node
 
 FROM node:${NODE_VERSION} AS runner
 WORKDIR /app

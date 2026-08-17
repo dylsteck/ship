@@ -54,3 +54,5 @@ lib/db/migrations/*
 # Cloudflare
 .dev.vars
 .wrangler
+.open-next
+cloudflare-env.d.ts
