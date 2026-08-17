@@ -258,6 +258,7 @@ Set web secrets from `apps/web`:
 
 ```bash
 cd apps/web
+pnpm run deploy
 npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
 npx wrangler secret put SESSION_SECRET
