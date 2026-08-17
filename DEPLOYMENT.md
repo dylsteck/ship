@@ -136,7 +136,7 @@ npx wrangler secret put API_SECRET
 
 `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` are inlined at **build** time. Locally they come from `apps/web/.env.local`; in CI set them as Actions env/secrets.
 
-The OpenNext Worker gzip is ~1.1 MiB, under the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Heavy client libraries (Shiki, Mermaid, xterm) are excluded from the Worker script.
+The OpenNext Worker gzip is ~1.5 MiB, under the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Heavy client libraries (Shiki, Mermaid, xterm) stay in client chunks. Leave OpenNext server minify off — it crashes the Next instrumentation hook on this app.
 
 Pushes to `main` also deploy via `.github/workflows/ci.yml` (`deploy-web-worker`) when `CLOUDFLARE_API_TOKEN` is present.
 
