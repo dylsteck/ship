@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { Response, ThinkingBlock } from '@ship/ui'
-import { Markdown } from '@/components/chat/markdown-lazy'
+import { Markdown } from '@/components/chat/markdown'
 import {
   synthesizeOrderedParts,
   type OrderedMessagePart,
@@ -11,7 +11,7 @@ import {
 } from '@/lib/ai-elements-adapter'
 import type { TodoItem } from '../types'
 import { AssistantRunPlanItems } from './assistant-run-plan-items'
-import { MessageToolList } from './messages/tool-list-lazy'
+import { MessageToolList } from './messages/tool-list'
 
 type RenderGroup =
   | { kind: 'text'; parts: Array<Extract<OrderedMessagePart, { kind: 'text' }>> }

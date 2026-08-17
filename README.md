@@ -264,7 +264,7 @@ npx wrangler secret put SESSION_SECRET
 npx wrangler secret put API_SECRET
 ```
 
-`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` must be present at **build** time (`.env.local` locally, or CI env). Production web origin is **`https://ship.dylansteck.com`** (Worker custom domain). After deploy, add that origin to the API Worker's `ALLOWED_ORIGINS`.
+`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` must be present at **build** time (`.env.local` locally, or CI env). After deploy, add the web origin to the API Worker's `ALLOWED_ORIGINS`.
 
 There's still a `Dockerfile` at `apps/web/Dockerfile` for optional self-hosting (e.g. on [Coolify](https://coolify.io)). It builds Next standalone (`DEPLOY_TARGET=node`) and serves on port 3000. Build context must be the **repository root**.
 

@@ -1,6 +1,5 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import { useState, useEffect } from 'react'
 import {
   cn,
@@ -14,22 +13,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@ship/ui'
+import { GitTab } from '@/components/chat/session-panel/git-tab'
+import { DesktopTab } from '@/components/chat/session-panel/desktop-tab'
+import { TerminalTab } from '@/components/chat/session-panel/terminal-tab'
 import { useSandboxStatus } from '@/lib/api/hooks/use-sessions'
 import { EllipsisIcon, MaximizeIcon, PanelToggleIcon, CloseIcon } from './right-sidebar-icons'
 import { ResizeHandle, useResizableSidebarWidth } from './right-sidebar-resize'
 import type { SessionPanelData, RightSidebarTab } from '../types'
-
-const GitTab = dynamic(() => import('@/components/chat/session-panel/git-tab').then((mod) => mod.GitTab), {
-  ssr: false,
-})
-const TerminalTab = dynamic(
-  () => import('@/components/chat/session-panel/terminal-tab').then((mod) => mod.TerminalTab),
-  { ssr: false },
-)
-const DesktopTab = dynamic(
-  () => import('@/components/chat/session-panel/desktop-tab').then((mod) => mod.DesktopTab),
-  { ssr: false },
-)
 
 const TABS: { id: RightSidebarTab; label: string }[] = [
   { id: 'git', label: 'Git' },

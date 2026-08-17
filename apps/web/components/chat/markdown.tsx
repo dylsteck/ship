@@ -12,8 +12,7 @@ import { normalizeChatMarkdown } from '@/lib/markdown-normalize'
 import { STREAMING_TEXT_PACE_MS, getNextPacedText } from '@/lib/streaming-text-pacing'
 import { MermaidBlockRenderer } from './mermaid-block'
 
-/** Props for chat Markdown rendering (Streamdown + mermaid). */
-export interface MarkdownProps {
+interface MarkdownProps {
   content: string
   className?: string
   /**

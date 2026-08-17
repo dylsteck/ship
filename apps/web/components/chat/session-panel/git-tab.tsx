@@ -1,6 +1,5 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
@@ -13,13 +12,10 @@ import {
 } from '@ship/ui'
 import { useGitState, useMergePullRequest } from '@/lib/api/hooks/use-chat'
 import { BranchIcon, ExternalLinkIcon } from './git-tab-icons'
+import { DiffContent } from './git-tab-diff'
 import { CommitsContent, PRContent } from './git-tab-details'
 import type { DiffSummary } from './types'
 import type { SessionInfo as SSESessionInfo } from '@/lib/sse-types'
-
-const DiffContent = dynamic(() => import('./git-tab-diff').then((mod) => mod.DiffContent), {
-  ssr: false,
-})
 
 type GitSubTab = 'diff' | 'commits' | 'pr'
 
