@@ -3,8 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
-      "env": ["SESSION_SECRET", "API_BASE_URL", "API_SECRET"]
+      "outputs": [".next/**", "!.next/cache/**", ".open-next/**", "dist/**"],
+      "env": ["SESSION_SECRET", "API_BASE_URL", "API_SECRET", "NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_APP_URL", "DEPLOY_TARGET"]
     },
     "lint": {
       "dependsOn": ["^lint"]

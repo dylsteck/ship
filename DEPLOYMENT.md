@@ -12,16 +12,17 @@ Complete guide for deploying Ship to production.
 
 Before deploying, ensure these are set. Session creation and API calls will fail in production if any critical vars are missing.
 
-### Web App (Docker / Coolify / `apps/web`)
+### Web App (Docker / Coolify / `apps/web` — optional self-host)
 
 | Variable | Required | What it does | How to set |
 |----------|----------|--------------|------------|
-| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Coolify → your app → Environment Variables (and build-time args if you bake `NEXT_PUBLIC_*` at build) |
+| `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Worker **build** env, or Coolify build-time args |
 | `API_BASE_URL` | Alternative | Same as above; used if `NEXT_PUBLIC_API_URL` is unset. | Same |
-| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | Your public web URL (e.g. `https://app.example.com`) |
-| `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | From GitHub OAuth app settings |
-| `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | Same |
-| `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `openssl rand -hex 32` |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | Your public web URL (e.g. `https://ship-web.<account>.workers.dev`) |
+| `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | `npx wrangler secret put GITHUB_CLIENT_ID` (from `apps/web`) |
+| `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | `npx wrangler secret put GITHUB_CLIENT_SECRET` |
+| `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `npx wrangler secret put SESSION_SECRET` |
+| `API_SECRET` | Yes | Internal auth between web and API. | `npx wrangler secret put API_SECRET` |
 
 ### API Worker (Cloudflare / `apps/api`)
 
@@ -114,9 +115,34 @@ npx wrangler deploy
    npx wrangler tail --env production
    ```
 
-## Deploy Next.js Web App (Docker / Coolify)
+## Deploy Next.js Web App (Cloudflare Workers)
 
-The web app builds with **`output: 'standalone'`** and ships in **`apps/web/Dockerfile`**. See [Coolify — Next.js](https://coolify.io/docs/applications/nextjs).
+Primary host is a Worker (`ship-web`) built with [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare).
+
+```bash
+cd apps/web
+pnpm deploy   # opennextjs-cloudflare build && opennextjs-cloudflare deploy
+```
+
+Set runtime secrets (Wrangler prompts; do not pass values on the command line):
+
+```bash
+cd apps/web
+npx wrangler secret put GITHUB_CLIENT_ID
+npx wrangler secret put GITHUB_CLIENT_SECRET
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put API_SECRET
+```
+
+`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` are inlined at **build** time. Locally they come from `apps/web/.env.local`; in CI set them as Actions env/secrets.
+
+The OpenNext Worker gzip is ~4.3 MiB, which exceeds the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Enable Workers Paid (10 MiB gzip) before `pnpm deploy:web`.
+
+Pushes to `main` also deploy via `.github/workflows/ci.yml` (`deploy-web-worker`) when `CLOUDFLARE_API_TOKEN` is present.
+
+## Deploy Next.js Web App (Docker / Coolify, optional)
+
+The web app can still build with **`output: 'standalone'`** (`DEPLOY_TARGET=node`) and ship in **`apps/web/Dockerfile`**. See [Coolify — Next.js](https://coolify.io/docs/applications/nextjs).
 
 1. **Create a new resource** in Coolify → **Dockerfile** build pack (or equivalent).
 

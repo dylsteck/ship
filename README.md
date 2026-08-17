@@ -132,8 +132,9 @@ pnpm dev
 | `pnpm build`       | Build all apps                |
 | `pnpm lint`        | Lint                          |
 | `pnpm type-check`  | TypeScript check              |
-| `pnpm deploy`      | Deploy preview (web + API)    |
-| `pnpm deploy:prod` | Deploy production (web + API) |
+| `pnpm deploy`         | Deploy API Worker (preview)   |
+| `pnpm deploy:prod`    | Deploy API Worker (production)|
+| `pnpm deploy:web`     | Deploy Next.js web Worker     |
 
 ### API commands (from `apps/api`)
 
@@ -247,9 +248,27 @@ pnpm deploy        # default / preview Worker
 pnpm deploy:prod   # production Worker (see apps/api/wrangler.toml)
 ```
 
-**Web** (Next.js) is meant to run in **Docker** (see `apps/web/Dockerfile`), for example on [Coolify](https://coolify.io/docs/applications/nextjs). Build context must be the **repository root** so `packages/*` workspace deps resolve.
+**Web** (Next.js) primary host is a **Cloudflare Worker** (`apps/web/wrangler.jsonc`, Worker name `ship-web`):
 
-### Coolify (web)
+```bash
+pnpm deploy:web    # OpenNext build + wrangler deploy
+```
+
+Set web secrets from `apps/web`:
+
+```bash
+cd apps/web
+npx wrangler secret put GITHUB_CLIENT_ID
+npx wrangler secret put GITHUB_CLIENT_SECRET
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put API_SECRET
+```
+
+`NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` must be present at **build** time (`.env.local` locally, or CI env). After deploy, add the web origin to the API Worker's `ALLOWED_ORIGINS`.
+
+There's still a `Dockerfile` at `apps/web/Dockerfile` for optional self-hosting (e.g. on [Coolify](https://coolify.io)). It builds Next standalone (`DEPLOY_TARGET=node`) and serves on port 3000. Build context must be the **repository root**.
+
+### Coolify (web, optional)
 
 Point Coolify at this repo and set:
 
@@ -288,7 +307,7 @@ npx wrangler deploy --env production
 ### Checklist
 
 - [ ] API Worker deployed with prod D1 + secrets
-- [ ] Web app deployed (Docker/Coolify) with env vars from `apps/web/.env.example`
+- [ ] Web Worker deployed (`pnpm deploy:web`) with wrangler secrets from `apps/web/.env.example`
 - [ ] `ALLOWED_ORIGINS` on the API includes your web app URL
 - [ ] Production GitHub OAuth App (callback = prod web URL)
 - [ ] Test: sign in, create session, chat with agent

@@ -1,2 +1,5 @@
 .vercel
 .open-next
+.wrangler
+.dev.vars
+cloudflare-env.d.ts
