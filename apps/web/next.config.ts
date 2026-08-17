@@ -20,6 +20,8 @@ const config: NextConfig = {
   serverExternalPackages: [
     'shiki',
     'mermaid',
+    'streamdown',
+    '@streamdown/code',
     '@streamdown/mermaid',
     '@pierre/diffs',
     '@xterm/xterm',
