@@ -14,6 +14,9 @@ const config: NextConfig = {
   // so OpenNext can emit `.open-next/`.
   ...(process.env.DEPLOY_TARGET === 'node' ? { output: 'standalone' as const } : {}),
   transpilePackages: ['@ship/ui'],
+  experimental: {
+    optimizePackageImports: ['@ship/ui', '@hugeicons/core-free-icons', '@hugeicons/react'],
+  },
   images: {
     remotePatterns: [
       {

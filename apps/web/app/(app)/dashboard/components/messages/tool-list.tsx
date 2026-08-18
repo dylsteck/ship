@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Tool, SubagentTool, TodoProgress, useIsMobile } from '@ship/ui'
-import { Markdown } from '@/components/chat/markdown'
+import { Markdown } from '@/components/chat/markdown-lazy'
 import type { ToolInvocation } from '@/lib/ai-elements-adapter'
 import { mapToolState } from '@/lib/ai-elements-adapter'
 import { collapseToolInvocations, type CollapsedToolInvocation } from '@/lib/session-logic'
@@ -16,7 +16,8 @@ import {
 } from '@/lib/subagent/utils'
 import type { TodoItem } from '../../types'
 
-interface MessageToolListProps {
+/** Props for the inline tool list in an assistant turn. */
+export interface MessageToolListProps {
   tools: ToolInvocation[]
   sessionTodos: TodoItem[]
   todoRenderedRef: React.MutableRefObject<boolean>

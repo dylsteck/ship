@@ -18,8 +18,23 @@ export * from './tabs'
 export * from './textarea'
 export * from './tooltip'
 
-// AI Elements
-export * from './ai-elements'
+// AI Elements — named paths (not `export *`) so Conversation/Message do not pull CodeBlock/shiki.
+export { Message } from './ai-elements/message'
+export { Reasoning, ReasoningCollapsible } from './ai-elements/reasoning'
+export { ChainOfThought } from './ai-elements/chain-of-thought'
+export { Tool } from './ai-elements/tool'
+export { PromptInput } from './ai-elements/prompt-input'
+export { Shimmer } from './ai-elements/shimmer'
+export { Response } from './ai-elements/response'
+export { Loader } from './ai-elements/loader'
+export { Task } from './ai-elements/task'
+export { Steps } from './ai-elements/steps'
+export { PhaseBlock } from './ai-elements/phase-block'
+export { SessionSetup } from './ai-elements/session-setup'
+export { SubagentTool } from './ai-elements/subagent-tool'
+export { ThinkingBlock } from './ai-elements/thinking-block'
+export { TodoProgress } from './ai-elements/todo-progress'
+export { Conversation, ConversationMessage, ConversationScrollButton, useConversation } from './ai-elements/conversation'
 
 // Hooks
 export * from './use-mobile'

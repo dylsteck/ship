@@ -40,13 +40,13 @@ Deploy from `apps/web`:
 
 ```bash
 cd apps/web
-pnpm deploy   # opennextjs-cloudflare build && opennextjs-cloudflare deploy
+pnpm run deploy   # opennextjs-cloudflare build && opennextjs-cloudflare deploy
 ```
 
-- **Config:** `apps/web/wrangler.jsonc` (Worker name `ship-web`).
+- **Config:** `apps/web/wrangler.jsonc` (Worker name `ship-web`, custom domain `https://ship.dylansteck.com`).
 - **Secrets:** `npx wrangler secret put GITHUB_CLIENT_ID` (and `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `API_SECRET`).
 - **Build-time env:** `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_APP_URL` (same as `apps/web/.env.example`).
-- **Worker size:** OpenNext gzip is ~4.3 MiB (over the 3 MiB Workers Free limit). Enable [Workers Paid](https://developers.cloudflare.com/workers/platform/limits/#worker-size) (10 MiB) before `pnpm deploy:web`.
+- **Worker size:** OpenNext gzip is ~1.5 MiB (under the 3 MiB Workers Free limit). Shiki/Mermaid/xterm stay in client chunks, not the Worker script. Do not enable OpenNext `default.minify` — it crashes the Next instrumentation hook.
 - **Optional Docker:** `DEPLOY_TARGET=node` in `apps/web/Dockerfile` (port **3000**, build context = **repository root**).
 
 #### Web App (Next.js) — Docker / Coolify (optional)

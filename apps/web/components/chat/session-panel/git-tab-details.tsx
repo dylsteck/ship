@@ -1,5 +1,5 @@
 import { cn } from '@ship/ui'
-import { Markdown } from '@/components/chat/markdown'
+import { Markdown } from '@/components/chat/markdown-lazy'
 
 interface GitCommit {
   hash: string

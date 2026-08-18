@@ -18,7 +18,7 @@ Before deploying, ensure these are set. Session creation and API calls will fail
 |----------|----------|--------------|------------|
 | `NEXT_PUBLIC_API_URL` | Yes (prod) | Base URL for API calls (server + client). If unset, falls back to `localhost:8787` and all API calls fail. | Worker **build** env, or Coolify build-time args |
 | `API_BASE_URL` | Alternative | Same as above; used if `NEXT_PUBLIC_API_URL` is unset. | Same |
-| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | Your public web URL (e.g. `https://ship-web.<account>.workers.dev`) |
+| `NEXT_PUBLIC_APP_URL` | Yes (prod) | App URL for OAuth callbacks. | `https://ship.dylansteck.com` |
 | `GITHUB_CLIENT_ID` | Yes | GitHub OAuth app client ID. | `npx wrangler secret put GITHUB_CLIENT_ID` (from `apps/web`) |
 | `GITHUB_CLIENT_SECRET` | Yes | GitHub OAuth app secret. | `npx wrangler secret put GITHUB_CLIENT_SECRET` |
 | `SESSION_SECRET` | Yes | JWT signing key for session cookies. | `npx wrangler secret put SESSION_SECRET` |
@@ -136,7 +136,7 @@ npx wrangler secret put API_SECRET
 
 `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_APP_URL` are inlined at **build** time. Locally they come from `apps/web/.env.local`; in CI set them as Actions env/secrets.
 
-The OpenNext Worker gzip is ~4.3 MiB, which exceeds the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Enable Workers Paid (10 MiB gzip) before `pnpm deploy:web`.
+The OpenNext Worker gzip is ~1.5 MiB, under the 3 MiB [Workers Free](https://developers.cloudflare.com/workers/platform/limits/#worker-size) limit. Heavy client libraries (Shiki, Mermaid, xterm) stay in client chunks. Leave OpenNext server minify off — it crashes the Next instrumentation hook on this app.
 
 Pushes to `main` also deploy via `.github/workflows/ci.yml` (`deploy-web-worker`) when `CLOUDFLARE_API_TOKEN` is present.
 
