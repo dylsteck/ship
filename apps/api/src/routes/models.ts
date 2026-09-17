@@ -9,8 +9,11 @@ import {
 } from '../lib/agent-registry'
 import { acpBackendFromModelId } from '../lib/acp-types'
 import { requireJwtUserId, requireSessionOwner } from '../lib/session-authorization'
+import modelPreferences from './model-preferences'
 
 const models = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
+
+models.route('/', modelPreferences)
 
 const DEFAULT_MODEL = DEFAULT_ACP_MODEL_ID
 

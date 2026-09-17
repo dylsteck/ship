@@ -1,4 +1,5 @@
 import type { Task, TaskRow } from './session-types'
+import { firstSqlRow } from './sql-first'
 
 /** Dependencies required by session task store helpers. */
 export interface SessionTaskStoreHost {
@@ -50,15 +51,15 @@ export async function updateTaskStatus(
 
 /** Next pending task in FIFO order. */
 export async function getNextPendingTask(host: SessionTaskStoreHost): Promise<Task | null> {
-  const row = host.sql
-    .exec<TaskRow>(
+  const row = firstSqlRow(
+    host.sql.exec<TaskRow>(
       `SELECT id, title, description, status, mode, created_at, completed_at
        FROM tasks
        WHERE status = 'pending'
        ORDER BY created_at ASC
        LIMIT 1`,
-    )
-    .one()
+    ),
+  )
 
   if (!row) return null
 

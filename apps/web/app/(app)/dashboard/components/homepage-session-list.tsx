@@ -6,6 +6,7 @@ import type { ChatSession } from '@/lib/api/server'
 import type { ModelInfo } from '@/lib/api/types'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
 import { useSessionStatus } from '../hooks/use-session-status-store'
+import { uniqueSessionsById } from '../hooks/merge-remote-sessions'
 import { formatRelativeTime, getSessionModelLabel, groupSessionsByTime } from './homepage-session-list-helpers'
 import { SessionPreviewPanel, sessionIsStreaming } from './homepage-session-preview'
 
@@ -38,7 +39,7 @@ export function HomepageSessionList({
   serverTimestamp = Math.floor(Date.now() / 1000),
 }: HomepageSessionListProps) {
   const now = serverTimestamp
-  const activeSessions = sessions.filter((s) => !s.archivedAt)
+  const activeSessions = uniqueSessionsById(sessions.filter((s) => !s.archivedAt))
   if (activeSessions.length === 0) return null
 
   return (

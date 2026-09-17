@@ -11,6 +11,7 @@ import { sessionStatusStore } from './use-session-status-store'
 import type { WebSocketStatus } from '@/lib/websocket'
 
 export interface UseSessionConnectionParams {
+  enabled?: boolean
   activeSessionId: string | null
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>
   streamingMessageRef: React.MutableRefObject<string | null>
@@ -32,6 +33,7 @@ function applySessionSummary(sessionId: string, summary: SessionSummary): void {
 
 export function useSessionConnection(params: UseSessionConnectionParams) {
   const {
+    enabled = true,
     activeSessionId,
     setMessages,
     streamingMessageRef,
@@ -47,6 +49,7 @@ export function useSessionConnection(params: UseSessionConnectionParams) {
 
   const connectWebSocket = useCallback(
     (sessionId: string) => {
+      if (!enabled) return
       connectionRef.current?.disconnect()
       connectionRef.current = createSessionConnection({
         sessionId,
@@ -63,19 +66,24 @@ export function useSessionConnection(params: UseSessionConnectionParams) {
         onAgentEvent: (id, event) => onAgentEventRef?.current?.(id, event),
       })
     },
-    [queryClient, setAgentSessionId, setAgentUrl, setMessages, setSandboxStatus, streamingMessageRef, onAgentEventRef],
+    [enabled, queryClient, setAgentSessionId, setAgentUrl, setMessages, setSandboxStatus, streamingMessageRef, onAgentEventRef],
   )
 
   useEffect(() => () => connectionRef.current?.disconnect(), [])
 
   useEffect(() => {
+    if (!enabled) {
+      connectionRef.current?.disconnect()
+      connectionRef.current = null
+      return
+    }
     if (!activeSessionId) {
       connectionRef.current?.disconnect()
       connectionRef.current = null
       return
     }
     connectWebSocket(activeSessionId)
-  }, [activeSessionId, connectWebSocket])
+  }, [activeSessionId, connectWebSocket, enabled])
 
   const consumeSSE = useCallback(
     (sessionId: string, body: ReadableStream<Uint8Array>, onEvent: (data: Record<string, unknown>) => void) => {

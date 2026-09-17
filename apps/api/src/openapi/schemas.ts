@@ -48,6 +48,7 @@ export const sessionSchema = z
     title: z.string().optional(),
     model: z.string().optional(),
     agentType: z.string().optional(),
+    revision: z.number().int().positive().optional(),
     sandboxId: z.string().nullable().optional(),
     sandboxStatus: z.string().optional(),
     messageCount: z.number().int().optional(),
@@ -187,6 +188,11 @@ export const modelInfoSchema = z
     isFree: z.boolean().optional(),
     source: z.string().optional(),
     upstreamModelId: z.string().optional(),
+    iconKey: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    isSelectable: z.boolean().optional(),
+    disabledReason: z.string().optional(),
+    recommended: z.boolean().optional(),
   })
   .openapi('ModelInfo')
 
@@ -207,8 +213,107 @@ export const agentInfoSchema = z
     name: z.string(),
     modes: z.array(z.object({ id: z.string(), name: z.string() })),
     models: z.array(modelInfoSchema),
+    description: z.string().optional(),
+    iconKey: z.string().optional(),
+    isSelectable: z.boolean().optional(),
+    disabledReason: z.string().optional(),
+    recommended: z.boolean().optional(),
   })
   .openapi('AgentInfo')
+
+export const realtimeTicketBodySchema = z
+  .discriminatedUnion('scope', [
+    z.object({ scope: z.literal('shell') }),
+    z.object({ scope: z.literal('session'), sessionId: z.string().uuid() }),
+  ])
+  .openapi('RealtimeTicketBody')
+
+export const realtimeTicketResponseSchema = z
+  .object({ ticket: z.string(), expiresAt: z.number().int() })
+  .openapi('RealtimeTicketResponse')
+
+export const createTurnBodySchema = z
+  .object({
+    content: z.string().min(1).max(100_000),
+    mode: z.enum(['agent', 'plan']),
+    modelId: z.string().optional(),
+    clientCommandId: z.string().uuid(),
+  })
+  .openapi('CreateTurnBody')
+
+export const turnAcceptedResponseSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    userMessageId: z.string().uuid(),
+    acceptedSequence: z.number().int().nonnegative(),
+    status: z.enum(['accepted', 'already-accepted']),
+  })
+  .openapi('TurnAcceptedResponse')
+
+export const transcriptMessageSchema = z
+  .object({
+    id: z.string(),
+    turnId: z.string().nullable(),
+    role: z.enum(['user', 'assistant', 'system']),
+    content: z.string(),
+    parts: z.array(z.unknown()).optional(),
+    createdAt: z.number().int(),
+  })
+  .openapi('TranscriptMessage')
+
+export const transcriptTurnSchema = z
+  .object({
+    id: z.string(),
+    sessionID: z.string(),
+    status: z.enum(['running', 'completed', 'failed', 'interrupted', 'cancelled']),
+    startedAt: z.number().int().optional(),
+    completedAt: z.number().int().optional(),
+    cost: z.number().optional(),
+    diffSummary: z
+      .array(z.object({ filename: z.string(), additions: z.number(), deletions: z.number() }))
+      .optional(),
+  })
+  .openapi('TranscriptTurn')
+
+export const transcriptPageSchema = z
+  .object({
+    turns: z.array(transcriptTurnSchema),
+    messages: z.array(transcriptMessageSchema),
+    beforeCursor: z.string().optional(),
+    hasMore: z.boolean(),
+    snapshotSequence: z.number().int().nonnegative(),
+  })
+  .openapi('TranscriptPage')
+
+export const toolOutputResponseSchema = z
+  .object({ toolCallId: z.string(), output: z.string() })
+  .openapi('ToolOutputResponse')
+
+export const updateSessionSelectionBodySchema = z
+  .object({ agentId: z.string().min(1), modelId: z.string().min(1) })
+  .openapi('UpdateSessionSelectionBody')
+
+export const sessionSelectionResponseSchema = z
+  .object({
+    success: z.literal(true),
+    selection: updateSessionSelectionBodySchema,
+    revision: z.number().int().positive().optional(),
+  })
+  .openapi('SessionSelectionResponse')
+
+export const modelPreferencesSchema = z
+  .object({
+    defaultAgentId: z.string(),
+    defaultModelByAgent: z.record(z.string()),
+    favoriteModelIds: z.array(z.string()).max(20),
+    recentModelIds: z.array(z.string()).max(8),
+  })
+  .openapi('ModelPreferences')
+
+export const updateModelPreferencesBodySchema = modelPreferencesSchema
+  .partial()
+  .openapi('UpdateModelPreferencesBody')
 
 export const agentIdRefSchema = z.object({ agentId: z.string() }).openapi('AgentIdRef')
 

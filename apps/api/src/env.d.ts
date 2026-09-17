@@ -1,33 +1,6 @@
-/**
- * Cloudflare Worker Environment Bindings
- *
- * This file provides TypeScript types for environment variables and bindings
- * available in Cloudflare Workers runtime.
- */
-
-import type { SessionDO } from './durable-objects/session'
-
-/** Minimal Workflow binding surface — Cloudflare injects concrete implementation */
-interface Workflow {
-  create(options?: { params?: unknown }): Promise<unknown>
-}
-
-export interface Env {
-  // D1 Database binding
-  DB: D1Database;
-
-  // Durable Objects
-  SESSION_DO: DurableObjectNamespace<SessionDO>;
-
-  // Environment variables
-  ENVIRONMENT: string;
+/** Cloudflare bindings plus optional deployment-specific secrets. */
+export interface Env extends CloudflareBindings {
   DISABLE_RATE_LIMITS?: string;
-
-  // Secrets (set via wrangler secret put or .dev.vars locally)
-  ANTHROPIC_API_KEY: string;
-  API_SECRET: string;
-  SESSION_SECRET: string;
-  E2B_API_KEY: string;
   ALLOWED_ORIGINS?: string;
   VERCEL_PROJECT_NAME?: string;
 
@@ -53,10 +26,4 @@ export interface Env {
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
 
-  /** Cloudflare Workflow — durable bootstrap scaffolding (optional trigger from handlers later) */
-  SHIP_ACP_WORKFLOW?: Workflow;
-
-  // Login restriction (optional)
-  LOGIN_RESTRICTED_TO_SINGLE_USER?: string;
-  ALLOWED_USER_ID?: string;
 }

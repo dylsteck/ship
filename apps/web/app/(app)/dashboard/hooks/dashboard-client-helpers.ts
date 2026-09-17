@@ -1,6 +1,10 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
+import type { ShellSessionSummary } from '@ship/contracts'
+import { REALTIME_V2_ENABLED } from '@/lib/config'
+import type { ChatSession } from '@/lib/api/server'
+import { useShellState } from '@/lib/realtime/shell-provider'
 import { useGitHubRepos } from '@/lib/api/hooks/use-repos'
 import {
   useModels,
@@ -19,7 +23,34 @@ import type { useDashboardChat } from './use-dashboard-chat'
 import type { useDashboardState } from './use-dashboard-state'
 import { buildTerminalConnectionHint, type useActiveSessionSync } from './use-dashboard-client-effects'
 
+function mapShellSessions(
+  orderedSessionIds: readonly string[],
+  sessionsById: ReadonlyMap<string, ShellSessionSummary>,
+): ChatSession[] {
+  return orderedSessionIds.flatMap((id) => {
+    const summary = sessionsById.get(id)
+    if (!summary) return []
+    return [
+      {
+        id: summary.id,
+        userId: '',
+        repoOwner: summary.repoOwner,
+        repoName: summary.repoName,
+        status: summary.status,
+        lastActivity: summary.lastActivity,
+        createdAt: summary.createdAt,
+        archivedAt: summary.archivedAt,
+        title: summary.title,
+        model: summary.modelId,
+        agentType: summary.agentId,
+        revision: summary.revision,
+      },
+    ]
+  })
+}
+
 export function useDashboardDataHooks(chat: ReturnType<typeof useDashboardChat>) {
+  const shell = useShellState()
   const reposQuery = useGitHubRepos(true)
   const { models, isLoading: modelsLoading } = useModels(true)
   const { agents, isLoading: agentsLoading } = useAgents()
@@ -30,11 +61,27 @@ export function useDashboardDataHooks(chat: ReturnType<typeof useDashboardChat>)
   const { deleteSession } = useDeleteSession()
   const { sessionModelId, mutate: mutateSessionModel } = useSessionModel(chat.activeSessionId ?? undefined)
   const { setSessionModel } = useSetSessionModel()
-  const {
-    sessions: swrSessions,
-    isLoading: sessionsLoading,
-    mutate: mutateSessions,
-  } = useSessions(true, { refreshInterval: 3000, refetchOnFocus: true })
+  const sessionsQuery = useSessions(!REALTIME_V2_ENABLED, {
+    refreshInterval: REALTIME_V2_ENABLED ? undefined : 3000,
+    refetchOnFocus: !REALTIME_V2_ENABLED,
+  })
+  const shellSessions = useMemo(
+    () => mapShellSessions(shell.orderedSessionIds, shell.sessionsById),
+    [shell.orderedSessionIds, shell.sessionsById],
+  )
+  const mutateSessions = REALTIME_V2_ENABLED ? () => undefined : sessionsQuery.mutate
+  const swrSessions = REALTIME_V2_ENABLED ? shellSessions : sessionsQuery.sessions
+  const sessionsLoading = REALTIME_V2_ENABLED
+    ? !shell.hasSnapshot && shell.orderedSessionIds.length === 0
+    : sessionsQuery.isLoading
+  const shellStreamingSessionIds = useMemo(
+    () => new Set(
+      [...shell.sessionsById.values()]
+        .filter((session) => ['starting', 'running', 'stopping'].includes(session.runtime.state))
+        .map((session) => session.id),
+    ),
+    [shell.sessionsById],
+  )
 
   return {
     repos: reposQuery.repos,
@@ -59,6 +106,8 @@ export function useDashboardDataHooks(chat: ReturnType<typeof useDashboardChat>)
     swrSessions,
     sessionsLoading,
     mutateSessions,
+    shellPhase: shell.phase,
+    shellStreamingSessionIds,
     globalDefaultModelId,
     globalDefaultModelLoading,
     mutateDefaultAgent,

@@ -16,7 +16,7 @@ export type TurnDiffSummary = z.infer<typeof TurnDiffSummarySchema>
 
 /** Turn record projected for thread detail and diff endpoints. */
 export const TurnSchema = z.object({
-  id: TurnIdSchema,
+  id: TurnIdSchema.or(z.string().startsWith('legacy:')),
   sessionID: z.string(),
   status: TurnStatusSchema,
   startedAt: z.number().optional(),

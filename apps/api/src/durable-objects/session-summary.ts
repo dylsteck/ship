@@ -85,6 +85,6 @@ export function buildSessionSummary(
 export function broadcastSessionSummary(host: SessionSummaryHost, summary: SessionSummary): void {
   broadcastToWebSockets(host, {
     type: 'session.summary.updated',
-    properties: { summary },
+    properties: { sessionID: summary.id, summary },
   })
 }

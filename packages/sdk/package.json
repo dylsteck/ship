@@ -15,10 +15,13 @@
     ".": "./src/index.ts",
     "./streaming": "./src/runtime/streaming.ts",
     "./service": "./src/runtime/create-service-client.ts",
+    "./realtime": "./src/runtime/realtime.ts",
     "./ws": "./src/runtime/ws.ts",
     "./types": "./src/generated/types.gen.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@ship/contracts": "workspace:^"
+  },
   "devDependencies": {
     "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.86.0",

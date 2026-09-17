@@ -7,11 +7,13 @@ import { cn } from '@ship/ui/utils'
 import { getSessionDisplayTitle } from '@/lib/session-display'
 import { formatRelativeTime } from './utils'
 import { ChevronIcon } from './icons'
+import { uniqueSessionsById } from '@/app/(app)/dashboard/hooks/merge-remote-sessions'
 import { SessionItem } from './sidebar-session-item'
 
 export function groupSessionsByRepo(sessions: ChatSession[]) {
-  const nonArchived = sessions.filter((s) => !s.archivedAt)
-  const archived = sessions.filter((s) => !!s.archivedAt)
+  const unique = uniqueSessionsById(sessions)
+  const nonArchived = unique.filter((s) => !s.archivedAt)
+  const archived = unique.filter((s) => !!s.archivedAt)
   const byRepo: Record<string, ChatSession[]> = {}
   for (const session of nonArchived) {
     const key = `${session.repoOwner}/${session.repoName}`
@@ -43,7 +45,7 @@ export function SidebarFlatSessionList({
 }) {
   return (
     <div className="space-y-0.5">
-      {sessions
+      {[...uniqueSessionsById(sessions)]
         .sort((a, b) => b.lastActivity - a.lastActivity)
         .map((session) => (
           <SessionItem

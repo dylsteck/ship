@@ -14,6 +14,10 @@ export interface ChatTurnContext {
   stub: { fetch: typeof fetch }
   stream: { writeSSE: (payload: { event: string; data: string }) => Promise<void> }
   abortSignal?: AbortSignal
+  /** Producer delivery already persists/broadcasts events through the writer. */
+  delivery?: 'legacy' | 'producer'
+  /** Accepted turn id associated with persisted assistant/system messages. */
+  turnId?: string
 }
 
 export class AgentStoppedError extends Error {
@@ -54,6 +58,7 @@ export async function readMeta(stub: { fetch: typeof fetch }): Promise<Record<st
  */
 export async function emitEvent(input: ChatTurnContext, event: ShipSSEEvent): Promise<void> {
   await input.stream.writeSSE({ event: event.type, data: JSON.stringify(event) })
+  if (input.delivery === 'producer') return
   await broadcastToDurableObject(input.stub, event).catch((err) => {
     console.warn('[acp] failed to broadcast event', err)
   })
@@ -94,6 +99,7 @@ export async function persistAssistantMessage(
   stub: { fetch: typeof fetch },
   content: string,
   parts?: Record<string, unknown>[],
+  turnId?: string,
 ): Promise<void> {
   if (!hasPersistableAssistantOutput(content, parts)) return
   await stub.fetch(
@@ -103,6 +109,7 @@ export async function persistAssistantMessage(
       body: JSON.stringify({
         role: 'assistant',
         content: content.trim(),
+        ...(turnId ? { turnId } : {}),
         ...(parts && parts.length > 0 ? { parts: JSON.stringify(parts) } : {}),
       }),
     }),
@@ -110,7 +117,11 @@ export async function persistAssistantMessage(
 }
 
 /** Persist a classified runner error as a system message. */
-export async function persistRunnerErrorMessage(stub: { fetch: typeof fetch }, content: string): Promise<void> {
+export async function persistRunnerErrorMessage(
+  stub: { fetch: typeof fetch },
+  content: string,
+  turnId?: string,
+): Promise<void> {
   if (!content.trim()) return
   await stub.fetch(
     new Request(`${DO_URL}/messages`, {
@@ -119,6 +130,7 @@ export async function persistRunnerErrorMessage(stub: { fetch: typeof fetch }, c
       body: JSON.stringify({
         role: 'system',
         content,
+        ...(turnId ? { turnId } : {}),
         parts: JSON.stringify([{ type: 'error', category: 'persistent', retryable: true }]),
       }),
     }),

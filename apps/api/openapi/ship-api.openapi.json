@@ -37,6 +37,10 @@
       "description": "Model and agent preferences"
     },
     {
+      "name": "Realtime",
+      "description": "Scoped websocket connection tickets"
+    },
+    {
       "name": "Accounts",
       "description": "GitHub account and repos"
     },
@@ -102,6 +106,11 @@
           },
           "agentType": {
             "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
           },
           "sandboxId": {
             "type": "string",
@@ -207,6 +216,284 @@
             "type": "string"
           }
         }
+      },
+      "TurnAcceptedResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turnId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userMessageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acceptedSequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "already-accepted"
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "turnId",
+          "userMessageId",
+          "acceptedSequence",
+          "status"
+        ]
+      },
+      "CreateTurnBody": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "plan"
+            ]
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "clientCommandId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "content",
+          "mode",
+          "clientCommandId"
+        ]
+      },
+      "TranscriptTurn": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "integer"
+          },
+          "completedAt": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sessionId",
+          "status",
+          "startedAt"
+        ]
+      },
+      "TranscriptMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          },
+          "createdAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "turnId",
+          "role",
+          "content",
+          "createdAt"
+        ]
+      },
+      "TranscriptPage": {
+        "type": "object",
+        "properties": {
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptTurn"
+            }
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptMessage"
+            }
+          },
+          "beforeCursor": {
+            "type": "string"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "snapshotSequence": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "turns",
+          "messages",
+          "hasMore",
+          "snapshotSequence"
+        ]
+      },
+      "ToolOutputResponse": {
+        "type": "object",
+        "properties": {
+          "toolCallId": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "toolCallId",
+          "output"
+        ]
+      },
+      "UpdateSessionSelectionBody": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "agentId",
+          "modelId"
+        ]
+      },
+      "SessionSelectionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "selection": {
+            "$ref": "#/components/schemas/UpdateSessionSelectionBody"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "success",
+          "selection"
+        ]
+      },
+      "RealtimeTicketResponse": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ticket",
+          "expiresAt"
+        ]
+      },
+      "RealtimeTicketBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "shell"
+                ]
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "session"
+                ]
+              },
+              "sessionId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "scope",
+              "sessionId"
+            ]
+          }
+        ]
       },
       "ChatPostBody": {
         "type": "object",
@@ -768,6 +1055,24 @@
           },
           "upstreamModelId": {
             "type": "string"
+          },
+          "iconKey": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isSelectable": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "recommended": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -786,6 +1091,68 @@
         "required": [
           "model"
         ]
+      },
+      "ModelPreferences": {
+        "type": "object",
+        "properties": {
+          "defaultAgentId": {
+            "type": "string"
+          },
+          "defaultModelByAgent": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "favoriteModelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20
+          },
+          "recentModelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8
+          }
+        },
+        "required": [
+          "defaultAgentId",
+          "defaultModelByAgent",
+          "favoriteModelIds",
+          "recentModelIds"
+        ]
+      },
+      "UpdateModelPreferencesBody": {
+        "type": "object",
+        "properties": {
+          "defaultAgentId": {
+            "type": "string"
+          },
+          "defaultModelByAgent": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "favoriteModelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20
+          },
+          "recentModelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8
+          }
+        }
       },
       "ModelRef": {
         "type": "object",
@@ -845,6 +1212,21 @@
             "items": {
               "$ref": "#/components/schemas/ModelInfo"
             }
+          },
+          "description": {
+            "type": "string"
+          },
+          "iconKey": {
+            "type": "string"
+          },
+          "isSelectable": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "recommended": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1382,6 +1764,344 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SandboxStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{sessionId}/turns": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTurnBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Turn accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnAcceptedResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session already has an active turn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{sessionId}/turns/{turnId}/stop": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "turnId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stop requested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "turnId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "turnId"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Turn is not running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{sessionId}/transcript": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "before",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Older transcript page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{sessionId}/tool-calls/{toolCallId}/output": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "toolCallId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full tool output",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolOutputResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tool output not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{sessionId}/selection": {
+      "patch": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionSelectionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Selection updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSelectionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session is busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/realtime/tickets": {
+      "post": {
+        "tags": [
+          "Realtime"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RealtimeTicketBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Short-lived one-use ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeTicketResponse"
                 }
               }
             }
@@ -2268,6 +2988,61 @@
                       ]
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/preferences": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPreferences"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Models"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelPreferencesBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model preferences updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPreferences"
                 }
               }
             }

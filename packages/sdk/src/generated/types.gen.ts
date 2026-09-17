@@ -18,6 +18,7 @@ export type Session = {
     title?: string;
     model?: string;
     agentType?: string;
+    revision?: number;
     sandboxId?: string;
     sandboxStatus?: string;
     messageCount?: number;
@@ -46,6 +47,77 @@ export type SandboxStatus = {
     agentType?: string;
     url?: string;
     terminalUrl?: string;
+};
+
+export type TurnAcceptedResponse = {
+    sessionId: string;
+    turnId: string;
+    userMessageId: string;
+    acceptedSequence: number;
+    status: 'accepted' | 'already-accepted';
+};
+
+export type CreateTurnBody = {
+    content: string;
+    mode: 'agent' | 'plan';
+    modelId?: string;
+    clientCommandId: string;
+};
+
+export type TranscriptTurn = {
+    id: string;
+    sessionId: string;
+    status: string;
+    mode?: string;
+    modelId?: string;
+    startedAt: number;
+    completedAt?: number;
+    error?: string;
+};
+
+export type TranscriptMessage = {
+    id: string;
+    turnId: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    parts?: Array<unknown>;
+    createdAt: number;
+};
+
+export type TranscriptPage = {
+    turns: Array<TranscriptTurn>;
+    messages: Array<TranscriptMessage>;
+    beforeCursor?: string;
+    hasMore: boolean;
+    snapshotSequence: number;
+};
+
+export type ToolOutputResponse = {
+    toolCallId: string;
+    output: string;
+};
+
+export type UpdateSessionSelectionBody = {
+    agentId: string;
+    modelId: string;
+};
+
+export type SessionSelectionResponse = {
+    success: true;
+    selection: UpdateSessionSelectionBody;
+    revision?: number;
+};
+
+export type RealtimeTicketResponse = {
+    ticket: string;
+    expiresAt: number;
+};
+
+export type RealtimeTicketBody = {
+    scope: 'shell';
+} | {
+    scope: 'session';
+    sessionId: string;
 };
 
 export type ChatPostBody = {
@@ -198,10 +270,33 @@ export type ModelInfo = {
     isFree?: boolean;
     source?: string;
     upstreamModelId?: string;
+    iconKey?: string;
+    tags?: Array<string>;
+    isSelectable?: boolean;
+    disabledReason?: string;
+    recommended?: boolean;
 };
 
 export type DefaultModelResponse = {
     model: string;
+};
+
+export type ModelPreferences = {
+    defaultAgentId: string;
+    defaultModelByAgent: {
+        [key: string]: string;
+    };
+    favoriteModelIds: Array<string>;
+    recentModelIds: Array<string>;
+};
+
+export type UpdateModelPreferencesBody = {
+    defaultAgentId?: string;
+    defaultModelByAgent?: {
+        [key: string]: string;
+    };
+    favoriteModelIds?: Array<string>;
+    recentModelIds?: Array<string>;
 };
 
 export type ModelRef = {
@@ -221,6 +316,11 @@ export type AgentInfo = {
         name: string;
     }>;
     models: Array<ModelInfo>;
+    description?: string;
+    iconKey?: string;
+    isSelectable?: boolean;
+    disabledReason?: string;
+    recommended?: boolean;
 };
 
 export type AgentIdRef = {
@@ -457,6 +557,172 @@ export type GetSessionsBySessionIdSandboxResponses = {
 };
 
 export type GetSessionsBySessionIdSandboxResponse = GetSessionsBySessionIdSandboxResponses[keyof GetSessionsBySessionIdSandboxResponses];
+
+export type PostSessionsBySessionIdTurnsData = {
+    body?: CreateTurnBody;
+    path: {
+        sessionId: SessionId;
+    };
+    query?: never;
+    url: '/sessions/{sessionId}/turns';
+};
+
+export type PostSessionsBySessionIdTurnsErrors = {
+    /**
+     * Session already has an active turn
+     */
+    409: {
+        error: string;
+        message?: string;
+        issues?: unknown;
+    };
+};
+
+export type PostSessionsBySessionIdTurnsError = PostSessionsBySessionIdTurnsErrors[keyof PostSessionsBySessionIdTurnsErrors];
+
+export type PostSessionsBySessionIdTurnsResponses = {
+    /**
+     * Turn accepted
+     */
+    202: TurnAcceptedResponse;
+};
+
+export type PostSessionsBySessionIdTurnsResponse = PostSessionsBySessionIdTurnsResponses[keyof PostSessionsBySessionIdTurnsResponses];
+
+export type PostSessionsBySessionIdTurnsByTurnIdStopData = {
+    body?: never;
+    path: {
+        sessionId: SessionId;
+        turnId: string;
+    };
+    query?: never;
+    url: '/sessions/{sessionId}/turns/{turnId}/stop';
+};
+
+export type PostSessionsBySessionIdTurnsByTurnIdStopErrors = {
+    /**
+     * Turn is not running
+     */
+    409: {
+        error: string;
+        message?: string;
+        issues?: unknown;
+    };
+};
+
+export type PostSessionsBySessionIdTurnsByTurnIdStopError = PostSessionsBySessionIdTurnsByTurnIdStopErrors[keyof PostSessionsBySessionIdTurnsByTurnIdStopErrors];
+
+export type PostSessionsBySessionIdTurnsByTurnIdStopResponses = {
+    /**
+     * Stop requested
+     */
+    200: {
+        success: boolean;
+        turnId: string;
+    };
+};
+
+export type PostSessionsBySessionIdTurnsByTurnIdStopResponse = PostSessionsBySessionIdTurnsByTurnIdStopResponses[keyof PostSessionsBySessionIdTurnsByTurnIdStopResponses];
+
+export type GetSessionsBySessionIdTranscriptData = {
+    body?: never;
+    path: {
+        sessionId: SessionId;
+    };
+    query?: {
+        before?: string;
+        limit?: number;
+    };
+    url: '/sessions/{sessionId}/transcript';
+};
+
+export type GetSessionsBySessionIdTranscriptResponses = {
+    /**
+     * Older transcript page
+     */
+    200: TranscriptPage;
+};
+
+export type GetSessionsBySessionIdTranscriptResponse = GetSessionsBySessionIdTranscriptResponses[keyof GetSessionsBySessionIdTranscriptResponses];
+
+export type GetSessionsBySessionIdToolCallsByToolCallIdOutputData = {
+    body?: never;
+    path: {
+        sessionId: SessionId;
+        toolCallId: string;
+    };
+    query?: never;
+    url: '/sessions/{sessionId}/tool-calls/{toolCallId}/output';
+};
+
+export type GetSessionsBySessionIdToolCallsByToolCallIdOutputErrors = {
+    /**
+     * Tool output not found
+     */
+    404: {
+        error: string;
+        message?: string;
+        issues?: unknown;
+    };
+};
+
+export type GetSessionsBySessionIdToolCallsByToolCallIdOutputError = GetSessionsBySessionIdToolCallsByToolCallIdOutputErrors[keyof GetSessionsBySessionIdToolCallsByToolCallIdOutputErrors];
+
+export type GetSessionsBySessionIdToolCallsByToolCallIdOutputResponses = {
+    /**
+     * Full tool output
+     */
+    200: ToolOutputResponse;
+};
+
+export type GetSessionsBySessionIdToolCallsByToolCallIdOutputResponse = GetSessionsBySessionIdToolCallsByToolCallIdOutputResponses[keyof GetSessionsBySessionIdToolCallsByToolCallIdOutputResponses];
+
+export type PatchSessionsBySessionIdSelectionData = {
+    body?: UpdateSessionSelectionBody;
+    path: {
+        sessionId: SessionId;
+    };
+    query?: never;
+    url: '/sessions/{sessionId}/selection';
+};
+
+export type PatchSessionsBySessionIdSelectionErrors = {
+    /**
+     * Session is busy
+     */
+    409: {
+        error: string;
+        message?: string;
+        issues?: unknown;
+    };
+};
+
+export type PatchSessionsBySessionIdSelectionError = PatchSessionsBySessionIdSelectionErrors[keyof PatchSessionsBySessionIdSelectionErrors];
+
+export type PatchSessionsBySessionIdSelectionResponses = {
+    /**
+     * Selection updated
+     */
+    200: SessionSelectionResponse;
+};
+
+export type PatchSessionsBySessionIdSelectionResponse = PatchSessionsBySessionIdSelectionResponses[keyof PatchSessionsBySessionIdSelectionResponses];
+
+export type PostRealtimeTicketsData = {
+    body?: RealtimeTicketBody;
+    path?: never;
+    query?: never;
+    url: '/realtime/tickets';
+};
+
+export type PostRealtimeTicketsResponses = {
+    /**
+     * Short-lived one-use ticket
+     */
+    200: RealtimeTicketResponse;
+};
+
+export type PostRealtimeTicketsResponse = PostRealtimeTicketsResponses[keyof PostRealtimeTicketsResponses];
 
 export type PostChatBySessionIdData = {
     body?: ChatPostBody;
@@ -894,6 +1160,38 @@ export type PostModelsDefaultResponses = {
 };
 
 export type PostModelsDefaultResponse = PostModelsDefaultResponses[keyof PostModelsDefaultResponses];
+
+export type GetModelsPreferencesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/models/preferences';
+};
+
+export type GetModelsPreferencesResponses = {
+    /**
+     * Model preferences
+     */
+    200: ModelPreferences;
+};
+
+export type GetModelsPreferencesResponse = GetModelsPreferencesResponses[keyof GetModelsPreferencesResponses];
+
+export type PatchModelsPreferencesData = {
+    body?: UpdateModelPreferencesBody;
+    path?: never;
+    query?: never;
+    url: '/models/preferences';
+};
+
+export type PatchModelsPreferencesResponses = {
+    /**
+     * Model preferences updated
+     */
+    200: ModelPreferences;
+};
+
+export type PatchModelsPreferencesResponse = PatchModelsPreferencesResponses[keyof PatchModelsPreferencesResponses];
 
 export type GetModelsSessionsBySessionIdData = {
     body?: never;

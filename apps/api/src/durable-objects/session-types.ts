@@ -2,9 +2,12 @@
 
 /** Connection state attached to each WebSocket (survives hibernation). */
 export interface ConnectionState {
-  connectedAt: number
-  lastSeen: number
-  userId?: string
+  role: 'consumer' | 'producer'
+  protocolVersion: 1 | 2
+  phase: 'awaiting-subscribe' | 'synchronizing' | 'live'
+  lastSentSequence: number
+  turnId?: string
+  attemptId?: string
 }
 
 /** Message row type matching SQLite return values. */
@@ -13,6 +16,7 @@ export interface MessageRow extends Record<string, SqlStorageValue> {
   role: string
   content: string
   parts: string | null
+  turn_id: string | null
   created_at: number
 }
 
@@ -22,6 +26,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   parts?: string
+  turnId?: string | null
   createdAt: number
 }
 

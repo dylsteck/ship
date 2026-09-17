@@ -8,6 +8,9 @@ export const ToolStateSchema = z.object({
   raw: z.string().optional(),
   title: z.string().optional(),
   output: z.string().optional(),
+  outputPreview: z.string().optional(),
+  outputTruncated: z.boolean().optional(),
+  detailRef: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
   time: z
     .object({
@@ -76,10 +79,41 @@ export const StepFinishPartSchema = z.object({
 })
 export type StepFinishPart = z.infer<typeof StepFinishPartSchema>
 
+/** Marker emitted when an agent begins a logical work step. */
+export const StepStartPartSchema = z.object({
+  id: z.string(),
+  sessionID: z.string(),
+  messageID: z.string(),
+  type: z.literal('step-start'),
+  title: z.string().optional(),
+})
+export type StepStartPart = z.infer<typeof StepStartPartSchema>
+
+/** One durable step in an agent-authored plan. */
+export const PlanItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
+})
+export type PlanItem = z.infer<typeof PlanItemSchema>
+
+/** Materialized plan part shared by live events and persisted transcript rows. */
+export const PlanPartSchema = z.object({
+  id: z.string(),
+  sessionID: z.string(),
+  messageID: z.string(),
+  type: z.literal('plan'),
+  items: z.array(PlanItemSchema),
+})
+export type PlanPart = z.infer<typeof PlanPartSchema>
+
 export const MessagePartSchema = z.discriminatedUnion('type', [
   TextPartSchema,
   ToolPartSchema,
   ReasoningPartSchema,
+  StepStartPartSchema,
   StepFinishPartSchema,
+  PlanPartSchema,
 ])
 export type MessagePart = z.infer<typeof MessagePartSchema>

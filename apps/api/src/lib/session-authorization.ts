@@ -7,7 +7,15 @@ import type { Env } from '../env.d'
  * - `authKind: 'user'` — verified session JWT; `userId` is the subject.
  * - `authKind: 'service'` — `API_SECRET` bearer (OAuth bootstrap only); no `userId`.
  */
-export type AuthedEnv = { Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }
+export type AuthedEnv = {
+  Bindings: Env
+  Variables: {
+    userId?: string
+    authKind?: 'user' | 'service'
+    realtimeScope?: 'shell' | 'session'
+    realtimeSessionId?: string
+  }
+}
 
 /** {@link AuthedEnv} as a Hono `Context`. */
 export type AuthedContext = Context<AuthedEnv>

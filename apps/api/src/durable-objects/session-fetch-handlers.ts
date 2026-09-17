@@ -14,7 +14,11 @@ import {
 export async function handleSessionFetch(host: SessionFetchHost, request: Request): Promise<Response> {
   const url = new URL(request.url)
 
-  if (url.pathname.endsWith('/websocket')) {
+  if (
+    url.pathname.endsWith('/websocket') ||
+    url.pathname.endsWith('/stream') ||
+    url.pathname === '/internal/producer'
+  ) {
     const upgradeHeader = request.headers.get('Upgrade')
     if (upgradeHeader !== 'websocket') {
       return new Response('Expected WebSocket', { status: 426 })

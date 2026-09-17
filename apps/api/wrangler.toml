@@ -1,6 +1,6 @@
 name = "ship-api"
 main = "src/index.ts"
-compatibility_date = "2024-12-01"
+compatibility_date = "2026-08-17"
 compatibility_flags = ["nodejs_compat"]
 account_id = "b6c3bd7b1a1c219a306faf2c3f0a903a"
 
@@ -9,19 +9,24 @@ enabled = true
 head_sampling_rate = 0.05
 
 [[workflows]]
-binding = "SHIP_ACP_WORKFLOW"
-name = "ship-acp-bootstrap"
-class_name = "ShipAcpBootstrapWorkflow"
+binding = "SHIP_CHAT_TURN_WORKFLOW"
+name = "ship-chat-turn"
+class_name = "ShipChatTurnWorkflow"
 
 # Durable Objects
 [durable_objects]
 bindings = [
-  { name = "SESSION_DO", class_name = "SessionDO" }
+  { name = "SESSION_DO", class_name = "SessionDO" },
+  { name = "USER_SHELL_DO", class_name = "UserShellDO" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SessionDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UserShellDO"]
 
 # D1 Database
 # Create database: wrangler d1 create ship-db
@@ -55,9 +60,9 @@ name = "ship-api-production"
 compatibility_flags = ["nodejs_compat"]
 
 [[env.production.workflows]]
-binding = "SHIP_ACP_WORKFLOW"
-name = "ship-acp-bootstrap"
-class_name = "ShipAcpBootstrapWorkflow"
+binding = "SHIP_CHAT_TURN_WORKFLOW"
+name = "ship-chat-turn"
+class_name = "ShipChatTurnWorkflow"
 
 [env.production.vars]
 ENVIRONMENT = "production"
@@ -68,7 +73,8 @@ head_sampling_rate = 0.05
 
 [env.production.durable_objects]
 bindings = [
-  { name = "SESSION_DO", class_name = "SessionDO" }
+  { name = "SESSION_DO", class_name = "SessionDO" },
+  { name = "USER_SHELL_DO", class_name = "UserShellDO" }
 ]
 
 [[env.production.d1_databases]]
@@ -79,7 +85,19 @@ database_id = "86472e95-9841-4cec-85e9-655e3c7706b8"
 # Staging Environment
 [env.staging]
 name = "ship-api-staging"
+compatibility_flags = ["nodejs_compat"]
 vars = { ENVIRONMENT = "staging" }
+
+[[env.staging.workflows]]
+binding = "SHIP_CHAT_TURN_WORKFLOW"
+name = "ship-chat-turn-staging"
+class_name = "ShipChatTurnWorkflow"
+
+[env.staging.durable_objects]
+bindings = [
+  { name = "SESSION_DO", class_name = "SessionDO" },
+  { name = "USER_SHELL_DO", class_name = "UserShellDO" }
+]
 
 [env.staging.observability.traces]
 enabled = true

@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback } from 'react'
+import { createAssistantPlaceholder, createUserMessage } from '@/lib/ai-elements-adapter'
 import type { CreateSessionParams, GitHubRepo, ModelInfo, AgentInfo, AgentModeId } from '@/lib/api/types'
 import type { ChatSession } from '@/lib/api/hooks/use-sessions'
 import { DEFAULT_ACP_MODEL_ID } from './dashboard-mode-storage'
+import { upsertLocalSession } from './merge-remote-sessions'
 import type { useDashboardChat } from './use-dashboard-chat'
 
 export function useDashboardCreateSession(params: {
@@ -20,7 +22,7 @@ export function useDashboardCreateSession(params: {
   onSessionCreated?: (sessionId: string) => void
 }) {
   const {
-    chat: { setLocalSessions },
+    chat: { setActiveSessionId, setLocalSessions, setMessages },
     prompt,
     setPrompt,
     selectedModel,
@@ -63,20 +65,25 @@ export function useDashboardCreateSession(params: {
           model: newSession.model ?? data.model ?? selectedModel?.id,
           agentType: newSession.agentType ?? selectedAgent?.id,
         }
-        setLocalSessions((prev) => [newSessionData, ...prev])
+        setLocalSessions((prev) => upsertLocalSession(prev, newSessionData))
         mutateSessions?.()
         onSessionCreated?.(newSession.id)
+        setActiveSessionId(newSession.id)
+        window.history.pushState({}, '', `/session/${newSession.id}`)
 
         if (trimmedPrompt) {
           setPrompt('')
-          streamSessionInBackground(newSession.id, trimmedPrompt, mode, newSessionData.model)
+          setMessages([createUserMessage(trimmedPrompt), createAssistantPlaceholder()])
+          void streamSessionInBackground(newSession.id, trimmedPrompt, mode, newSessionData.model)
         }
       } catch (error) {
         console.error('Failed to create session:', error)
       }
     },
     [
+      setActiveSessionId,
       setLocalSessions,
+      setMessages,
       createSession,
       mode,
       mutateSessions,

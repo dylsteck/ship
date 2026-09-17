@@ -12,6 +12,7 @@ import { useSessionPersistence } from './use-session-persistence'
 import { sessionStatusStore, useSessionStatus } from './use-session-status-store'
 import { useSessionConnection } from './use-session-connection'
 import { useChatHistoryLoader } from './use-chat-history-loader'
+import { REALTIME_V2_ENABLED } from '@/lib/config'
 
 export interface UseDashboardChatOptions {
   onAgentEventRef?: React.MutableRefObject<
@@ -30,7 +31,9 @@ export function useDashboardChat(
   const { onAgentEventRef, initialMessages: rawInitialMessages, initialApiMessages, onResumeStream } = options ?? {}
   const [localSessions, setLocalSessions] = useState<ChatSession[]>(initialSessions)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialActiveSessionId)
-  const [messages, setMessages] = useState<UIMessage[]>([])
+  const [messages, setMessages] = useState<UIMessage[]>(() =>
+    seedSessionMessages(initialActiveSessionId, rawInitialMessages),
+  )
   const [internalIsStreaming, setInternalIsStreaming] = useState(false)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
 
@@ -74,6 +77,7 @@ export function useDashboardChat(
   }, [activeSessionId, liveSessionStatus?.isRunning, setMessages])
 
   const { wsStatus, connectWebSocket, consumeSSE } = useSessionConnection({
+    enabled: !REALTIME_V2_ENABLED,
     activeSessionId,
     setMessages,
     streamingMessageRef,
@@ -84,6 +88,7 @@ export function useDashboardChat(
   })
 
   useChatHistoryLoader({
+    enabled: !REALTIME_V2_ENABLED,
     activeSessionId,
     initialActiveSessionId,
     rawInitialMessages,
@@ -147,4 +152,20 @@ export function useDashboardChat(
     ...persistence,
     handleStop,
   }
+}
+
+function seedSessionMessages(
+  sessionId: string | null,
+  messages: UIMessage[] | undefined,
+): UIMessage[] {
+  if (!sessionId || !messages?.length) return []
+  return messages.map((message) => ({
+    ...message,
+    createdAt:
+      message.createdAt instanceof Date
+        ? message.createdAt
+        : typeof message.createdAt === 'string'
+          ? new Date(message.createdAt)
+          : message.createdAt,
+  }))
 }

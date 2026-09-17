@@ -40,6 +40,8 @@ export interface RunChatTurnInput extends ChatTurnContext {
   planMode?: boolean
   env: Env
   stream: SSEWriter
+  /** At-most-once fence executed immediately before `session/prompt`. */
+  beforePrompt?: () => Promise<void>
 }
 
 export interface ChatTurnResult {
@@ -60,6 +62,7 @@ interface TurnRuntime {
   sawVisibleAssistantOutput: boolean
   acpLogTail: string[]
   stoppedByRequest: boolean
+  promptFenceCrossed: boolean
 }
 
 function createTurnRuntime(sessionId: string): TurnRuntime {
@@ -70,6 +73,7 @@ function createTurnRuntime(sessionId: string): TurnRuntime {
     sawVisibleAssistantOutput: false,
     acpLogTail: [],
     stoppedByRequest: false,
+    promptFenceCrossed: false,
   }
 }
 
@@ -238,6 +242,8 @@ async function sendPrompt(
   )
 
   try {
+    if (input.beforePrompt) await input.beforePrompt()
+    runtime.promptFenceCrossed = true
     await Promise.race([
       rpc.request(
         'session/prompt',
@@ -259,7 +265,7 @@ async function sendPrompt(
 
 async function finalizeSuccessfulTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<ChatTurnResult> {
   const finalParts = runtime.translator.getFinalParts()
-  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts)
+  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts, input.turnId)
   await emitEvent(input, makeStepFinishEvent(input.sessionId, runtime.translator.messageId, emptyStepTotals(), 'stop'))
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
   await emitEvent(input, { type: 'done' })
@@ -271,7 +277,7 @@ async function persistPartialAssistantTurn(input: RunChatTurnInput, runtime: Tur
   if (!runtime.assistantText.trim() && finalParts.length === 0 && !runtime.sawVisibleAssistantOutput) {
     return
   }
-  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts)
+  await persistAssistantMessage(input.stub, runtime.assistantText, finalParts, input.turnId)
 }
 
 async function handleStoppedTurn(input: RunChatTurnInput, runtime: TurnRuntime): Promise<ChatTurnResult> {
@@ -301,7 +307,7 @@ async function handleFailedTurn(
       error: { name: 'AgentError', data: { message: msg } },
     },
   })
-  await persistRunnerErrorMessage(input.stub, msg).catch((persistError) => {
+  await persistRunnerErrorMessage(input.stub, msg, input.turnId).catch((persistError) => {
     console.warn('[acp] failed to persist runner error message', persistError)
   })
   await emitEvent(input, { type: 'session.idle', properties: { sessionID: input.sessionId } })
@@ -336,7 +342,7 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<ChatTurnResu
         error instanceof Error &&
         (error.message.startsWith('ACP bridge WebSocket') || error.message.startsWith('ACP bridge closed'))
 
-      if (isBridgeDisconnect && attempt === 0 && !runtime.sawVisibleAssistantOutput) {
+      if (isBridgeDisconnect && attempt === 0 && !runtime.sawVisibleAssistantOutput && !runtime.promptFenceCrossed) {
         await writeStatus(input.stream, 'reconnecting', 'Reconnecting to agent…')
         await delay(2_000)
         await patchMeta(input.stub, { acp_protocol_session_id: '' })

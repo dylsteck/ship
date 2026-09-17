@@ -15,6 +15,7 @@ function normalizeInitialMessages(msgs: UIMessage[]): UIMessage[] {
 }
 
 export interface UseChatHistoryLoaderParams {
+  enabled?: boolean
   activeSessionId: string | null
   initialActiveSessionId: string | null
   rawInitialMessages?: UIMessage[]
@@ -24,6 +25,7 @@ export interface UseChatHistoryLoaderParams {
 }
 
 export function useChatHistoryLoader({
+  enabled = true,
   activeSessionId,
   initialActiveSessionId,
   rawInitialMessages,
@@ -36,6 +38,11 @@ export function useChatHistoryLoader({
   onResumeStreamRef.current = onResumeStream
 
   useEffect(() => {
+    if (!enabled) {
+      historyLoadedRef.current = null
+      if (!activeSessionId) setMessages((prev) => (prev.length === 0 ? prev : []))
+      return
+    }
     if (!activeSessionId) {
       historyLoadedRef.current = null
       setMessages((prev) => (prev.length === 0 ? prev : []))
@@ -82,5 +89,5 @@ export function useChatHistoryLoader({
     return () => {
       historyLoadedRef.current = null
     }
-  }, [activeSessionId, initialActiveSessionId, rawInitialMessages, initialApiMessages, setMessages])
+  }, [activeSessionId, enabled, initialActiveSessionId, rawInitialMessages, initialApiMessages, setMessages])
 }

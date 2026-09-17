@@ -37,5 +37,5 @@ export interface SessionFetchHost {
     githubToken: string,
     gitUser: { name: string; email: string },
   ): Promise<unknown>
-  handleWebSocketUpgrade(request: Request): Response
+  handleWebSocketUpgrade(request: Request): Promise<Response>
 }

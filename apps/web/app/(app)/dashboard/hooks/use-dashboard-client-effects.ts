@@ -16,19 +16,29 @@ export function useDashboardSessionEffects(
   mutateSessions: () => void,
 ) {
   const router = useRouter()
-  const { activeSessionId, setActiveSessionId, setMessages, setLocalSessions } = chat
+  const { activeSessionId, localSessions, setActiveSessionId, setMessages, setLocalSessions } = chat
+  const pendingCreateIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (sessionsLoading || !activeSessionId) return
-    const stillExists = swrSessions.some((s) => s.id === activeSessionId)
+    if (pendingCreateIdsRef.current.has(activeSessionId)) return
+    const stillExists =
+      swrSessions.some((session) => session.id === activeSessionId) ||
+      localSessions.some((session) => session.id === activeSessionId)
     if (!stillExists) {
       setActiveSessionId(null)
       setMessages((prev) => (prev.length === 0 ? prev : []))
       router.push('/')
     }
-  }, [swrSessions, activeSessionId, sessionsLoading, router, setActiveSessionId, setMessages])
-
-  const pendingCreateIdsRef = useRef<Set<string>>(new Set())
+  }, [
+    swrSessions,
+    localSessions,
+    activeSessionId,
+    sessionsLoading,
+    router,
+    setActiveSessionId,
+    setMessages,
+  ])
 
   useEffect(() => {
     if (sessionsLoading) return

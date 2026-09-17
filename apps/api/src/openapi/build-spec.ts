@@ -22,6 +22,7 @@ import {
   connectorStatusSchema,
   connectorToggleResponseSchema,
   connectorsResponseSchema,
+  createTurnBodySchema,
   createSessionBodySchema,
   defaultModelResponseSchema,
   defaultRepoBodySchema,
@@ -35,15 +36,24 @@ import {
   githubAccountBodySchema,
   githubReposResponseSchema,
   modelInfoSchema,
+  modelPreferencesSchema,
   modelRefSchema,
   permissionReplyBodySchema,
   questionReplyBodySchema,
+  realtimeTicketBodySchema,
+  realtimeTicketResponseSchema,
   sandboxInfoSchema,
   sandboxProvisionBodySchema,
   sandboxStatusSchema,
   sessionModelResponseSchema,
+  sessionSelectionResponseSchema,
   sessionSchema,
   successSchema,
+  toolOutputResponseSchema,
+  transcriptPageSchema,
+  turnAcceptedResponseSchema,
+  updateModelPreferencesBodySchema,
+  updateSessionSelectionBodySchema,
   upsertUserBodySchema,
   upsertUserResponseSchema,
   userSchema,
@@ -156,6 +166,91 @@ function registerPaths(): void {
     responses: {
       200: jsonResponse(sandboxStatusSchema, 'Sandbox status'),
     },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/sessions/{sessionId}/turns',
+    tags: ['Sessions'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      body: { content: { 'application/json': { schema: createTurnBodySchema } } },
+    },
+    responses: {
+      202: jsonResponse(turnAcceptedResponseSchema, 'Turn accepted'),
+      409: jsonResponse(errorSchema, 'Session already has an active turn'),
+    },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/sessions/{sessionId}/turns/{turnId}/stop',
+    tags: ['Sessions'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({
+        sessionId: sessionIdParam,
+        turnId: z.string().openapi({ param: { name: 'turnId', in: 'path' } }),
+      }),
+    },
+    responses: {
+      200: jsonResponse(successSchema.extend({ turnId: z.string() }), 'Stop requested'),
+      409: jsonResponse(errorSchema, 'Turn is not running'),
+    },
+  })
+
+  registry.registerPath({
+    method: 'get',
+    path: '/sessions/{sessionId}/transcript',
+    tags: ['Sessions'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      query: z.object({ before: z.string().optional(), limit: z.coerce.number().int().min(1).max(50).optional() }),
+    },
+    responses: { 200: jsonResponse(transcriptPageSchema, 'Older transcript page') },
+  })
+
+  registry.registerPath({
+    method: 'get',
+    path: '/sessions/{sessionId}/tool-calls/{toolCallId}/output',
+    tags: ['Sessions'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({
+        sessionId: sessionIdParam,
+        toolCallId: z.string().openapi({ param: { name: 'toolCallId', in: 'path' } }),
+      }),
+    },
+    responses: {
+      200: jsonResponse(toolOutputResponseSchema, 'Full tool output'),
+      404: jsonResponse(errorSchema, 'Tool output not found'),
+    },
+  })
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/sessions/{sessionId}/selection',
+    tags: ['Sessions'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+      params: z.object({ sessionId: sessionIdParam }),
+      body: { content: { 'application/json': { schema: updateSessionSelectionBodySchema } } },
+    },
+    responses: {
+      200: jsonResponse(sessionSelectionResponseSchema, 'Selection updated'),
+      409: jsonResponse(errorSchema, 'Session is busy'),
+    },
+  })
+
+  registry.registerPath({
+    method: 'post',
+    path: '/realtime/tickets',
+    tags: ['Realtime'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: { body: { content: { 'application/json': { schema: realtimeTicketBodySchema } } } },
+    responses: { 200: jsonResponse(realtimeTicketResponseSchema, 'Short-lived one-use ticket') },
   })
 
   // Chat SSE
@@ -371,6 +466,23 @@ function registerPaths(): void {
   })
 
   registry.registerPath({
+    method: 'get',
+    path: '/models/preferences',
+    tags: ['Models'],
+    security: [{ [bearerAuth.name]: [] }],
+    responses: { 200: jsonResponse(modelPreferencesSchema, 'Model preferences') },
+  })
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/models/preferences',
+    tags: ['Models'],
+    security: [{ [bearerAuth.name]: [] }],
+    request: { body: { content: { 'application/json': { schema: updateModelPreferencesBodySchema } } } },
+    responses: { 200: jsonResponse(modelPreferencesSchema, 'Model preferences updated') },
+  })
+
+  registry.registerPath({
     method: 'post',
     path: '/models/default',
     tags: ['Models'],
@@ -545,6 +657,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       { name: 'Sandbox', description: 'E2B sandbox provisioning' },
       { name: 'Users', description: 'User identity' },
       { name: 'Models', description: 'Model and agent preferences' },
+      { name: 'Realtime', description: 'Scoped websocket connection tickets' },
       { name: 'Accounts', description: 'GitHub account and repos' },
       { name: 'Connectors', description: 'Third-party connector settings' },
     ],

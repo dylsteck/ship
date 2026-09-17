@@ -52,11 +52,16 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   created_at INTEGER NOT NULL,
   archived_at INTEGER,
   title TEXT,
+  model TEXT,
+  agent_type TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_activity ON chat_sessions(last_activity DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_status_activity
+  ON chat_sessions(user_id, status, last_activity DESC);
 
 -- User preferences table for settings
 CREATE TABLE IF NOT EXISTS user_preferences (
@@ -70,3 +75,20 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
+
+-- Transcript rows are write-through from SessionDO SQLite.
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  turn_id TEXT,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  parts TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created_id
+  ON chat_messages(session_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_turn
+  ON chat_messages(session_id, turn_id, created_at, id);

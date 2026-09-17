@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
+import { REALTIME_V2_ENABLED } from '@/lib/config'
 import { postSessionSync } from '@/lib/session-sync-channel'
 import type { ChatSession } from '@/lib/api/server'
 import type { User } from '@/lib/api/types'
@@ -15,6 +16,7 @@ import {
 } from './use-dashboard-client-effects'
 import { useDashboardDataHooks } from './dashboard-client-helpers'
 import { useProvisionSandboxWhenNeeded } from './use-provision-sandbox-when-needed'
+import { useDashboardRealtime } from './use-dashboard-realtime'
 
 export function useDashboardClientCore(
   initialSessions: ChatSession[],
@@ -39,18 +41,33 @@ export function useDashboardClientCore(
 
   useProvisionSandboxWhenNeeded(chat.activeSessionId)
 
-  const { handleSend, processStreamEventForSession, resumeStream } = useDashboardSSE({
+  const legacyRealtime = useDashboardSSE({
     chat,
     modeRef: refs.modeRef,
     modelIdRef: refs.modelIdRef,
   })
+  const canonicalRealtime = useDashboardRealtime(chat, refs.modeRef, refs.modelIdRef)
+  const realtime = REALTIME_V2_ENABLED ? canonicalRealtime : legacyRealtime
+  const canonicalWsStatus = canonicalRealtime.controllerState.phase === 'live'
+    ? 'connected'
+    : canonicalRealtime.controllerState.phase === 'synchronizing'
+      ? 'connecting'
+      : 'disconnected'
+  const chatView = useMemo(
+    () => ({
+      ...chat,
+      handleStop: REALTIME_V2_ENABLED ? canonicalRealtime.handleStop : chat.handleStop,
+      wsStatus: REALTIME_V2_ENABLED ? canonicalWsStatus : chat.wsStatus,
+    }),
+    [canonicalRealtime.handleStop, canonicalWsStatus, chat],
+  )
 
   // Assign synchronously during render so the refs are always populated before
   // any effect (including useChatHistoryLoader) reads them.
-  refs.resumeStreamRef.current = resumeStream
-  refs.onAgentEventRef.current = processStreamEventForSession
+  refs.resumeStreamRef.current = realtime.resumeStream
+  refs.onAgentEventRef.current = realtime.processStreamEventForSession
 
-  const dataHooks = useDashboardDataHooks(chat)
+  const dataHooks = useDashboardDataHooks(chatView)
   const { pendingCreateIdsRef } = useDashboardSessionEffects(
     chat,
     dataHooks.swrSessions,
@@ -61,22 +78,35 @@ export function useDashboardClientCore(
   const onSessionCreated = useCallback(
     (sessionId: string) => {
       pendingCreateIdsRef.current.add(sessionId)
-      postSessionSync({ type: 'session-created' })
+      if (!REALTIME_V2_ENABLED) postSessionSync({ type: 'session-created' })
     },
     [pendingCreateIdsRef],
   )
 
   const onSessionDeleted = useCallback(() => {
-    postSessionSync({ type: 'session-deleted' })
+    if (!REALTIME_V2_ENABLED) postSessionSync({ type: 'session-deleted' })
   }, [])
 
-  const streamingFromOtherTabs = useDashboardCrossTabSync(chat, dataHooks.mutateSessions, refs.resumeStreamRef)
-  const streamingSessionIds = useStreamingSessionIds(streamingFromOtherTabs, chat.activeSessionId, chat.isStreaming)
+  const streamingFromOtherTabs = useDashboardCrossTabSync(
+    chatView,
+    dataHooks.mutateSessions,
+    refs.resumeStreamRef,
+    !REALTIME_V2_ENABLED,
+  )
+  const legacyStreamingSessionIds = useStreamingSessionIds(
+    streamingFromOtherTabs,
+    chatView.activeSessionId,
+    chatView.isStreaming,
+  )
+  const streamingSessionIds = new Set([
+    ...legacyStreamingSessionIds,
+    ...(REALTIME_V2_ENABLED ? dataHooks.shellStreamingSessionIds : []),
+  ])
 
   const state = useDashboardState({
-    chat,
-    handleSend,
-    processStreamEventForSession,
+    chat: chatView,
+    handleSend: realtime.handleSend,
+    processStreamEventForSession: realtime.processStreamEventForSession,
     session: {
       createSession: dataHooks.createSession,
       deleteSession: dataHooks.deleteSession,
@@ -91,7 +121,7 @@ export function useDashboardClientCore(
   refs.modelIdRef.current = state.selectedModel?.id ?? null
   refs.modeRef.current = state.mode
 
-  return { chat, state, dataHooks, handleSend, streamingSessionIds }
+  return { chat: chatView, state, dataHooks, handleSend: realtime.handleSend, streamingSessionIds }
 }
 
 export interface DashboardClientCoreParams {

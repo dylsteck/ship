@@ -20,6 +20,8 @@ import { collectSessionGitState } from '../lib/session-git-state'
 import { collectSessionDesktopState } from '../lib/session-desktop-state'
 import { getGitHubAccessTokenForUser } from '../lib/github-token'
 import { parseRepoUrl } from '../lib/github'
+import { publishShellSession } from '../lib/shell-summary'
+import type { TurnId } from '@ship/contracts'
 
 const DO_URL = 'https://do'
 
@@ -42,8 +44,13 @@ function registerStopRoute(app: Hono<AuthedEnv>): void {
     const gate = await requireSessionOwner(c, c.req.param('sessionId'))
     if (!gate.ok) return gate.response
 
-    const stub = sessionStub(c)
-    await setMeta(stub, { agent_should_stop: 'true' })
+    const sessionId = c.req.param('sessionId')
+    const stub = c.env.SESSION_DO.getByName(sessionId)
+    const turnId = await stub.getActiveTurnId()
+    if (!turnId || !(await stub.requestAcceptedTurnStop(turnId))) {
+      return c.json({ error: 'Turn is not running' }, 409)
+    }
+    await publishShellSession(c.env, sessionId, { state: 'stopping', latestTurnId: turnId as TurnId })
     return c.json({ success: true })
   })
 }

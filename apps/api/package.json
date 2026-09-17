@@ -11,12 +11,15 @@
     "deploy:prod": "wrangler deploy --env production",
     "predeploy:prod": "node ./scripts/bundle-acp-bridge.mjs",
     "bundle:acp-bridge": "node ./scripts/bundle-acp-bridge.mjs",
+    "cf-typegen": "wrangler types src/worker-configuration.d.ts --env-interface CloudflareBindings --include-runtime false",
+    "cf-typecheck": "pnpm cf-typegen --check",
     "openapi:export": "tsx scripts/export-openapi.ts",
     "openapi:check": "pnpm openapi:export && git diff --exit-code openapi/ship-api.openapi.json",
     "pretypecheck": "node ./scripts/bundle-acp-bridge.mjs",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:worker": "vitest run --config vitest.worker.config.mts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
@@ -34,13 +37,14 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260317.1",
+    "@cloudflare/vitest-pool-workers": "0.21.3",
+    "@cloudflare/workers-types": "^5.20260818.1",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.1",
-    "vitest": "^3.0.0",
-    "wrangler": "^4.76.0"
+    "vitest": "^4.1.0",
+    "wrangler": "^4.123.0"
   }
 }

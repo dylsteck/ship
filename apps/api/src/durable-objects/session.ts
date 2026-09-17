@@ -7,10 +7,19 @@
 
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../env.d'
+import type {
+  CreateTurnRequest,
+  SessionProducerAck,
+  SessionProducerBatch,
+  SessionSubscribeCommand,
+  TranscriptPage,
+  TurnAcceptedResponse,
+} from '@ship/contracts'
 import { SandboxManager, type SandboxInfo } from '../lib/e2b'
 import type { AgentExecutor } from '../lib/agent-executor'
 import type { ComputeCommandSandbox } from '../lib/sandbox-command'
 import { handleSessionFetch } from './session-fetch-handlers'
+import { firstSqlRow } from './sql-first'
 import {
   initializeAgentExecutor as initializeAgentExecutorBinding,
 } from './session-agent-bindings'
@@ -68,6 +77,27 @@ import {
 } from './session-summary'
 import type { SessionSummary, TurnStatus } from '@ship/contracts'
 import type { Message, SessionMetaRow, Task } from './session-types'
+import { migrateSessionSchema } from './session-schema'
+import {
+  appendRealtimeEvent,
+  broadcastSessionRecords,
+  getSessionEventHead,
+  getToolOutput as getToolOutputStore,
+} from './session-event-store'
+import { synchronizeSessionConsumer } from './session-subscription'
+import { buildTranscriptPage } from './session-snapshot'
+import {
+  beginTurn as beginTurnCommand,
+  claimTurn as claimTurnCommand,
+  finalizeAcceptedTurn,
+  getTurnExecutionData,
+  heartbeatTurn,
+  markPromptSent,
+  requestTurnStop,
+  staleRunningTurns,
+  type BeginTurnResult,
+  type TurnExecutionData,
+} from './session-turn-command-store'
 
 export type { Message, MessagePart, Task } from './session-types'
 export type { TurnRow, SessionEventRow } from './session-turn-store'
@@ -85,7 +115,7 @@ export class SessionDO extends DurableObject<Env> {
     this.sql = ctx.storage.sql
 
     ctx.blockConcurrencyWhile(async () => {
-      this.initSchema()
+      migrateSessionSchema(this.sql)
     })
   }
 
@@ -95,54 +125,6 @@ export class SessionDO extends DurableObject<Env> {
     const id = meta['session_id'] || null
     if (id) this.sessionId = id
     return id
-  }
-
-  private initSchema(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        parts TEXT,
-        created_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS tasks (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        description TEXT,
-        status TEXT DEFAULT 'pending',
-        mode TEXT DEFAULT 'build',
-        created_at INTEGER NOT NULL,
-        completed_at INTEGER
-      );
-
-      CREATE TABLE IF NOT EXISTS session_meta (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
-      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at);
-
-      CREATE TABLE IF NOT EXISTS turns (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL,
-        started_at INTEGER NOT NULL,
-        completed_at INTEGER,
-        status TEXT NOT NULL,
-        diff_summary TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS session_events (
-        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-        type TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        occurred_at INTEGER NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, started_at);
-    `)
   }
 
   async getSessionMeta(): Promise<Record<string, string>> {
@@ -172,16 +154,118 @@ export class SessionDO extends DurableObject<Env> {
     return this.env.E2B_API_KEY
   }
 
-  getWebSockets(): WebSocket[] {
-    return this.ctx.getWebSockets()
+  getWebSockets(tag?: string): WebSocket[] {
+    return this.ctx.getWebSockets(tag)
   }
 
   getWebSocketCount(): number {
     return this.ctx.getWebSockets().length
   }
 
-  acceptWebSocket(ws: WebSocket): void {
-    this.ctx.acceptWebSocket(ws)
+  acceptWebSocket(ws: WebSocket, tags?: string[]): void {
+    this.ctx.acceptWebSocket(ws, tags)
+  }
+
+  /** Secret used only to authenticate direct Workflow producer sockets. */
+  getProducerSecret(): string {
+    return this.env.API_SECRET
+  }
+
+  /** Current canonical event head for attachment initialization. */
+  getSessionEventHead(): number {
+    return getSessionEventHead(this)
+  }
+
+  /** Validate that a producer socket belongs to the active Workflow attempt. */
+  isProducerAttempt(turnId: string, attemptId: string): boolean {
+    const row = firstSqlRow(
+      this.sql.exec<{ attempt_id: string | null; status: string }>(
+        'SELECT attempt_id, status FROM turns WHERE id = ?',
+        turnId,
+      ),
+    )
+    return Boolean(row && row.status === 'running' && row.attempt_id === attemptId)
+  }
+
+  /** Apply snapshot/replay synchronization for one detail consumer. */
+  synchronizeConsumer(ws: WebSocket, command: SessionSubscribeCommand): void {
+    synchronizeSessionConsumer(this, ws, command)
+  }
+
+  /** Persist and acknowledge a deterministic producer batch. */
+  ingestProducerBatch(batch: SessionProducerBatch): SessionProducerAck['records'] {
+    const records = batch.records.map((record) => appendRealtimeEvent(this, record))
+    broadcastSessionRecords(this, records)
+    for (const turnId of new Set(batch.records.flatMap((record) => record.turnId ? [record.turnId] : []))) {
+      this.sql.exec('UPDATE turns SET heartbeat_at = ? WHERE id = ?', Date.now(), turnId)
+    }
+    return records.map((record) => ({ eventId: record.eventId, sequence: record.sequence }))
+  }
+
+  /** Persist an accepted turn command atomically. */
+  async beginAcceptedTurn(sessionId: string, command: CreateTurnRequest): Promise<BeginTurnResult> {
+    return beginTurnCommand(this, sessionId, command)
+  }
+
+  /** Claim a turn for exactly one Workflow attempt. */
+  claimAcceptedTurn(turnId: string, workflowInstanceId: string, attemptId: string) {
+    return claimTurnCommand(this, turnId, workflowInstanceId, attemptId)
+  }
+
+  /** Read prompt and execution state for a Workflow. */
+  getAcceptedTurn(turnId: string): TurnExecutionData | null {
+    return getTurnExecutionData(this, turnId)
+  }
+
+  /** Establish the at-most-once prompt fence. */
+  markAcceptedTurnPromptSent(turnId: string, attemptId: string): boolean {
+    return markPromptSent(this, turnId, attemptId)
+  }
+
+  /** Refresh a running turn lease. */
+  async heartbeatAcceptedTurn(turnId: string, attemptId: string): Promise<boolean> {
+    return heartbeatTurn(this, turnId, attemptId)
+  }
+
+  /** Request cooperative cancellation of the active turn. */
+  requestAcceptedTurnStop(turnId: string): boolean {
+    return requestTurnStop(this, turnId)
+  }
+
+  /** Complete a canonical turn exactly once. */
+  async finalizeAcceptedTurn(
+    sessionId: string,
+    turnId: string,
+    status: 'completed' | 'failed' | 'interrupted',
+    error?: string,
+    diffSummary?: Array<{ filename: string; additions: number; deletions: number }>,
+  ): Promise<boolean> {
+    return finalizeAcceptedTurn(this, sessionId, turnId, status, error, diffSummary)
+  }
+
+  /** Fetch a stable older transcript page. */
+  getTranscriptPage(sessionId: string, before?: string, limit?: number): TranscriptPage {
+    return buildTranscriptPage(this, sessionId, before, limit)
+  }
+
+  /** Fetch full tool output omitted from snapshots. */
+  getToolOutput(toolCallId: string): string | null {
+    return getToolOutputStore(this, toolCallId)
+  }
+
+  /** Return the active turn id used to lock selection and submissions. */
+  getActiveTurnId(): string | null {
+    return firstSqlRow(this.sql.exec<{ id: string }>("SELECT id FROM turns WHERE status = 'running' LIMIT 1"))?.id ?? null
+  }
+
+  /** Cache the latest D1-backed shell summary for synchronous detail snapshots. */
+  async cacheShellSummary(summaryJson: string): Promise<void> {
+    await this.setSessionMeta('shell_summary', summaryJson)
+  }
+
+  /** Schedule the single execution-lease alarm for this session. */
+  async scheduleTurnAlarm(timestamp: number): Promise<void> {
+    await this.ctx.storage.setAlarm(timestamp)
   }
 
   async getRecentMessages(limit: number = 25) {
@@ -343,7 +427,7 @@ export class SessionDO extends DurableObject<Env> {
     return handleSessionFetch(this, request)
   }
 
-  handleWebSocketUpgrade(request: Request): Response {
+  async handleWebSocketUpgrade(request: Request): Promise<Response> {
     return handleWebSocketUpgrade(this, request)
   }
 
@@ -359,7 +443,41 @@ export class SessionDO extends DurableObject<Env> {
     return handleWebSocketClose(ws, code, reason)
   }
 
-  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    return handleWebSocketError(ws, error)
+  async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
+    return handleWebSocketError(ws)
+  }
+
+  /** Recover abandoned turns without ever repeating a prompt that crossed the fence. */
+  async alarm(): Promise<void> {
+    const stale = staleRunningTurns(this, Date.now() - 90_000)
+    const sessionId = await this.getSessionIdForD1()
+    if (!sessionId) return
+    for (const turn of stale) {
+      if (turn.promptSent) {
+        await finalizeAcceptedTurn(
+          this,
+          sessionId,
+          turn.id,
+          'interrupted',
+          'Agent execution was interrupted after the prompt was sent. The prompt was not repeated.',
+        )
+        continue
+      }
+      try {
+        const instance = await this.env.SHIP_CHAT_TURN_WORKFLOW.get(turn.id)
+        await instance.restart()
+        this.sql.exec('UPDATE turns SET heartbeat_at = ? WHERE id = ?', Date.now(), turn.id)
+      } catch (error) {
+        await finalizeAcceptedTurn(
+          this,
+          sessionId,
+          turn.id,
+          'failed',
+          error instanceof Error ? error.message : 'Unable to recover the abandoned turn.',
+        )
+      }
+    }
+    const active = this.sql.exec<{ value: number }>("SELECT COUNT(*) AS value FROM turns WHERE status = 'running'").one().value
+    if (active > 0) await this.scheduleTurnAlarm(Date.now() + 90_000)
   }
 }

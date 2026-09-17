@@ -21,3 +21,6 @@ export const API_URL = (
   process.env.API_BASE_URL ||
   LOCAL_API_URL
 ).trim()
+
+/** Canonical shell/detail subscriptions are on unless explicitly disabled for rollback. */
+export const REALTIME_V2_ENABLED = process.env.NEXT_PUBLIC_REALTIME_V2 !== 'false'

@@ -6,6 +6,10 @@ import {
   broadcastSandboxProvisioningError,
   provisionSessionInBackground,
 } from '../lib/session-create-provisioning'
+import { DEFAULT_ACP_MODEL_ID } from '../lib/agent-registry'
+import { acpBackendFromModelId } from '../lib/acp-types'
+import { publishShellRemoval, publishShellSession } from '../lib/shell-summary'
+import sessionRealtime from './session-realtime'
 
 // Session DTO type
 interface SessionDTO {
@@ -20,6 +24,7 @@ interface SessionDTO {
   title?: string
   model?: string
   agentType?: string
+  revision: number
 }
 
 // Database row type
@@ -33,20 +38,14 @@ interface SessionRow {
   created_at: number
   archived_at: number | null
   title?: string
+  model: string | null
+  agent_type: string | null
+  revision: number
 }
 
 const sessions = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
 
-async function getSessionMetadata(env: Env, sessionId: string): Promise<Record<string, string>> {
-  try {
-    const doId = env.SESSION_DO.idFromName(sessionId)
-    const doStub = env.SESSION_DO.get(doId)
-    return await doStub.getSessionMeta()
-  } catch (doError) {
-    console.warn(`[sessions] DO metadata failed for session ${sessionId}:`, doError)
-    return {}
-  }
-}
+sessions.route('/', sessionRealtime)
 
 /**
  * GET /sessions
@@ -61,7 +60,8 @@ sessions.get('/', async (c) => {
     const userId = userIdOrRes
 
     const cursor = await c.env.DB.prepare(
-      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at, title
+      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at,
+              title, model, agent_type, revision
        FROM chat_sessions
        WHERE user_id = ? AND status != 'deleted'
        ORDER BY last_activity DESC`,
@@ -71,10 +71,7 @@ sessions.get('/', async (c) => {
 
     // Map to DTO (camelCase). D1 owns durable list fields; per-session DO metadata
     // owns harness/model selection until those columns are migrated into D1.
-    const sessionDTOs: SessionDTO[] = await Promise.all(
-      cursor.results.map(async (row) => {
-        const meta = await getSessionMetadata(c.env, row.id)
-        return {
+    const sessionDTOs: SessionDTO[] = cursor.results.map((row) => ({
           id: row.id,
           userId: row.user_id,
           repoOwner: row.repo_owner,
@@ -84,11 +81,10 @@ sessions.get('/', async (c) => {
           createdAt: row.created_at,
           archivedAt: row.archived_at,
           title: row.title ?? undefined,
-          model: meta['model'] || undefined,
-          agentType: meta['agent_type'] || undefined,
-        }
-      }),
-    )
+          model: row.model || undefined,
+          agentType: row.agent_type || undefined,
+          revision: row.revision,
+        }))
 
     return c.json(sessionDTOs)
   } catch (error) {
@@ -120,12 +116,17 @@ sessions.post('/', async (c) => {
     const now = Math.floor(Date.now() / 1000)
 
     // Store session record in D1 FIRST — ensures session exists before any DO cold start
+    const model = input.model || DEFAULT_ACP_MODEL_ID
+    const agentType = input.agentType || acpBackendFromModelId(model)
     await c.env.DB.prepare(
-      `INSERT INTO chat_sessions (id, user_id, repo_owner, repo_name, status, last_activity, created_at, title)
-       VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
+      `INSERT INTO chat_sessions
+       (id, user_id, repo_owner, repo_name, status, last_activity, created_at, title, model, agent_type, revision)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, 1)`,
     )
-      .bind(sessionId, userId, input.repoOwner, input.repoName, now, now, input.title ?? null)
+      .bind(sessionId, userId, input.repoOwner, input.repoName, now, now, input.title ?? null, model, agentType)
       .run()
+
+    await publishShellSession(c.env, sessionId)
 
     c.executionCtx.waitUntil(
       provisionSessionInBackground(c.env, sessionId, userId, input, now).catch(async (err) => {
@@ -145,8 +146,9 @@ sessions.post('/', async (c) => {
       createdAt: now,
       archivedAt: null,
       title: input.title ?? undefined,
-      model: input.model,
-      agentType: input.agentType,
+      model,
+      agentType,
+      revision: 1,
       sandboxId: null,
       sandboxStatus: 'provisioning',
     }
@@ -156,6 +158,19 @@ sessions.post('/', async (c) => {
     console.error('Error creating session:', error)
     return c.json({ error: 'Failed to create session' }, 500)
   }
+})
+
+/**
+ * GET /sessions/stream
+ * User-level shell websocket upgrade.
+ */
+sessions.get('/stream', async (c) => {
+  const userIdOrRes = requireJwtUserId(c)
+  if (typeof userIdOrRes !== 'string') return userIdOrRes
+  const shell = c.env.USER_SHELL_DO.getByName(userIdOrRes)
+  await shell.initialize(userIdOrRes)
+  const headers = new Headers(c.req.raw.headers)
+  return shell.fetch(new Request('https://shell/stream', { headers }))
 })
 
 /**
@@ -172,7 +187,8 @@ sessions.get('/:id', async (c) => {
     }
 
     const row = await c.env.DB.prepare(
-      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at, title
+      `SELECT id, user_id, repo_owner, repo_name, status, last_activity, created_at, archived_at,
+              title, model, agent_type, revision
        FROM chat_sessions
        WHERE id = ?`,
     )
@@ -185,13 +201,11 @@ sessions.get('/:id', async (c) => {
 
     // Get message count and metadata from DO (best-effort — DO may be cold-starting)
     let messageCount = 0
-    let meta: Record<string, string> = {}
     try {
       const doId = c.env.SESSION_DO.idFromName(id)
       const doStub = c.env.SESSION_DO.get(doId)
       const messages = await doStub.getRecentMessages(1000)
       messageCount = messages.length
-      meta = await getSessionMetadata(c.env, id)
     } catch (doError) {
       console.warn(`[sessions] DO calls failed for session ${id}, returning partial data:`, doError)
     }
@@ -207,8 +221,9 @@ sessions.get('/:id', async (c) => {
       createdAt: row.created_at,
       archivedAt: row.archived_at,
       title: row.title ?? undefined,
-      model: meta['model'] || undefined,
-      agentType: meta['agent_type'] || undefined,
+      model: row.model || undefined,
+      agentType: row.agent_type || undefined,
+      revision: row.revision,
       messageCount,
     }
 
@@ -248,6 +263,7 @@ sessions.delete('/', async (c) => {
       await c.env.DB.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).bind(sid).run()
     }
     await c.env.DB.prepare(`DELETE FROM chat_sessions WHERE user_id = ? AND status != 'deleted'`).bind(userId).run()
+    for (const sessionId of sessionIds) await publishShellRemoval(c.env, userId, sessionId)
 
     // Best-effort sandbox termination in background
     c.executionCtx.waitUntil(
@@ -305,6 +321,7 @@ sessions.delete('/:id', async (c) => {
     // Hard-delete messages then session from D1
     await c.env.DB.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).bind(id).run()
     await c.env.DB.prepare(`DELETE FROM chat_sessions WHERE id = ?`).bind(id).run()
+    await publishShellRemoval(c.env, owner.userId, id)
 
     return c.json({ success: true })
   } catch (error) {
@@ -368,6 +385,23 @@ sessions.get('/:id/websocket', async (c) => {
 })
 
 /**
+ * GET /sessions/:id/stream
+ * Sequence-aware session detail websocket upgrade.
+ */
+sessions.get('/:id/stream', async (c) => {
+  const sessionId = c.req.param('id')
+  const owner = await requireSessionOwner(c, sessionId)
+  if (!owner.ok) return owner.response
+  const stub = c.env.SESSION_DO.getByName(sessionId)
+  await stub.setSessionMeta('session_id', sessionId)
+  await stub.setSessionMeta('userId', owner.userId)
+  const summary = await publishShellSession(c.env, sessionId)
+  if (summary) await stub.cacheShellSummary(JSON.stringify(summary))
+  const headers = new Headers(c.req.raw.headers)
+  return stub.fetch(new Request('https://do/stream', { headers }))
+})
+
+/**
  * ALL /sessions/:id/do/*
  * Forward requests to DO for future RPC methods
  */
@@ -377,6 +411,10 @@ sessions.all('/:id/do/*', async (c) => {
   const owner = await requireSessionOwner(c, sessionId)
   if (!owner.ok) {
     return owner.response
+  }
+
+  if (new URL(c.req.url).pathname.includes('/internal/')) {
+    return c.json({ error: 'Not found' }, 404)
   }
 
   const id = c.env.SESSION_DO.idFromName(sessionId)

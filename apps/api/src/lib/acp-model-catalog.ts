@@ -29,6 +29,11 @@ export interface AgentModel {
   isFree?: boolean
   source?: string
   upstreamModelId?: string
+  iconKey?: string
+  tags?: string[]
+  isSelectable?: boolean
+  disabledReason?: string
+  recommended?: boolean
 }
 
 export interface AgentConfig {
@@ -38,6 +43,11 @@ export interface AgentConfig {
   requiredEnvVars: string[]
   modes: AgentMode[]
   models: AgentModel[]
+  description?: string
+  iconKey?: string
+  isSelectable?: boolean
+  disabledReason?: string
+  recommended?: boolean
 }
 
 interface ModelsDevModel {
@@ -99,6 +109,8 @@ function openCodeModel(modelId: string, name: string, contextWindow?: number, is
     contextWindow,
     isFree,
     source: 'opencode-zen',
+    tags: [isFree ? 'free' : 'hosted', 'coding'],
+    isSelectable: true,
   }
 }
 
@@ -119,6 +131,8 @@ function harnessModel(
     description,
     contextWindow,
     source,
+    tags: ['coding', backend],
+    isSelectable: true,
   }
 }
 
@@ -262,6 +276,10 @@ export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfi
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
       models: openCodeModels,
+      description: 'Flexible ACP coding agent with a broad hosted model catalog.',
+      iconKey: 'opencode',
+      isSelectable: true,
+      recommended: true,
     },
     {
       id: 'cursor',
@@ -269,6 +287,9 @@ export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfi
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
       models: CURSOR_MODELS,
+      description: 'Cursor agent running against the attached Ship workspace.',
+      iconKey: 'cursor',
+      isSelectable: true,
     },
     {
       id: 'claude',
@@ -276,6 +297,9 @@ export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfi
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
       models: CLAUDE_MODELS,
+      description: 'Claude Code ACP process with durable workspace continuity.',
+      iconKey: 'claude',
+      isSelectable: true,
     },
     {
       id: 'codex',
@@ -283,6 +307,9 @@ export async function listAgents(fetcher: FetchLike = fetch): Promise<AgentConfi
       requiredEnvVars: ['E2B_API_KEY'],
       modes: ACP_AGENT_MODES,
       models: CODEX_MODELS,
+      description: 'Codex ACP process using the configured deployment credentials.',
+      iconKey: 'codex',
+      isSelectable: true,
     },
   ]
 }

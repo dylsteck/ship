@@ -11,6 +11,7 @@ import {
 } from '@ship/ui'
 import type { ChatSession } from '@/lib/api/server'
 import { getSessionDisplayTitle, getSessionRepoLabel } from '@/lib/session-display'
+import { uniqueSessionsById } from '../hooks/merge-remote-sessions'
 import { useSessionStatus } from '../hooks/use-session-status-store'
 
 function formatRelativeTime(timestamp: number, now: number): string {
@@ -97,7 +98,7 @@ export function MobileSessionList({
     [onDeleteSession],
   )
 
-  const activeSessions = sessions.filter((s) => !s.archivedAt)
+  const activeSessions = uniqueSessionsById(sessions.filter((s) => !s.archivedAt))
   if (activeSessions.length === 0) return null
 
   return (

@@ -16,3 +16,13 @@ export {
   type ShipApiError,
   type ShipClientConfig,
 } from './runtime/configure'
+export {
+  buildRealtimeWsUrl,
+  createSessionTurn,
+  requestRealtimeTicket,
+  stopSessionTurn,
+  subscribeToSession,
+  subscribeToShell,
+  type RealtimeSubscriptionOptions,
+  type SessionSubscriptionOptions,
+} from './runtime/realtime'

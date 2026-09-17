@@ -1,4 +1,5 @@
 import type { Env } from '../env.d'
+import { firstSqlRow } from './sql-first'
 import {
   isMissingPartsColumnError,
   type Message,
@@ -16,7 +17,7 @@ export interface SessionMessageStoreHost {
 /** Load recent messages from DO SQLite, falling back to D1 on cold start. */
 export async function getRecentMessages(host: SessionMessageStoreHost, limit: number = 25): Promise<MessageRow[]> {
   const cursor = host.sql.exec<MessageRow>(
-    `SELECT id, role, content, parts, created_at
+    `SELECT id, turn_id, role, content, parts, created_at
      FROM messages
      ORDER BY created_at DESC
      LIMIT ?`,
@@ -33,7 +34,7 @@ export async function getRecentMessages(host: SessionMessageStoreHost, limit: nu
 
   try {
     const result = await host.getEnv().DB.prepare(
-      `SELECT id, role, content, parts, created_at
+      `SELECT id, turn_id, role, content, parts, created_at
        FROM chat_messages WHERE session_id = ?
        ORDER BY created_at DESC LIMIT ?`,
     )
@@ -43,8 +44,9 @@ export async function getRecentMessages(host: SessionMessageStoreHost, limit: nu
     if (result.results?.length) {
       for (const row of result.results) {
         host.sql.exec(
-          `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO messages (id, turn_id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
           row.id,
+          row.turn_id,
           row.role,
           row.content,
           row.parts,
@@ -80,6 +82,7 @@ export async function getRecentMessages(host: SessionMessageStoreHost, limit: nu
             role: row.role as string,
             content: row.content as string,
             parts: null,
+            turn_id: null,
             created_at: row.created_at as number,
           }))
           .reverse()
@@ -100,9 +103,10 @@ export async function persistMessage(
   const createdAt = Math.floor(Date.now() / 1000)
 
   host.sql.exec(
-    `INSERT INTO messages (id, role, content, parts, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, turn_id, role, content, parts, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     id,
+    message.turnId ?? null,
     message.role,
     message.content,
     message.parts || null,
@@ -114,6 +118,7 @@ export async function persistMessage(
     role: message.role,
     content: message.content,
     parts: message.parts,
+    turnId: message.turnId ?? null,
     createdAt,
   }
 
@@ -121,10 +126,10 @@ export async function persistMessage(
   if (sessionId) {
     try {
       await host.getEnv().DB.prepare(
-        `INSERT OR IGNORE INTO chat_messages (id, session_id, role, content, parts, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO chat_messages (id, session_id, turn_id, role, content, parts, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-        .bind(saved.id, sessionId, saved.role, saved.content, saved.parts || null, saved.createdAt)
+        .bind(saved.id, sessionId, saved.turnId ?? null, saved.role, saved.content, saved.parts || null, saved.createdAt)
         .run()
     } catch (e) {
       if (isMissingPartsColumnError(e)) {
@@ -151,12 +156,14 @@ export async function getMessages(
 ): Promise<Message[]> {
   const limit = options.limit || 25
 
-  let query = `SELECT id, role, content, parts, created_at as createdAt
+  let query = `SELECT id, turn_id as turnId, role, content, parts, created_at as createdAt
                FROM messages`
   const params: unknown[] = []
 
   if (options.before) {
-    const cursor = host.sql.exec(`SELECT created_at FROM messages WHERE id = ?`, options.before).one()
+    const cursor = firstSqlRow(
+      host.sql.exec<{ created_at: number }>(`SELECT created_at FROM messages WHERE id = ?`, options.before),
+    )
 
     if (cursor) {
       query += ` WHERE created_at < ?`
@@ -175,6 +182,7 @@ export async function getMessages(
       role: row.role as Message['role'],
       content: row.content as string,
       parts: row.parts as string | undefined,
+      turnId: (row.turnId as string | null) ?? null,
       createdAt: row.createdAt as number,
     }))
   }
@@ -184,7 +192,7 @@ export async function getMessages(
 
   try {
     const result = await host.getEnv().DB.prepare(
-      `SELECT id, role, content, parts, created_at as createdAt
+      `SELECT id, turn_id as turnId, role, content, parts, created_at as createdAt
        FROM chat_messages WHERE session_id = ?
        ORDER BY created_at DESC LIMIT ?`,
     )
@@ -194,8 +202,9 @@ export async function getMessages(
     if (result.results?.length) {
       for (const row of result.results) {
         host.sql.exec(
-          `INSERT OR IGNORE INTO messages (id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO messages (id, turn_id, role, content, parts, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
           row.id,
+          row.turnId,
           row.role,
           row.content,
           row.parts,
@@ -207,6 +216,7 @@ export async function getMessages(
         role: row.role as Message['role'],
         content: row.content as string,
         parts: row.parts as string | undefined,
+        turnId: (row.turnId as string | null) ?? null,
         createdAt: row.createdAt as number,
       }))
     }

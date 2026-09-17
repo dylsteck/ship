@@ -13,9 +13,18 @@ import accounts from './routes/accounts'
 import connectors from './routes/connectors'
 import terminal from './routes/terminal'
 import openapi from './routes/openapi'
+import realtime from './routes/realtime'
 import type { Env } from './env.d'
 
-const app = new Hono<{ Bindings: Env; Variables: { userId?: string; authKind?: 'user' | 'service' } }>()
+const app = new Hono<{
+  Bindings: Env
+  Variables: {
+    userId?: string
+    authKind?: 'user' | 'service'
+    realtimeScope?: 'shell' | 'session'
+    realtimeSessionId?: string
+  }
+}>()
 
 // CORS middleware
 app.use(
@@ -65,6 +74,7 @@ app.use('/accounts/*', authMiddleware)
 app.use('/users/*', authMiddleware)
 app.use('/connectors/*', authMiddleware)
 app.use('/terminal/*', authMiddleware)
+app.use('/realtime/*', authMiddleware)
 
 // Rate limiting (after auth so userId is available)
 app.use('/chat/*', chatRateLimit)
@@ -84,6 +94,7 @@ app.route('/models', models)
 app.route('/accounts', accounts)
 app.route('/connectors', connectors)
 app.route('/terminal', terminal)
+app.route('/realtime', realtime)
 
 // Root endpoint
 app.get('/', (c) => {
@@ -101,4 +112,5 @@ app.get('/', (c) => {
 export default app
 
 export { SessionDO } from './durable-objects/session'
-export { ShipAcpBootstrapWorkflow } from './workflows/ship-acp-bootstrap'
+export { UserShellDO } from './durable-objects/user-shell'
+export { ShipChatTurnWorkflow } from './workflows/ship-chat-turn'
