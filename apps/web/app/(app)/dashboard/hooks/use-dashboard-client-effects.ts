@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { postSessionSync, subscribeSessionSync } from '@/lib/session-sync-channel'
+import { mergeRemoteSessions } from './merge-remote-sessions'
 import { sessionStatusStore, useSessionStatusVersion } from './use-session-status-store'
 import type { ChatSession } from '@/lib/api/server'
 import type { AgentInfo, ModelInfo } from '@/lib/api/types'
@@ -31,16 +32,8 @@ export function useDashboardSessionEffects(
 
   useEffect(() => {
     if (sessionsLoading) return
-    const swrIds = new Set(swrSessions.map((s) => s.id))
-    for (const id of swrIds) pendingCreateIdsRef.current.delete(id)
-    setLocalSessions((prev) => {
-      const optimisticOnly = prev.filter((s) => !swrIds.has(s.id) && pendingCreateIdsRef.current.has(s.id))
-      const merged = swrSessions.map((s) => {
-        const p = prev.find((x) => x.id === s.id)
-        return p && p.title && !s.title ? { ...s, title: p.title } : s
-      })
-      return [...optimisticOnly, ...merged]
-    })
+    for (const session of swrSessions) pendingCreateIdsRef.current.delete(session.id)
+    setLocalSessions((prev) => mergeRemoteSessions(prev, swrSessions, pendingCreateIdsRef.current))
   }, [swrSessions, sessionsLoading, setLocalSessions])
 
   return { pendingCreateIdsRef }
@@ -50,11 +43,13 @@ export function useDashboardCrossTabSync(
   chat: ReturnType<typeof useDashboardChat>,
   mutateSessions: () => void,
   resumeStreamRef: React.MutableRefObject<((sessionId: string) => void) | null>,
+  enabled = true,
 ) {
   const [streamingFromOtherTabs, setStreamingFromOtherTabs] = useState<Set<string>>(new Set())
   const { activeSessionId, isStreaming } = chat
 
   useEffect(() => {
+    if (!enabled) return
     return subscribeSessionSync((msg) => {
       if (msg.type === 'session-created' || msg.type === 'session-deleted' || msg.type === 'sessions-invalidate') {
         mutateSessions()
@@ -71,7 +66,7 @@ export function useDashboardCrossTabSync(
         })
       }
     })
-  }, [mutateSessions, activeSessionId, isStreaming, resumeStreamRef])
+  }, [mutateSessions, activeSessionId, isStreaming, resumeStreamRef, enabled])
 
   return streamingFromOtherTabs
 }
