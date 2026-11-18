@@ -24,13 +24,13 @@ export type GitDiffState = {
 
 /** Parsed data needed to render the virtualized CodeView diff surface. */
 export interface DiffViewModel {
-  items: CodeViewItem[]
+  items: CodeViewItem<undefined>[]
   fileStatsByName: Map<string, GitDiffFile>
   filesWithoutPatch: GitDiffFile[]
 }
 
 /** Stable CodeView options for the session diff panel. */
-export const DIFF_CODE_VIEW_OPTIONS: CodeViewOptions<undefined> = {
+export const DIFF_CODE_VIEW_OPTIONS: CodeViewOptions<undefined, undefined> = {
   themeType: 'dark',
   diffStyle: 'unified',
   diffIndicators: 'bars',
@@ -45,9 +45,11 @@ export const DIFF_CODE_VIEW_OPTIONS: CodeViewOptions<undefined> = {
 export function buildDiffViewModel(files: GitDiffFile[], patch: string): DiffViewModel {
   const fileStatsByName = new Map(files.map((file) => [file.filename, file]))
   const patchVersion = hashPatch(patch)
-  const parsedFiles = parsePatchFiles(patch, `session-git-diff-${patchVersion}`).flatMap((parsed) => parsed.files)
+  const parsedFiles = parsePatchFiles(patch, { cacheKeyPrefix: `session-git-diff-${patchVersion}` }).flatMap(
+    (parsed) => parsed.files,
+  )
   const patchedNames = new Set<string>()
-  const items: CodeViewItem[] = parsedFiles.map((fileDiff, index) => {
+  const items: CodeViewItem<undefined>[] = parsedFiles.map((fileDiff, index) => {
     patchedNames.add(fileDiff.name)
     return {
       id: stableDiffItemId(fileDiff.name, index, patchVersion),
@@ -66,9 +68,15 @@ export function buildDiffViewModel(files: GitDiffFile[], patch: string): DiffVie
 }
 
 /** Return the API file metadata for a CodeView item, including rename fallbacks. */
-export function findFileStats(fileStatsByName: Map<string, GitDiffFile>, item: CodeViewItem): GitDiffFile | undefined {
+export function findFileStats(
+  fileStatsByName: Map<string, GitDiffFile>,
+  item: CodeViewItem<undefined>,
+): GitDiffFile | undefined {
   if (item.type !== 'diff') return undefined
-  return fileStatsByName.get(item.fileDiff.name) ?? (item.fileDiff.prevName ? fileStatsByName.get(item.fileDiff.prevName) : undefined)
+  return (
+    fileStatsByName.get(item.fileDiff.name) ??
+    (item.fileDiff.prevName ? fileStatsByName.get(item.fileDiff.prevName) : undefined)
+  )
 }
 
 /** Human-readable single-letter status label for a Git file status. */

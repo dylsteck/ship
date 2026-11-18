@@ -19,10 +19,10 @@
     "sdk:generate:check": "pnpm --filter @ship/sdk generate:check"
   },
   "devDependencies": {
-    "eslint-config-next": "^16",
-    "prettier": "^3.8.1",
-    "tsx": "^4.21.0",
-    "turbo": "^2.9.14",
+    "eslint-config-next": "^16.4.6",
+    "prettier": "^3.10.1",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.13",
     "typescript": "^5.9.3"
   },
   "prettier": {
