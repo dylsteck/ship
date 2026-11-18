@@ -18,10 +18,9 @@
     "./ws": "./src/runtime/ws.ts",
     "./types": "./src/generated/types.gen.ts"
   },
-  "dependencies": {},
   "devDependencies": {
     "@hey-api/client-fetch": "^0.13.1",
-    "@hey-api/openapi-ts": "^0.86.0",
+    "@hey-api/openapi-ts": "^0.86.12",
     "typescript": "^5.9.3"
   }
 }

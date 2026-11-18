@@ -17,9 +17,9 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vitest": "^3.0.0"
+    "vitest": "^3.2.7"
   },
   "dependencies": {
-    "@computesdk/e2b": "^1.7.49"
+    "@computesdk/e2b": "^1.7.75"
   }
 }

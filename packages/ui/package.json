@@ -13,19 +13,19 @@
     "./*": "./src/*.tsx"
   },
   "dependencies": {
-    "@base-ui/react": "^1.1.0",
-    "@hugeicons/core-free-icons": "^3.1.1",
-    "@hugeicons/react": "^1.1.4",
-    "@radix-ui/react-progress": "^1.1.8",
-    "@radix-ui/react-scroll-area": "^1.2.10",
-    "@radix-ui/react-tabs": "^1.1.13",
+    "@base-ui/react": "^1.9.0",
+    "@hugeicons/core-free-icons": "^3.3.0",
+    "@hugeicons/react": "^1.1.10",
+    "@radix-ui/react-progress": "^1.2.1",
+    "@radix-ui/react-scroll-area": "^1.4.0",
+    "@radix-ui/react-tabs": "^1.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "nanoid": "^5.1.5",
+    "nanoid": "^5.1.16",
     "shiki": "^3.23.0",
-    "tailwind-merge": "^3.4.0",
-    "use-stick-to-bottom": "^1.0.0",
+    "tailwind-merge": "^3.7.0",
+    "use-stick-to-bottom": "^1.1.6",
     "vaul": "^1.1.2"
   },
   "peerDependencies": {
@@ -33,10 +33,10 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/react": "^19.2.9",
-    "@types/react-dom": "^19.2.3",
-    "eslint": "^9.39.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.58.1"
+    "typescript-eslint": "^8.73.0"
   }
 }
